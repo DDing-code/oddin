@@ -327,3 +327,13 @@ test('보고 단계: 일시적 오류 재시작 뒤 성공하면 앞선 수정 �
     assert.ok(fs.existsSync(flag));
   } finally { h.cancel(); clearTimeout(f.manager._saveTimer); }
 });
+
+test('Codex 생각 요약은 추론 과정 기록(thinking)으로 남는다', async () => {
+  const f = fixture(), events = [];
+  const h = worker(f, 'codex', 'REASONING 작업', { onEvent: (e) => events.push(e), ackTimeoutMs: 2000 });
+  try {
+    const res = await h.settle(); assert.equal(res.ok, true, JSON.stringify(res));
+    const t = events.find((e) => e.kind === 'thinking');
+    assert.ok(t, '생각 기록 없음'); assert.match(t.text, /Inspecting files/); assert.match(t.text, /Planning edits/);
+  } finally { h.cancel(); h.close(); clearTimeout(f.manager._saveTimer); }
+});

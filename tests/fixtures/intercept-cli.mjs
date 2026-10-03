@@ -51,7 +51,8 @@ function complete() {
     }, 350);
   }
   else if (tool === 'claude') emit({ type: 'result', result: text, session_id: sid, is_error: false });
-  else { emit({ method: 'item/completed', params: { threadId: sid, turnId: tid, item: { type: 'agentMessage', text } } }); emit({ method: 'turn/completed', params: { threadId: sid, turn: { id: tid, status: 'completed' } } }); }
+  else { if (original.includes('REASONING')) emit({ method: 'item/completed', params: { threadId: sid, turnId: tid, item: { type: 'reasoning', id: 'rs1', summary: ['**Inspecting files**', '**Planning edits**'], content: [] } } });
+    emit({ method: 'item/completed', params: { threadId: sid, turnId: tid, item: { type: 'agentMessage', text } } }); emit({ method: 'turn/completed', params: { threadId: sid, turn: { id: tid, status: 'completed' } } }); }
 }
 function begin(prompt) {
   if (!original) { original = prompt; stage = prompt.startsWith('당신은 로컬') ? 'plan' : prompt.startsWith('당신은 작업마다') ? 'route' : prompt.startsWith('당신은 AI 작업') ? 'report' : prompt.startsWith('당신은 목표 달성') ? 'goal-check' : 'worker'; }
