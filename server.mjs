@@ -136,7 +136,7 @@ const server = http.createServer(async (req, res) => {
     const promptAnswer = p.match(/^\/api\/prompts\/([^/]+)\/answer$/);
     if (promptAnswer && req.method === 'POST') return json(res, jobs.prompts.answer(promptAnswer[1], await readBody(req), req.hubViewer));
     if (p === '/api/ui-version') return json(res, { v: uiVersion() });
-    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
+    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
     if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 } });
     if (p === '/api/usage') return json(res, await usageStatus(config, { force: url.searchParams.has('force') }));
     if (p === '/api/projects') return json(res, projectsList());
@@ -165,6 +165,12 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'DELETE') return json(res, { removed: jobs.sessions.has(r[1]) ? await jobs.sessionTools.delete(r[1], url.searchParams.get('cleanup') === '1') : false });
     }
     if ((r = m(/^\/api\/sessions\/([\w-]+)\/jobs$/))) return json(res, jobs.sessionJobs(r[1]));
+    // ---- 기억: 세션 결정 노트 읽기·고치기, 작업이 저장한 장기 기억 되돌리기 (lib/memory-curate.mjs) ----
+    if ((r = m(/^\/api\/sessions\/([\w-]+)\/notes$/))) {
+      if (req.method === 'GET') return json(res, jobs.sessionNotes(r[1]));
+      if (req.method === 'PUT') return json(res, jobs.setSessionNotes(r[1], (await readBody(req)).notes));
+    }
+    if ((r = m(/^\/api\/jobs\/([\w-]+)\/memory\/undo$/)) && req.method === 'POST') return json(res, jobs.undoCuration(r[1]));
     if ((r = m(/^\/api\/sessions\/([\w-]+)\/goal\/(stop|resume)$/)) && req.method === 'POST') return json(res, r[2] === 'stop' ? jobs.stopGoal(r[1]) : await jobs.resumeGoal(r[1]));
     // ---- 작업 ----
     if (p === '/api/jobs' && req.method === 'GET') return json(res, jobs.list().map(publicJob));

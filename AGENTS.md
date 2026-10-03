@@ -16,6 +16,7 @@
 - `lib/usage.mjs` 구독 한도: Claude는 CLI 제어 프로토콜 `get_usage`(모델 호출 없음), Codex는 최신 `~/.codex/sessions` 기록의 `rate_limits`
 - `lib/catalog.mjs` 공통 커맨드(`~/.ai-shared/commands`)·서브 에이전트(`~/.ai-shared/agents`)·스킬 목록, 입력 해석(`/goal`·`/커맨드`·`/스킬`·`@에이전트`), Claude Code·Codex 설치(표식 `ai-hub:managed` 파일만 덮어씀)
 - `lib/goals.mjs` 목표 모드 라운드 지시문과 달성 판정. 진행 상태는 세션의 `goal` 필드, 반복은 `jobs.mjs`의 `afterGoalRound`
+- `lib/memory-curate.mjs` 기억 정리(2026-10-04): 요청이 끝나면 `jobs.curate`가 한 번 정리해 세션 결정 노트 스냅샷(`job.sessionNotes`)을 남기고 장기 기억을 공유 메모리에 적용(되돌리기 기록 `runs/<작업>/memory/memory-undo.json`). 다음 요청은 정리를 기다린 뒤 `session-tools.historyContext`가 노트를 통째로 앞에 둔다. 작업자는 공유 메모리를 직접 쓰지 않고 공용 메모판 `runs/<작업>/notes/<작업ID>.md`에 결정을 남긴다. 화면 `public/memory-ui.js`, 규약 `docs/memory.md`, 끄기 `config.memory.curate:false`
 - `lib/usage.mjs`의 `balanceShare`·`headroom`·`usageWarnings` = 한도 기반 분배 비율·경고. 재배정은 `jobs.mjs`의 `rebalance`
 - `lib/attachments.mjs` 이미지 업로드(서명 검사, 5MB·4장), Claude는 stream-json image 블록, Codex는 `-i`
 - `data/jobs.json`·`data/sessions.json` 작업·세션(폴더별 대화, 같은 세션의 다음 요청은 이전 요청·보고를 맥락으로 받음), `data/uploads/` 첨부 이미지, `runs/<jobId>/` 실행 기록
