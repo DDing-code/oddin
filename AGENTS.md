@@ -19,6 +19,13 @@
 - `data/jobs.json`·`data/sessions.json` 작업·세션(폴더별 대화, 같은 세션의 다음 요청은 이전 요청·보고를 맥락으로 받음), `data/uploads/` 첨부 이미지, `runs/<jobId>/` 실행 기록
 - `public/` 데스크탑 앱형 화면. `app.js` = 대화·입력·작업 카드, `side.js` = 왼쪽 사이드바(고정·폴더별/날짜별·⋯/우클릭 메뉴·바로 이름 바꾸기·안 읽음 표시·계정/설정), 오른쪽 패널(작업·파일·사용량·정보 탭), Ctrl+K 검색, 양쪽 너비 조절. `side.js`는 `app.js` 다음에 읽히고 시작은 DOMContentLoaded.
 - `workspace/` 프로젝트를 고르지 않았을 때 기본 작업 폴더
+- `lib/prompts.mjs` 실행 중 승인·질문·계획 승인 요청 관리(권한 방식 auto·edits·ask·plan, 자동 응답 시간). 두 CLI 프로토콜 연결은 `workers.mjs`·`native-workers.mjs`. 규약 `docs/approvals.md`, 화면 `public/prompts.js`
+- `lib/checkpoints.mjs` 작업별 그림자 git 스냅샷·변경 비교·되돌리기(사용자 `.git`은 건드리지 않음). 시작 스냅샷은 계획 중에 찍고 작업자 실행 직전에만 기다린다. 규약 `docs/checkpoints.md`, 화면 `public/changes.js`
+- `lib/gitops.mjs`·`lib/session-tools.mjs` 세션 격리(worktree)·커밋·병합·push·PR·CI, 보관·갈래·내보내기. 규약 `docs/git-sessions.md`, 화면 `public/sessions-ui.js`
+- `lib/terminal.mjs`·`lib/files.mjs`·`lib/preview.mjs` 파이프 터미널·파일 보기·미리보기 프록시. 규약 `docs/tools.md`, 화면 `public/tools-ui.js`
+- 화면 확장 연결 지점: `window.hubTabs`(오른쪽 패널 탭), `window.hubJobExtras`(작업 카드 끝), `hub:event`(모든 실시간 이벤트). 기능 화면은 새 파일에 두고 공용 파일은 최소로 고친다.
+- 자식 프로세스는 `util.guardChild`로 감싼다(입출력 통로 오류로 서버가 죽지 않게).
+- 모델 규칙: 최상위 모델(Fable·Astra)은 기획·디자인 기획·중요한 글쓰기에만(`router.premiumAllowed`·`capPremium`, 설정 `premiumModels`). 디자인이 섞인 작업은 기획(Fable)·구현(Sol)으로 나눈다(`jobs.enforceDesignRule`, 설정 `designRule`).
 - `desktop/` 데스크탑 프로그램(Electron, 자체 `package.json`·`node_modules` — 허브 본체는 계속 의존성 없음). `main.cjs` 창·트레이·알림·허브 전환·원격 세션 조회, `preload.cjs` 화면 연결 객체 `window.hubDesktop`, `lib/hubs.cjs` 허브 목록·주소 검사(시험 `tests/desktop-hubs.test.mjs`), `pages/` 연결 중·연결 안 됨 화면. 규약 `docs/desktop.md`. 빌드 `npm run desktop:build`
 - `public/desktop.js` 프로그램 안에서만 동작(알림·진행 표시·경로 끌어놓기·트레이 명령), `public/hubs.js`·`hubs.css` 사이드바 허브 전환·원격 세션 목록(일반 브라우저에서는 아무것도 바꾸지 않음)
 
