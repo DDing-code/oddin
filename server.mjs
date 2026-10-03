@@ -16,6 +16,7 @@ import { saveUpload, uploadPath, LIMITS, MIME_BY_EXT } from './lib/attachments.m
 import { catalog, installToClis, watchCatalog } from './lib/catalog.mjs';
 import { openLocal, normalizeLocalPath, isAllowed, resolveRelative } from './lib/opener.mjs';
 import { RemoteAccess, LOOPBACK, SECURITY_HEADERS, sendRemoteBlocked } from './lib/remote.mjs';
+import { checkpointRoute } from './lib/checkpoints.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -103,6 +104,8 @@ const server = http.createServer(async (req, res) => {
     const m = (re) => p.match(re);
     const denial = remote.check(req);
     if (denial) return sendRemoteBlocked(res, denial, p, send);
+    const checkpoint = await checkpointRoute({ pathname: p, method: req.method, query: url.searchParams, readBody: () => readBody(req), manager: jobs });
+    if (checkpoint) return json(res, checkpoint.body);
     // ---- 원격 접속: 변경은 게이트에서 로컬 요청에만 허용 ----
     if (p === '/api/remote' && req.method === 'GET') return json(res, await remote.status({ force: url.searchParams.get('force') === '1', viewer: req.hubViewer }));
     if (p === '/api/remote/enable' && req.method === 'POST') { await readBody(req); return json(res, await remote.enable()); }
