@@ -194,6 +194,8 @@ function jobHtml(j) {
     h += `<div class="report">${j.tasks.length > 1 ? `<div class="report-h">${icon('board')}보고</div>` : ''}<div class="md">${md(j.report, j.cwd)}</div></div>`;
   }
   if (previewsFor(j).length) h += `<div class="pv-slot" data-pv-job="${esc(j.id)}"></div>`;
+  // 확장: 기능 파일이 window.hubJobExtras.push((job) => html)로 작업 카드 끝에 내용을 더한다
+  for (const f of window.hubJobExtras || []) { try { h += f(j) || ''; } catch {} }
   if (j.error) h += `<div class="jerr">${esc(j.error)}</div>`;
 
   // 꼬리
@@ -743,6 +745,8 @@ function connect() {
   const es = new EventSource('/api/events');
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
+    // 확장: 기능 파일은 window.addEventListener('hub:event', (e) => e.detail)로 모든 실시간 이벤트를 받는다
+    try { window.dispatchEvent(new CustomEvent('hub:event', { detail: ev })); } catch {}
     if (ev.type === 'hello') {
       for (const j of ev.jobs) icMergeJob(S.jobs.get(j.id), j);
       S.sessions = new Map(ev.sessions.map((s) => [s.id, s])); S.jobs = new Map(ev.jobs.map((j) => [j.id, j]));
