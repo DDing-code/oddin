@@ -25,8 +25,8 @@ const IC_RANK = { sending: 0, accepted: 1, applying: 2, delivered: 3, partial: 3
 const DLV_KO = { recorded: '시작할 때 반영 예정', waiting: '전달 대기', sending: '전달 중', delivered: '전달됨', failed: '전달 실패', uncertain: '전달 여부 확인 불가', cancelled: '취소됨' };
 const DLV_IC = { recorded: 'clock', waiting: 'clock', sending: 'clock', delivered: 'check', failed: 'alert', uncertain: 'alert', cancelled: 'minus' };
 const DLV_MODE_KO = { prompt: '시작 프롬프트에 포함', 'native-steer': '실행 중인 턴에 지시 추가', 'native-interrupt': '현재 턴을 멈추고 이어서 지시', resume: '같은 CLI 세션을 재개해 지시' };
-const PHASE_KO = { queued: '시작 전', plan: '계획 세우는 중', route: '모델 고르는 중', worker: '작업 실행 중', report: '보고서 쓰는 중', 'goal-check': '목표 달성 판정 중', 'goal-transition': '다음 목표 라운드 준비 중' };
-const PHASE_WHO = { queued: '최초 계획', plan: '계획 담당', route: '모델 배정', report: '보고서 담당', 'goal-check': '목표 판정 담당', 'goal-transition': '다음 목표 라운드' };
+const PHASE_KO = { queued: '시작 전', plan: '계획 세우는 중', 'plan-question': '질문에 답을 기다리는 중', route: '모델 고르는 중', worker: '작업 실행 중', report: '보고서 쓰는 중', 'goal-check': '목표 달성 판정 중', 'goal-transition': '다음 목표 라운드 준비 중' };
+const PHASE_WHO = { queued: '최초 계획', plan: '계획 담당', 'plan-question': '계획 담당', route: '모델 배정', report: '보고서 담당', 'goal-check': '목표 판정 담당', 'goal-transition': '다음 목표 라운드' };
 const IC_ERR = {
   NETWORK: '허브에 연결하지 못해 보내지 못했어요. 입력은 그대로 있어요 — 다시 보내면 같은 지시로 처리돼 중복되지 않아요',
   INVALID_INTERCEPT: '수정 지시 형식이 올바르지 않아 접수되지 않았어요',

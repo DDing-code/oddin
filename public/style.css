@@ -753,3 +753,16 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 .md button.path:hover{text-decoration:underline}
 .md code.path{cursor:pointer;border-bottom:1px dashed rgba(91,156,245,.5)}
 .md code.path:hover{color:#9cc2fa;background:rgba(91,156,245,.12)}
+
+/* 메뉴(팝오버) 항목 호버: 배경과 차이가 거의 없던 강조를 분명하게 (2026-10-03 사용자 피드백 "호버 표시가 빈약함") */
+.pi{transition:background-color .12s ease,color .12s ease;position:relative}
+.pi:hover,.pi.sel{background:#34343c}
+.pi:hover .pic,.pi.sel .pic{color:var(--fg)}
+.pi:hover .l span,.pi.sel .l span{color:var(--fg2)}
+.pi:active{background:#3c3c45}
+.pi.danger:hover,.pi.danger.sel{background:rgba(239,107,103,.14)}
+.pi:focus-visible{outline:2px solid var(--codex);outline-offset:-2px}
+/* 마우스가 메뉴 위에 있으면 마우스 아래 항목만 강조 (키보드 기본 선택과 겹쳐 두 줄이 밝아지지 않게) */
+#pop:hover .pi.sel:not(:hover){background:transparent}
+#pop:hover .pi.sel:not(:hover) .pic{color:var(--muted)}
+#pop:hover .pi.danger.sel:not(:hover) .pic{color:var(--err)}

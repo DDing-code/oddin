@@ -73,5 +73,10 @@
     "tool": "claude",
     "model": "fable",
     "note": "디자인은 기획만 Claude Fable(명세 작성), 구현·검증은 다른 AI (사용자 규칙 2026-10-03 갱신). 끄려면 enabled:false"
+  },
+  "fastPath": {
+    "enabled": false,
+    "maxChars": 160,
+    "note": "작은 요청을 계획 없이 한 AI에게 바로 맡기는 기능. 사용자 요구로 기본 꺼짐(2026-10-03). 켜려면 enabled:true"
   }
 }

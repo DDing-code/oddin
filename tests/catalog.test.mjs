@@ -125,6 +125,8 @@ test('속도: high 보다 높은 강도는 근거가 있을 때만', () => {
 test('속도: 작은 요청 판정과 담당 AI', () => {
   const jm = Object.create(JobManager.prototype); jm.config = {};
   const small = (goal, extra = {}) => jm.isSmallRequest({ goal, ...extra });
+  assert.equal(small('사이드바 글자 크기 조금 키워줘'), false); // 기본은 꺼짐 (사용자 요구 2026-10-03)
+  jm.config = { fastPath: { enabled: true } };
   assert.equal(small('사이드바 글자 크기 조금 키워줘'), true);
   assert.equal(small('1) 로그인 고치고 2) 테스트 추가해줘'), false);
   assert.equal(small('둘 다 해서 비교해줘'), false);
@@ -133,7 +135,7 @@ test('속도: 작은 요청 판정과 담당 AI', () => {
   assert.equal(small('짧은 목표', { goalId: 'g1' }), false);
   jm.config = { fastPath: { enabled: false } };
   assert.equal(small('사이드바 글자 크기 조금 키워줘'), false);
-  jm.config = {};
+  jm.config = { fastPath: { enabled: true } };
   const cat = { agents: [{ name: 'tester', tool: 'codex' }] };
   const share = { claude: 0.6, codex: 0.4 };
   assert.equal(jm.pickFastTool({ goal: '설명 문구 다듬어줘' }, ['claude', 'codex'], share, cat), 'claude');

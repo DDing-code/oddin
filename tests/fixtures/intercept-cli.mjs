@@ -18,6 +18,8 @@ let sid = `fixture-${tool}-${randomUUID()}`, tid, serial = 0, timer, original = 
 let backgroundTimer;
 function answer(prompt) {
   if (stage === 'plan') {
+    // 계획 전 질문 시험: 사용자 답변이 없으면 질문만 돌려준다
+    if (original.includes('ASK_FIRST') && !original.includes('# 사용자 답변 (계획 전 질문)')) return JSON.stringify({ summary: '방향을 먼저 확인', questions: [{ question: '어느 방향으로 할까요?', header: '방향', options: [{ label: 'A안', description: '가볍게' }, { label: 'B안', description: '크게' }], multiSelect: false }], tasks: [] });
     const reconcile = original.includes('보완 작업만');
     return JSON.stringify({ summary: '시험 계획', tasks: reconcile ? [{ id: 't1', title: '보완', assignee: 'codex', prompt: 'SUPPLEMENT_WORK', dependsOn: [], model: 'gpt-6.1-sol', effort: 'high', reason: '시험', agent: '' }] : [
       { id: 't1', title: '첫 작업', assignee: 'codex', prompt: 'WORK_ONE', dependsOn: [], model: 'gpt-6.1-sol', effort: 'high', reason: '시험', agent: '' },
