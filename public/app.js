@@ -173,8 +173,7 @@ function jobHtml(j) {
 
   if (j.mode === 'auto') {
     if (j.status === 'planning' || (j.status === 'queued')) {
-      const last = lastLog(`${j.id}/plan`);
-      h += `<div class="working"><span class="spinner"></span><span>계획을 세우는 중${j.planner ? '' : ''} · <span class="live-dur" data-from="${j.startedAt || j.createdAt}"></span></span></div>${last ? `<div class="live" style="padding-left:24px">${esc(last)}</div>` : ''}`;
+      h += `<div class="working"><span class="spinner"></span><span>계획을 세우는 중${j.planner ? '' : ''} · <span class="live-dur" data-from="${j.startedAt || j.createdAt}"></span></span></div>`;
     } else if (j.summary) {
       h += `<div class="plan"><div class="lbl">${icon(j.fast ? 'bolt' : 'sparkle')}${j.fast ? '바로 처리' : '계획'}${j.planner ? ` · ${j.planner === 'claude' ? 'Claude' : 'Codex'}가 세움` : ''}</div>${esc(j.summary)}</div>`;
     }
@@ -187,6 +186,7 @@ function jobHtml(j) {
   if (j.tasks.length) {
     h += `<div class="tasks">${j.tasks.map((t) => taskHtml(j, t)).join('')}</div>`;
   }
+  h += window.hubJobProcess?.(j) || '';
   h += icHtml(j);
 
   if (j.status === 'reporting') h += `<div class="working"><span class="spinner"></span><span>결과를 모아 보고서를 쓰는 중</span></div>`;
@@ -220,12 +220,13 @@ function taskHtml(j, t) {
   const model = t.model ? `${t.autoPicked ? '✦ ' : ''}${t.model.replace(/^claude-|-\d{8}$/g, '')}${t.effort ? ' · ' + t.effort : ''}` : '';
   const time = running ? `<span class="live-dur" data-from="${t.startedAt}"></span>` : t.finishedAt ? dur(t.startedAt, t.finishedAt) : (ST_KO[t.status] || '');
   let h = `<div class="task ${open ? 'open' : ''}"><div class="trow" data-toggle="${key}">${t.waiting ? `<span class="st wait-on" title="사용자 응답 대기">${icon('bell')}</span>` : stIcon(t.status)}<span class="prov ${t.assignee}">${t.assignee === 'claude' ? 'Claude' : 'Codex'}</span>${t.agent ? `<span class="agent-chip" title="서브 에이전트 @${esc(t.agent)}">${icon('bot')}${esc(agentLabel(t.agent))}</span>` : ''}<span class="tt" title="${esc(t.title)}">${esc(t.title)}</span><span class="tm" title="${esc(t.autoPicked ? `자동 선택${t.reason ? ': ' + t.reason : ''}` : '직접 고른 설정')}">${[model, t.toolCalls ? `도구 ${t.toolCalls}` : '', time].filter(Boolean).join(' · ')}</span><span class="chev">${icon('right')}</span></div>`;
-  if (running && !open) { const last = lastLog(key); if (last) h += `<div class="live"><b>지금:</b> ${esc(last)}</div>`; }
+  if (multi && running && !open) { const last = lastLog(key); if (last) h += `<div class="live"><b>지금:</b> ${esc(last)}</div>`; }
   if (t.error && !open) h += `<div class="terr">${esc(t.error)}</div>`;
   if (open) {
-    h += `<div class="tdetail">${t.autoPicked && t.reason ? `<div class="why">${icon('sparkle')}<span>${esc(t.model || '')}${t.effort ? ' · ' + esc(t.effort) : ''} 자동 선택 — ${esc(t.reason)}</span></div>` : ''}<div class="log" id="log-${j.id}-${t.id}">${logHtml(key, t.assignee)}</div>`;
+    h += `<div class="tdetail">${t.autoPicked && t.reason ? `<div class="why">${icon('sparkle')}<span>${esc(t.model || '')}${t.effort ? ' · ' + esc(t.effort) : ''} 자동 선택 — ${esc(t.reason)}</span></div>` : ''}`;
     if (t.error) h += `<div class="terr" style="margin:10px 0 0">${esc(t.error)}</div>`;
     if (t.resultText && multi) h += `<div class="tres md">${md(t.resultText, j.cwd)}</div>`;
+    if (multi) h += `<button type="button" class="tc-more" data-proc-show="${esc(key)}">추론 과정에서 보기</button>`;
     h += `</div>`;
   }
   return h + `</div>`;
@@ -271,10 +272,10 @@ async function ensureLogs(j) {
 function rerenderJob(id) {
   const j = S.jobs.get(id); const el = document.getElementById(`job-${id}`); if (!j || !el) return;
   const sc = $('#scroll'); const stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
-  const logScroll = {}; el.querySelectorAll('.log').forEach((l) => (logScroll[l.id] = l.scrollHeight - l.scrollTop - l.clientHeight < 30 ? -1 : l.scrollTop));
+  const logScroll = {}; el.querySelectorAll('.log, .proc-body').forEach((l) => (logScroll[l.id] = l.scrollHeight - l.scrollTop - l.clientHeight < 30 ? -1 : l.scrollTop));
   el.innerHTML = jobHtml(j);
   mountPreviews(el);
-  el.querySelectorAll('.log').forEach((l) => { const v = logScroll[l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; });
+  el.querySelectorAll('.log, .proc-body').forEach((l) => { const v = logScroll[l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; });
   if (stick) sc.scrollTop = sc.scrollHeight;
 }
 const rq = new Set(); let rt = null;

@@ -264,10 +264,6 @@
       : `${icon(cls === 'ok' ? 'check' : cls === 'err' ? 'x' : cls === 'run' ? 'pencil' : 'minus')}<span title="${esc(answerText(p))}">${esc(answerText(p))}</span>${p.answeredAt ? `<small class="c-muted"> · ${hm(p.answeredAt)}${p.viewer?.remote ? ' · 원격' : ''}</small>` : ''}`;
     return `<div class="pr-row s-${esc(p.status)} k-${esc(p.kind)} ${a.action ? `a-${esc(a.action)}` : ''}">${icon(p.kind === 'question' ? 'help' : p.kind === 'plan' ? 'clipboard' : 'shieldq')}<span class="prov ${esc(p.tool)}">${TOOL_KO[p.tool] || p.tool}</span><span class="pr-rt"><b>${esc(kindOfPrompt(p))}</b>${rowSummary(p)}</span><span class="pr-rs ${cls}">${st}</span>${pend ? `<button type="button" class="btn" data-pr-focus="${esc(p.id)}">${icon('bell')}답하기</button>` : ''}</div>`;
   }
-  (window.hubJobExtras = window.hubJobExtras || []).push((j) => {
-    const list = [...P.map.values()].filter((p) => p.jobId === j.id).sort(byCreated);
-    return list.length ? `<div class="prs" aria-label="승인·질문 기록">${list.map(rowHtml).join('')}</div>` : '';
-  });
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-pr-focus]'); if (!b) return;
     const card = dock.querySelector(`.pr-card[data-pid="${CSS.escape(b.dataset.prFocus)}"]`);
@@ -348,7 +344,7 @@
   const diffCounts = (list) => { let add = 0, del = 0; for (const d of list || []) { if (d.unified) for (const l of String(d.unified).split('\n')) { if (l[0] === '+' && !l.startsWith('+++')) add++; else if (l[0] === '-' && !l.startsWith('---')) del++; } else { if (d.after != null) add += String(d.after).split('\n').length; if (d.before != null) del += String(d.before).split('\n').length; } } return { add, del }; };
   function toolSummary(e, kind) {
     const i = e.input || {};
-    if (kind === 'cmd') return `<span class="tc-s mono">${esc(firstLine(i.command || e.detail))}</span>`;
+    if (kind === 'cmd') { const shown = window.ProcessModel?.displayCommand ? window.ProcessModel.displayCommand(i.command || e.detail || '') : (i.command || e.detail); return `<span class="tc-s mono" title="${esc(String(i.command || e.detail || '').slice(0, 500))}">${esc(firstLine(shown))}</span>`; }
     if (kind === 'edit') { const paths = e.diff?.map((d) => d.path) || i.paths || [i.file_path].filter(Boolean); const p = paths[0] || e.detail || ''; const c = diffCounts(e.diff); return `<span class="tc-s"><b>${esc(baseName(p))}</b>${paths.length > 1 ? ` <small>외 ${paths.length - 1}개</small>` : ''} <small>${esc(dirName(p))}</small></span>${c.add || c.del ? `<span class="tc-cnt">${c.add ? `<span class="add">+${c.add}</span>` : ''}${c.del ? `<span class="del">−${c.del}</span>` : ''}</span>` : ''}`; }
     if (kind === 'read') { const p = i.file_path || i.path || e.detail || ''; return `<span class="tc-s"><b>${esc(baseName(p))}</b> <small>${esc(dirName(p))}</small></span>`; }
     if (kind === 'search') return `<span class="tc-s"><code class="mono">${esc(i.pattern || i.query || e.detail || '')}</code>${i.path ? ` <small>${esc(i.path)}</small>` : ''}</span>`;
@@ -398,6 +394,7 @@
     return `<div class="${cls}"><span class="k">${esc(mark)}</span><span>${esc(text)}</span></div>`;
   }
   const baseLogHtml = window.logHtml;
+  window.hubPrompts = { P, toolCard, lineHtml, diffHtml, cutText, TOOL_KIND, rowSummary, answerText, kindOfPrompt, toolSummary, diffCounts };
   window.logHtml = function (key, tool) {
     const raw = (S.logs.get(key) || []).filter((e) => !['result', 'raw'].includes(e.kind));
     if (!raw.some((e) => e.kind === 'tool' && e.callId)) return baseLogHtml(key, tool); // 구조화 기록이 없는 예전 로그는 그대로
