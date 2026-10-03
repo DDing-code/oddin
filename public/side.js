@@ -58,14 +58,15 @@ function section(id, label, inner, extra = '') {
 }
 function rowHtml(s, pinnedRow = false, showFolder = false) {
   const unread = isUnread(s);
-  const ic = s.status === 'running' ? '<span class="spin-xs"></span>'
+  const waiting = typeof hubSessionWaiting === 'function' && hubSessionWaiting(s.id); // 승인·질문 대기 (prompts.js)
+  const ic = waiting ? `<span class="s-wait" title="승인 대기 중">${icon('bell')}</span>` : s.status === 'running' ? '<span class="spin-xs"></span>'
     : unread ? '<span class="dot-unread" title="새 결과"></span>'
     : s.status === 'failed' ? `<span class="c-err">${icon('alert')}</span>`
     : s.status === 'partial' ? `<span class="c-warn">${icon('alert')}</span>`
     : pinnedRow ? `<span class="c-muted">${icon('pin')}</span>` : '';
   const tip = `${s.title}\n${s.cwd}\n${ST_KO[s.status] || ''} · ${new Date(s.updatedAt).toLocaleString('ko-KR')}`;
-  return `<div class="sess ${s.id === S.current ? 'on' : ''} ${unread ? 'unread' : ''}" data-sid="${s.id}" tabindex="0" role="treeitem" title="${esc(tip)}">
-    <span class="s-ic">${ic}</span><span class="t">${esc(s.title)}</span>${showFolder ? `<span class="meta f">${esc(shortPath(s.cwd, 1))}</span>` : `<span class="meta">${s.status === 'running' ? '작업 중' : ago(s.updatedAt)}</span>`}
+  return `<div class="sess ${s.id === S.current ? 'on' : ''} ${unread ? 'unread' : ''} ${waiting ? 'waiting' : ''}" data-sid="${s.id}" tabindex="0" role="treeitem" title="${esc(tip)}">
+    <span class="s-ic">${ic}</span><span class="t">${esc(s.title)}</span>${showFolder ? `<span class="meta f">${esc(shortPath(s.cwd, 1))}</span>` : `<span class="meta">${waiting ? '승인 대기' : s.status === 'running' ? '작업 중' : ago(s.updatedAt)}</span>`}
     <button class="row-more" data-more="${s.id}" title="더보기" tabindex="-1">${icon('more')}</button></div>`;
 }
 
