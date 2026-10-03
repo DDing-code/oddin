@@ -58,14 +58,15 @@ function section(id, label, inner, extra = '') {
 }
 function rowHtml(s, pinnedRow = false, showFolder = false) {
   const unread = isUnread(s);
-  const ic = s.status === 'running' ? '<span class="spin-xs"></span>'
+  const waiting = typeof hubSessionWaiting === 'function' && hubSessionWaiting(s.id); // 승인·질문 대기 (prompts.js)
+  const ic = waiting ? `<span class="s-wait" title="승인 대기 중">${icon('bell')}</span>` : s.status === 'running' ? '<span class="spin-xs"></span>'
     : unread ? '<span class="dot-unread" title="새 결과"></span>'
     : s.status === 'failed' ? `<span class="c-err">${icon('alert')}</span>`
     : s.status === 'partial' ? `<span class="c-warn">${icon('alert')}</span>`
     : pinnedRow ? `<span class="c-muted">${icon('pin')}</span>` : '';
   const tip = `${s.title}\n${s.cwd}\n${ST_KO[s.status] || ''} · ${new Date(s.updatedAt).toLocaleString('ko-KR')}`;
-  return `<div class="sess ${s.id === S.current ? 'on' : ''} ${unread ? 'unread' : ''}" data-sid="${s.id}" tabindex="0" role="treeitem" title="${esc(tip)}">
-    <span class="s-ic">${ic}</span><span class="t">${esc(s.title)}</span>${showFolder ? `<span class="meta f">${esc(shortPath(s.cwd, 1))}</span>` : `<span class="meta">${s.status === 'running' ? '작업 중' : ago(s.updatedAt)}</span>`}
+  return `<div class="sess ${s.id === S.current ? 'on' : ''} ${unread ? 'unread' : ''} ${waiting ? 'waiting' : ''}" data-sid="${s.id}" tabindex="0" role="treeitem" title="${esc(tip)}">
+    <span class="s-ic">${ic}</span><span class="t">${esc(s.title)}</span>${showFolder ? `<span class="meta f">${esc(shortPath(s.cwd, 1))}</span>` : `<span class="meta">${waiting ? '승인 대기' : s.status === 'running' ? '작업 중' : ago(s.updatedAt)}</span>`}
     <button class="row-more" data-more="${s.id}" title="더보기" tabindex="-1">${icon('more')}</button></div>`;
 }
 
@@ -219,9 +220,12 @@ $('#btnAccount').addEventListener('click', (e) => {
 
 /* ================= 오른쪽 패널 ================= */
 const TABS = [['tasks', '작업', 'list'], ['files', '파일', 'file'], ['usage', '사용량', 'gauge'], ['info', '정보', 'info']];
+// 확장 탭: 기능 파일이 window.hubTabs.push({ key, label, icon, render(body, session) })로 오른쪽 패널에 탭을 더한다
+window.hubTabs = window.hubTabs || [];
+const allTabs = () => [...TABS, ...window.hubTabs.map((t) => [t.key, t.label, t.icon])];
 S.insp = { tab: S.prefs.inspTab || 'tasks' };
 function renderInspTabs() {
-  $('#inspTabs').innerHTML = TABS.map(([k, l, i]) => `<button class="tab ${S.insp.tab === k ? 'on' : ''}" data-tab="${k}" role="tab" aria-selected="${S.insp.tab === k}">${icon(i)}<span>${l}</span></button>`).join('');
+  $('#inspTabs').innerHTML = allTabs().map(([k, l, i]) => `<button class="tab ${S.insp.tab === k ? 'on' : ''}" data-tab="${k}" role="tab" aria-selected="${S.insp.tab === k}">${icon(i)}<span>${l}</span></button>`).join('');
 }
 $('#inspTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; S.insp.tab = b.dataset.tab; S.prefs.inspTab = b.dataset.tab; savePrefs(); renderInspTabs(); renderInspector(); });
 let inspT = null;
@@ -233,8 +237,10 @@ function renderInspector() {
   const body = $('#inspBody'); const s = S.sessions.get(S.current);
   const keep = body.scrollTop;
   const tab = S.insp.tab;
+  const ext = window.hubTabs.find((t) => t.key === tab);
+  if (ext) { try { ext.render(body, s || null); } catch (e) { body.innerHTML = `<div class="insp-empty"><p>${esc(e.message)}</p></div>`; } body.scrollTop = keep; return; }
   if (tab === 'usage') body.innerHTML = usagePane();
-  else if (!s) body.innerHTML = `<div class="insp-empty">${icon(TABS.find((t) => t[0] === tab)[2])}<p>세션을 열면 ${tab === 'tasks' ? '진행 상황이' : tab === 'files' ? '바뀐 파일이' : '세션 정보가'} 여기에 보여요</p></div>`;
+  else if (!s) body.innerHTML = `<div class="insp-empty">${icon((allTabs().find((t) => t[0] === tab) || TABS[0])[2])}<p>세션을 열면 ${tab === 'tasks' ? '진행 상황이' : tab === 'files' ? '바뀐 파일이' : '세션 정보가'} 여기에 보여요</p></div>`;
   else if (tab === 'tasks') body.innerHTML = tasksPane(s);
   else if (tab === 'files') body.innerHTML = filesPane(s);
   else body.innerHTML = infoPane(s);

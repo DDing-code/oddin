@@ -1,0 +1,202 @@
+/* 승인·질문·계획 승인 카드, 권한 방식 선택, 도구 호출 카드 (prompts.js)
+   색·간격·둥글기는 style.css 의 변수와 입력창(#composer)·작업 카드(.tasks)·팝오버를 그대로 따른다.
+   "사용자 응답이 필요함"은 어디서나 --warn(호박색) 한 가지로 표시한다: 사이드바 종 아이콘, 작업 행, 입력창 위 카드 테두리. */
+
+/* ---------------- 입력창 아래: 권한 방식 버튼 ---------------- */
+#pPerm .ico:first-child{color:var(--faint)}
+#pPerm.perm-on{border-color:rgba(227,181,92,.45);color:var(--fg)}
+#pPerm.perm-on .ico:first-child{color:var(--warn)}
+#composer.ic-mode #pPerm{opacity:.45}
+@container (max-width:480px){#pPerm .v{display:none}}
+
+/* ---------------- 입력창 위: 대기 중 요청 카드 묶음 (#promptDock) ---------------- */
+#promptDock{display:flex;flex-direction:column;gap:8px;margin:0 0 10px;max-height:min(50vh,600px);overflow:auto;scrollbar-width:thin;padding:2px 2px 0}
+/* 카드가 길어 묶음 안에서 스크롤돼도 버튼 줄은 아래에 붙어 보인다 */
+.pr-card > footer.pr-f{position:sticky;bottom:0;background:var(--panel);border-radius:0 0 16px 16px}
+@media (max-height:760px){#promptDock{max-height:44vh}.pr-h{padding-top:10px}.pr-b{gap:6px}.pr-card > footer.pr-f{padding-top:8px;padding-bottom:9px}}
+.pr-card{position:relative;background:var(--panel);border:1px solid rgba(227,181,92,.42);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.25);outline:none;animation:pr-in .18s ease}
+.pr-card:focus-visible{outline:2px solid var(--codex);outline-offset:2px}
+.pr-card.busy{opacity:.75}
+.pr-card::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:var(--warn)}
+.pr-card.t-claude::before{background:var(--claude)}
+.pr-card.t-codex::before{background:var(--codex)}
+@keyframes pr-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.pr-h{display:flex;align-items:flex-start;gap:10px;padding:12px 14px 0 16px;min-width:0}
+.pr-ic{flex:none;width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:rgba(227,181,92,.13);color:var(--warn);margin-top:1px}
+.pr-ic .ico{width:16px;height:16px}
+.pr-ht{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+.pr-ht b{font-size:14.5px;font-weight:650;color:var(--fg)}
+.pr-sub{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:0 6px;min-width:0}
+.pr-sub span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pr-h .prov{margin-top:3px}
+.pr-b{padding:8px 14px 0 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.pr-b:empty{display:none}
+.pr-why{margin:0;font-size:13px;color:var(--fg2);line-height:1.55}
+.pr-cmd{margin:0;padding:9px 12px;border-radius:var(--r2);background:var(--bg);border:1px solid var(--line);font:12.5px/1.6 var(--mono);color:#f0c38e;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow:auto;scrollbar-width:thin}
+.pr-cmd::before{content:"$ ";color:var(--faint)}
+.pr-cwd{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.pr-cwd .ico{width:13px;height:13px;flex:none;color:var(--faint)}
+.pr-cwd span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.pr-files{display:flex;flex-direction:column;gap:6px}
+.pr-file{border:1px solid var(--line);border-radius:var(--r2);background:var(--bg);overflow:hidden}
+.pr-fh{display:flex;align-items:center;gap:7px;padding:7px 10px;font-size:12.5px;border-bottom:1px solid var(--line);min-width:0}
+.pr-fh .ico{width:14px;height:14px;color:var(--faint);flex:none}
+.pr-fh b{font-weight:600;color:var(--fg);white-space:nowrap}
+.pr-fh small{color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.pr-fh .fk{flex:none}
+.pr-file .tc-diff{border:0;border-radius:0;max-height:200px}
+.pr-perms{display:flex;flex-wrap:wrap;gap:6px}
+.pr-perms .tag{font-family:var(--mono);font-size:11.5px}
+.pr-f{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 14px 12px 16px}
+.pr-hint{margin-left:auto;font-size:11.5px;color:var(--faint);white-space:nowrap}
+.pr-timer{display:inline-flex;align-items:center;gap:5px;margin-left:auto;font-size:12px;color:var(--warn);white-space:nowrap;font-variant-numeric:tabular-nums}
+.pr-timer .ico{width:13px;height:13px}
+.pbtn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font-size:13px;font-weight:550;transition:background .12s,transform .08s}
+.pbtn:hover{background:var(--hover)}
+.pbtn:active{transform:translateY(1px)}
+.pbtn:disabled{opacity:.5;cursor:default;transform:none}
+.pbtn .ico{width:14px;height:14px}
+.pbtn.primary{background:var(--accent);color:#141416;border-color:transparent;font-weight:650}
+.pbtn.primary:hover{background:#fff}
+.pbtn.ghost{background:none;border-color:transparent;color:var(--fg2)}
+.pbtn.ghost:hover{background:var(--hover);color:var(--fg)}
+.pbtn.danger{color:var(--err)}
+.pbtn.danger:hover{border-color:rgba(239,107,103,.5);background:rgba(239,107,103,.1)}
+.pbtn.danger.fill{background:var(--err);color:#141416;border-color:transparent;font-weight:650}
+.pbtn.danger.fill:hover{background:#f5817d}
+.pbtn .spinner{width:12px;height:12px;border-width:1.5px}
+.pbtn.primary .spinner{border-color:rgba(20,20,22,.25);border-top-color:#141416}
+.pr-more{display:flex;flex-direction:column;gap:8px;padding:0 14px 12px 16px}
+.pr-more label{font-size:12.5px;color:var(--fg2)}
+.pr-more textarea,.pr-q textarea{width:100%;resize:vertical;min-height:58px;padding:8px 10px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--bg);color:var(--fg);font:13.5px/1.5 var(--font);outline:none}
+.pr-more textarea:focus,.pr-q textarea:focus,.pr-free:focus{border-color:var(--codex)}
+.pr-more .pr-f{padding:0}
+.pr-err{margin:0 14px 12px 16px;padding:7px 10px;border-radius:8px;background:rgba(239,107,103,.09);border:1px solid rgba(239,107,103,.38);color:#f6aaa7;font-size:12.5px}
+
+/* 질문 카드 */
+.pr-q{border:0;margin:0;padding:0;min-width:0}
+.pr-q + .pr-q{padding-top:10px;border-top:1px solid var(--line)}
+.pr-q legend{display:flex;align-items:baseline;gap:8px;padding:0;margin:0 0 6px;font-size:13.5px;color:var(--fg);font-weight:550;line-height:1.45}
+.pr-q legend .qh{flex:none;font-size:11px;font-weight:700;letter-spacing:.03em;padding:1px 7px;border-radius:5px;background:rgba(227,181,92,.13);color:var(--warn)}
+.pr-q legend small{color:var(--faint);font-weight:400;font-size:12px}
+.pr-opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px}
+.pr-opt{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border-radius:var(--r2);border:1px solid var(--line);background:var(--bg);cursor:pointer;min-width:0;transition:border-color .12s,background .12s}
+.pr-opt:hover{border-color:var(--line2);background:var(--panel2)}
+.pr-opt:has(input:checked){border-color:rgba(227,181,92,.6);background:rgba(227,181,92,.07)}
+.pr-opt:has(input:focus-visible){outline:2px solid var(--codex);outline-offset:1px}
+.pr-opt > input{appearance:none;flex:none;width:16px;height:16px;margin:2px 0 0;border:1.5px solid var(--faint);border-radius:50%;background:none;display:inline-grid;place-content:center;cursor:pointer}
+.pr-opt > input[type=checkbox]{border-radius:4px}
+.pr-opt > input::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--warn);transform:scale(0);transition:transform .1s}
+.pr-opt > input[type=checkbox]::after{width:9px;height:9px;border-radius:2px;background:none;border:solid var(--warn);border-width:0 2px 2px 0;transform:rotate(45deg) scale(0);width:4px;height:8px;margin-top:-2px}
+.pr-opt > input:checked{border-color:var(--warn)}
+.pr-opt > input:checked::after{transform:scale(1)}
+.pr-opt > input[type=checkbox]:checked::after{transform:rotate(45deg) scale(1)}
+.pr-ol{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;line-height:1.4}
+.pr-ol b{font-weight:550;color:var(--fg);font-size:13px}
+.pr-ol small{font-size:12px;color:var(--muted)}
+.pr-opt.free{grid-column:1/-1}
+.pr-free{width:100%;padding:6px 9px;border-radius:7px;border:1px solid var(--line2);background:var(--panel);color:var(--fg);font:13px var(--font);outline:none;margin-top:2px}
+.pr-free::placeholder,.pr-more textarea::placeholder{color:var(--faint)}
+
+/* 계획 카드 */
+.pr-plan{position:relative;padding:10px 14px;border-radius:var(--r2);background:var(--bg);border:1px solid var(--line);max-height:36vh;overflow:hidden;font-size:13.5px}
+.pr-plan.open{max-height:none;overflow:visible}
+.pr-plan:not(.open).long::after{content:"";position:absolute;left:0;right:0;bottom:0;height:56px;background:linear-gradient(to bottom,transparent,var(--bg))}
+.pr-plan .md h1,.pr-plan .md h2,.pr-plan .md h3{font-size:14px}
+/* 접힌 긴 계획에서는 "전체 보기"가 흐림 영역 위에 떠 있어 바로 보인다 */
+.pr-expand{align-self:center;position:relative;z-index:1;margin-top:-30px;display:inline-flex;align-items:center;gap:4px;padding:4px 11px;border:1px solid var(--line2);border-radius:999px;background:var(--panel2);color:var(--fg);font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.pr-plan.open + .pr-expand{margin-top:0;box-shadow:none;background:none;border-color:transparent;color:var(--fg2)}
+.pr-expand:hover{background:var(--hover);color:var(--fg)}
+.pr-expand .ico{width:13px;height:13px}
+
+/* 다른 세션의 대기 요청 안내 줄 */
+.pr-others{display:flex;align-items:center;gap:8px;width:100%;padding:8px 12px 8px 12px;border-radius:12px;border:1px solid rgba(227,181,92,.3);background:rgba(227,181,92,.07);color:#f0cf8f;font-size:12.5px;text-align:left;min-width:0}
+.pr-others:hover{background:rgba(227,181,92,.12)}
+.pr-others > .ico{width:15px;height:15px;flex:none}
+.pr-others span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr-others b{color:var(--fg);font-weight:600}
+.pr-others .ico:last-child{width:13px;height:13px;flex:none;opacity:.7}
+
+/* ---------------- 작업 카드 안: 요청 기록 행 ---------------- */
+.prs{display:flex;flex-direction:column;gap:4px;margin-top:12px}
+.pr-row{display:flex;align-items:center;gap:9px;padding:7px 10px 7px 12px;border-radius:var(--r2);border:1px solid var(--line);background:var(--panel);font-size:12.5px;color:var(--muted);min-width:0;border-left-width:3px;border-left-color:var(--faint)}
+.pr-row.s-pending{border-left-color:var(--warn);border-color:rgba(227,181,92,.3);border-left-color:var(--warn);background:rgba(227,181,92,.05)}
+.pr-row.a-allow,.pr-row.a-allow_session,.pr-row.a-approve,.pr-row.k-question.s-answered{border-left-color:var(--ok)}
+.pr-row.a-deny,.pr-row.a-reject{border-left-color:var(--err)}
+.pr-row.a-revise{border-left-color:var(--run)}
+.pr-row > .ico{width:14px;height:14px;flex:none;color:var(--faint)}
+.pr-row.s-pending > .ico{color:var(--warn)}
+.pr-rt{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;overflow:hidden;white-space:nowrap}
+.pr-rt b{color:var(--fg2);font-weight:600;flex:none}
+.pr-rt span{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pr-rt code{font:12px var(--mono);color:#f0c38e;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pr-rs{flex:none;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;max-width:46%;overflow:hidden;text-overflow:ellipsis}
+.pr-rs .ico{width:13px;height:13px}
+.pr-row.s-pending .pr-rs{color:var(--warn)}
+.pr-rs.ok{color:var(--ok)}.pr-rs.err{color:var(--err)}.pr-rs.run{color:#c9bbff}
+.pr-row .btn{flex:none;padding:3px 9px;font-size:12px}
+.pr-row .prov{font-size:10px;padding:1px 5px;flex:none}
+
+/* 사이드바·작업 행의 "응답 대기" 표시 */
+.sess.waiting .t{color:var(--fg);font-weight:600}
+.sess .s-wait{display:inline-flex;color:var(--warn);animation:pr-pulse 1.6s ease-in-out infinite}
+.sess .s-wait .ico{width:14px;height:14px}
+.st.wait-on{color:var(--warn);animation:pr-pulse 1.6s ease-in-out infinite}
+@keyframes pr-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ---------------- 도구 호출 카드 (작업 진행 기록 안) ---------------- */
+.log:has(.tc){font-family:var(--font);max-height:460px;padding:6px}
+.log:has(.tc) .lg{font-family:var(--mono);padding:2px 4px}
+.tc{border:1px solid var(--line);border-radius:9px;background:var(--panel);margin:3px 0;overflow:hidden;min-width:0}
+.tc.s-running{border-color:rgba(164,139,242,.3)}
+.tc.s-error{border-color:rgba(239,107,103,.3)}
+.tc-h{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px 6px 10px;border:0;background:none;color:var(--fg2);font:13px var(--font);text-align:left;cursor:pointer;min-width:0}
+.tc-h:disabled{cursor:default}
+.tc-h:not(:disabled):hover{background:rgba(255,255,255,.03)}
+.tc-h > .ico{width:14px;height:14px;flex:none;color:var(--muted)}
+.tc.claude .tc-h > .ico{color:var(--claude)}.tc.codex .tc-h > .ico{color:var(--codex)}
+.tc-n{flex:none;font-weight:600;color:var(--fg);font-size:12.5px}
+.tc-s{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2);font-size:12.5px}
+.tc-s.mono{font-family:var(--mono);font-size:12px;color:#f0c38e}
+.tc-s small{color:var(--faint);font-size:11.5px}
+.tc-cnt{flex:none;font:11.5px var(--mono);white-space:nowrap}
+.tc-cnt .add{color:var(--ok)}.tc-cnt .del{color:var(--err);margin-left:4px}
+.tc-m{flex:none;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tc-m .ico{width:13px;height:13px}
+.tc-m.ok .ico{color:var(--ok)}.tc-m.err{color:var(--err)}.tc-m.err .ico{color:var(--err)}
+.tc-m .spinner{width:11px;height:11px;border-width:1.5px}
+.tc-h .chev{width:14px;height:14px;flex:none;color:var(--faint);transition:transform .15s}
+.tc.open .tc-h .chev{transform:rotate(90deg)}
+.tc-b{padding:0 10px 9px 32px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.tc-cmd,.tc-out,.tc-diff{margin:0;padding:7px 10px;border-radius:7px;background:var(--bg);border:1px solid var(--line);font:12px/1.55 var(--mono);color:var(--fg2);white-space:pre-wrap;word-break:break-all;overflow:auto;scrollbar-width:thin;max-height:300px}
+.tc-cmd{color:#f0c38e}
+.tc-cmd::before{content:"$ ";color:var(--faint)}
+.tc-out.err{color:#f3a29f;border-color:rgba(239,107,103,.3)}
+.tc-lbl{font-size:11.5px;color:var(--faint);margin:2px 0 -2px}
+.tc-more{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:0;border-radius:6px;background:none;color:var(--fg2);font-size:12px}
+.tc-more:hover{background:var(--hover);color:var(--fg)}
+.tc-more .ico{width:12px;height:12px}
+.tc-run{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+.tc-run .spinner{width:11px;height:11px;border-width:1.5px}
+.tc-path{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.tc-path .ico{width:12px;height:12px;flex:none;color:var(--faint)}
+.tc-path b{color:var(--fg);font-weight:550}
+.tc-path small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tc-diff{padding:0;line-height:1.5}
+.tc-diff .dl{display:block;padding:0 10px;white-space:pre-wrap;word-break:break-all}
+.tc-diff .dl.add{background:rgba(95,191,127,.12);color:#9fe0b5}
+.tc-diff .dl.del{background:rgba(239,107,103,.12);color:#f3a29f}
+.tc-diff .dl.hunk{color:var(--codex);background:rgba(91,156,245,.06);padding-top:2px;padding-bottom:2px}
+.tc-diff .dl.cut{color:var(--faint);font-style:italic}
+.lg.waiting{color:var(--warn)}.lg.waiting .k{color:var(--warn)}
+@media (max-width:860px){
+  .pr-h{padding:10px 12px 0 12px}
+  .pr-b,.pr-more{padding-left:12px;padding-right:12px}
+  .pr-f{padding:10px 12px}
+  .pr-hint{display:none}
+  .pr-opts{grid-template-columns:1fr}
+  .pr-rs{max-width:none}
+  .pr-rt{white-space:normal}
+  .tc-b{padding-left:10px}
+}
+@media (prefers-reduced-motion:reduce){.pr-card{animation:none}.sess .s-wait,.st.wait-on{animation:none}}

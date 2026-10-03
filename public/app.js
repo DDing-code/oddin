@@ -194,6 +194,8 @@ function jobHtml(j) {
     h += `<div class="report">${j.tasks.length > 1 ? `<div class="report-h">${icon('board')}보고</div>` : ''}<div class="md">${md(j.report, j.cwd)}</div></div>`;
   }
   if (previewsFor(j).length) h += `<div class="pv-slot" data-pv-job="${esc(j.id)}"></div>`;
+  // 확장: 기능 파일이 window.hubJobExtras.push((job) => html)로 작업 카드 끝에 내용을 더한다
+  for (const f of window.hubJobExtras || []) { try { h += f(j) || ''; } catch {} }
   if (j.error) h += `<div class="jerr">${esc(j.error)}</div>`;
 
   // 꼬리
@@ -216,7 +218,7 @@ function taskHtml(j, t) {
   const multi = j.tasks.length > 1 || j.mode === 'both';
   const model = t.model ? `${t.autoPicked ? '✦ ' : ''}${t.model.replace(/^claude-|-\d{8}$/g, '')}${t.effort ? ' · ' + t.effort : ''}` : '';
   const time = running ? `<span class="live-dur" data-from="${t.startedAt}"></span>` : t.finishedAt ? dur(t.startedAt, t.finishedAt) : (ST_KO[t.status] || '');
-  let h = `<div class="task ${open ? 'open' : ''}"><div class="trow" data-toggle="${key}">${stIcon(t.status)}<span class="prov ${t.assignee}">${t.assignee === 'claude' ? 'Claude' : 'Codex'}</span>${t.agent ? `<span class="agent-chip" title="서브 에이전트 @${esc(t.agent)}">${icon('bot')}${esc(agentLabel(t.agent))}</span>` : ''}<span class="tt" title="${esc(t.title)}">${esc(t.title)}</span><span class="tm" title="${esc(t.autoPicked ? `자동 선택${t.reason ? ': ' + t.reason : ''}` : '직접 고른 설정')}">${[model, t.toolCalls ? `도구 ${t.toolCalls}` : '', time].filter(Boolean).join(' · ')}</span><span class="chev">${icon('right')}</span></div>`;
+  let h = `<div class="task ${open ? 'open' : ''}"><div class="trow" data-toggle="${key}">${t.waiting ? `<span class="st wait-on" title="사용자 응답 대기">${icon('bell')}</span>` : stIcon(t.status)}<span class="prov ${t.assignee}">${t.assignee === 'claude' ? 'Claude' : 'Codex'}</span>${t.agent ? `<span class="agent-chip" title="서브 에이전트 @${esc(t.agent)}">${icon('bot')}${esc(agentLabel(t.agent))}</span>` : ''}<span class="tt" title="${esc(t.title)}">${esc(t.title)}</span><span class="tm" title="${esc(t.autoPicked ? `자동 선택${t.reason ? ': ' + t.reason : ''}` : '직접 고른 설정')}">${[model, t.toolCalls ? `도구 ${t.toolCalls}` : '', time].filter(Boolean).join(' · ')}</span><span class="chev">${icon('right')}</span></div>`;
   if (running && !open) { const last = lastLog(key); if (last) h += `<div class="live"><b>지금:</b> ${esc(last)}</div>`; }
   if (t.error && !open) h += `<div class="terr">${esc(t.error)}</div>`;
   if (open) {
@@ -436,7 +438,7 @@ async function submit() {
   const live = liveJob();
   if (live) return icSubmit(live); // 진행 중이면 새 요청이 아니라 현재 작업에 수정 지시
   if (S.submitting) return; // 앞선 보내기가 아직 응답을 기다리는 중 (중복 Enter·클릭)
-  const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex') }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
+  const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
   if (S.current) body.sessionId = S.current; else body.cwd = currentCwd();
   S.submitting = true; $('#btnSend').disabled = true;
   try {
@@ -743,6 +745,8 @@ function connect() {
   const es = new EventSource('/api/events');
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
+    // 확장: 기능 파일은 window.addEventListener('hub:event', (e) => e.detail)로 모든 실시간 이벤트를 받는다
+    try { window.dispatchEvent(new CustomEvent('hub:event', { detail: ev })); } catch {}
     if (ev.type === 'hello') {
       for (const j of ev.jobs) icMergeJob(S.jobs.get(j.id), j);
       S.sessions = new Map(ev.sessions.map((s) => [s.id, s])); S.jobs = new Map(ev.jobs.map((j) => [j.id, j]));
