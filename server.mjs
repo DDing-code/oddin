@@ -18,6 +18,7 @@ import { catalog, installToClis, watchCatalog } from './lib/catalog.mjs';
 import { openLocal, normalizeLocalPath, isAllowed, resolveRelative } from './lib/opener.mjs';
 import { RemoteAccess, LOOPBACK, SECURITY_HEADERS, sendRemoteBlocked } from './lib/remote.mjs';
 import { checkpointRoute } from './lib/checkpoints.mjs';
+import { HubTools } from './lib/preview.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -31,6 +32,7 @@ const jobs = new JobManager(config);
 const remote = new RemoteAccess({ port: config.port });
 const clients = new Map(); // SSE도 설정 변경·계정 취소 때 다시 검증한다.
 jobs.on('event', (ev) => broadcast(ev));
+const tools = new HubTools({ config, getSession: (id) => jobs.listSessions().find((s) => s.id === id), getRoots: () => [config.defaultCwd, ROOT, config.hubDir, ...jobs.listSessions().map((s) => s.cwd), ...projectsList().map((p) => p.path)], emit: broadcast });
 
 function checkClient(res, req) {
   if (res.destroyed || remote.check(req, { log: false })) {
@@ -107,6 +109,7 @@ const server = http.createServer(async (req, res) => {
     if (denial) return sendRemoteBlocked(res, denial, p, send);
     const checkpoint = await checkpointRoute({ pathname: p, method: req.method, query: url.searchParams, readBody: () => readBody(req), manager: jobs });
     if (checkpoint) return json(res, checkpoint.body);
+    if (await tools.handle(req, res, url, { json, readBody })) return;
     // ---- 원격 접속: 변경은 게이트에서 로컬 요청에만 허용 ----
     if (p === '/api/remote' && req.method === 'GET') return json(res, await remote.status({ force: url.searchParams.get('force') === '1', viewer: req.hubViewer }));
     if (p === '/api/remote/enable' && req.method === 'POST') { await readBody(req); return json(res, await remote.enable()); }
@@ -205,4 +208,5 @@ server.listen(config.port, config.host || '127.0.0.1', () => {
   if (!LOOPBACK.has(config.host || '127.0.0.1')) console.warn('허브는 127.0.0.1에만 바인딩해야 합니다. 비루프백 요청은 원격 게이트에서 차단합니다');
 });
 server.on('error', (e) => { console.error(e.code === 'EADDRINUSE' ? `포트 ${config.port} 가 이미 사용 중입니다 (이미 실행 중인지 확인)` : e); process.exit(1); });
-process.on('SIGINT', () => process.exit(0));
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { try { await tools.terminals.closeAll(); } finally { process.exit(0); } });
+process.on('exit', () => tools.terminals.closeAllSync());

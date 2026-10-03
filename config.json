@@ -15,6 +15,9 @@
     "maxFiles": 20000,
     "exclude": []
   },
+  "terminal": {
+    "maxTerminals": 8
+  },
   "tools": {
     "claude": {
       "enabled": true,
