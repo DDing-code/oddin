@@ -1,7 +1,7 @@
 {
   "name": "ai-hub-desktop",
   "productName": "AI Hub",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI Hub 데스크탑 프로그램 (허브 화면 + 트레이·알림·원격 세션)",
   "main": "main.cjs",
   "private": true,

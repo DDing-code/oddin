@@ -327,7 +327,8 @@ function main() {
   });
 
   /* ---------- 시작 ---------- */
-  app.on('second-instance', () => showWindow());
+  // 두 번째 실행: 창 보이기. "AI Hub.exe --quit"이면 실행 중인 프로그램을 끈다(받아 둔 업데이트가 있으면 이때 설치)
+  app.on('second-instance', (_e, argv) => { if (argv.includes('--quit')) { quitting = true; app.quit(); return; } showWindow(); });
   app.on('before-quit', () => { quitting = true; });
   app.on('window-all-closed', () => {}); // 트레이에 남는다
   app.whenReady().then(async () => {
