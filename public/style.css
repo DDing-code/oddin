@@ -766,3 +766,11 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 #pop:hover .pi.sel:not(:hover){background:transparent}
 #pop:hover .pi.sel:not(:hover) .pic{color:var(--muted)}
 #pop:hover .pi.danger.sel:not(:hover) .pic{color:var(--err)}
+/* 마우스로 연 메뉴는 첫 항목을 미리 칠하지 않는다. 선택 줄은 방향키를 눌렀거나(.kbd) 명령 자동완성일 때만 (2026-10-04 "설정 및 상태가 무조건 하이라이트") */
+#pop:not(.kbd) .pi.sel:not(:hover){background:transparent}
+#pop:not(.kbd) .pi.sel:not(:hover) .pic,#pop:not(.kbd) .pi.sel:not(:hover) .l span{color:var(--muted)}
+#pop:not(.kbd) .pi.danger.sel:not(:hover) .pic{color:var(--err)}
+/* 화면 새 판 알림 띠 (public/ui-refresh.js) */
+.ui-stale{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:10px;padding:6px 6px 6px 14px;background:#2a2a31;border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:13px;color:var(--fg)}
+.ui-stale button{border:0;border-radius:7px;padding:5px 10px;background:var(--codex);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.ui-stale button:hover{filter:brightness(1.1)}

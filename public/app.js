@@ -336,11 +336,11 @@ $('#pClaude').addEventListener('click', (e) => openModelPicker('claude', e.curre
 $('#pCodex').addEventListener('click', (e) => openModelPicker('codex', e.currentTarget));
 
 /* ================= 팝오버 ================= */
-function openPop(anchor, items, { sel = 0, kind = '', below = false, onClose = null } = {}) {
+function openPop(anchor, items, { sel = 0, kind = '', below = false, onClose = null, kbd = kind === 'slash' } = {}) {
   if (S.pop?.onClose && S.pop.anchor !== anchor) { try { S.pop.onClose(); } catch {} }
   if (S.pop?.anchor?.classList) S.pop.anchor.classList.remove('on');
   const el = $('#pop');
-  S.pop = { anchor, items, sel, kind, below, onClose };
+  S.pop = { anchor, items, sel, kind, below, onClose, kbd };
   let idx = -1;
   const anyIcon = items.some((i) => i.icon);
   el.innerHTML = items.map((it) => {
@@ -349,6 +349,7 @@ function openPop(anchor, items, { sel = 0, kind = '', below = false, onClose = n
     idx++;
     return `<div class="pi ${idx === S.pop.sel ? 'sel' : ''} ${it.danger ? 'danger' : ''}" data-i="${idx}" role="option">${anyIcon ? `<span class="pic">${it.icon ? icon(it.icon) : ''}</span>` : ''}<div class="l"><b>${esc(it.label)}</b>${it.desc ? `<span>${esc(it.desc)}</span>` : ''}</div>${it.kbd ? `<kbd>${esc(it.kbd)}</kbd>` : ''}${it.checked ? `<span class="ck">${icon('check')}</span>` : ''}</div>`;
   }).join('');
+  el.classList.toggle('kbd', !!kbd); // 선택 줄은 방향키·명령 자동완성일 때만 보인다
   el.hidden = false;
   el.classList.toggle('compact', anyIcon && !items.some((i) => i.desc));
   const r = anchor.getBoundingClientRect();
@@ -364,14 +365,17 @@ function openPop(anchor, items, { sel = 0, kind = '', below = false, onClose = n
 function closePop() { if (S.pop?.anchor?.classList) S.pop.anchor.classList.remove('on'); const cb = S.pop?.onClose; S.pop = null; $('#pop').hidden = true; if (cb) { try { cb(); } catch {} } }
 const popItems = () => (S.pop ? S.pop.items.filter((i) => !i.header && !i.sep) : []);
 function popPick(i = S.pop?.sel) { const it = popItems()[i]; if (it) it.run(); }
+// 방향키: 마우스로 연 메뉴는 첫 입력에 현재 줄만 드러내고, 그다음부터 움직인다
+function popMove(d) { const n = popItems().length; if (!n) return; if (S.pop.kbd) S.pop.sel = (S.pop.sel + d + n) % n; S.pop.kbd = true; openPop(S.pop.anchor, S.pop.items, S.pop); }
+$('#pop').addEventListener('mousemove', (e) => { const p = e.target.closest('.pi'); if (p && S.pop) S.pop.sel = Number(p.dataset.i); });
 $('#pop').addEventListener('mousedown', (e) => { e.preventDefault(); const p = e.target.closest('.pi'); if (p) popPick(Number(p.dataset.i)); });
 document.addEventListener('mousedown', (e) => { if (S.pop && !e.target.closest('#pop') && e.target !== S.pop.anchor && !S.pop.anchor.contains?.(e.target)) closePop(); });
 document.addEventListener('keydown', (e) => {
   if (!S.pop || document.activeElement === input) return;
   const n = popItems().length; if (!n) return;
-  if (e.key === 'ArrowDown') { e.preventDefault(); S.pop.sel = (S.pop.sel + 1) % n; openPop(S.pop.anchor, S.pop.items, S.pop); }
-  if (e.key === 'ArrowUp') { e.preventDefault(); S.pop.sel = (S.pop.sel - 1 + n) % n; openPop(S.pop.anchor, S.pop.items, S.pop); }
-  if (e.key === 'Enter') { e.preventDefault(); popPick(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); popMove(1); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); popMove(-1); }
+  if (e.key === 'Enter' && S.pop.kbd) { e.preventDefault(); popPick(); }
 });
 window.addEventListener('resize', closePop);
 
@@ -419,10 +423,10 @@ input.addEventListener('keydown', (e) => {
   if (e.isComposing || e.keyCode === 229) return;
   if (S.pop) {
     const n = popItems().length;
-    if (e.key === 'ArrowDown') { e.preventDefault(); S.pop.sel = (S.pop.sel + 1) % n; return openPop(S.pop.anchor, S.pop.items, S.pop); }
-    if (e.key === 'ArrowUp') { e.preventDefault(); S.pop.sel = (S.pop.sel - 1 + n) % n; return openPop(S.pop.anchor, S.pop.items, S.pop); }
+    if (n && e.key === 'ArrowDown') { e.preventDefault(); return popMove(1); }
+    if (n && e.key === 'ArrowUp') { e.preventDefault(); return popMove(-1); }
     if (e.key === 'Escape') { e.preventDefault(); return closePop(); }
-    if (e.key === 'Enter') { e.preventDefault(); return popPick(); }
+    if (e.key === 'Enter' && S.pop.kbd) { e.preventDefault(); return popPick(); }
   }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); return submit(); }
   if (e.key === 'ArrowUp' && !input.value && S.history.length) { e.preventDefault(); S.histIdx = Math.min(S.histIdx + 1, S.history.length - 1); return setInput(S.history[S.history.length - 1 - S.histIdx]); }

@@ -274,6 +274,7 @@ test('격리 HTTP: 202 저장·200 재전송·GET/SSE 복원·Origin 차단·첨
   try {
     const end = Date.now() + 6000; for (;;) { try { await api('/api/options'); break; } catch (e) { if (Date.now() >= end) throw e; await delay(30); } }
     assert.equal((await api('/api/status')).value.capabilities.intercept, 1);
+    assert.match((await api('/api/ui-version')).value.v, /^[0-9a-f]{12}$/);
     const created = await api('/api/jobs', { goal: 'SLOW HTTP_ORIGINAL', mode: 'both' }); assert.equal(created.status, 201); const j = created.value;
     let snapshot;
     for (let n = 0; n < 150; n++) { snapshot = (await api('/api/jobs/' + j.id)).value; if (snapshot.tasks.length === 2 && snapshot.tasks.every((t) => t.sessionId)) break; await delay(20); }

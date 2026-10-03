@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { URL } from 'node:url';
+import { createHash } from 'node:crypto';
 import { ROOT, readJson, readText } from './lib/util.mjs';
 import { JobManager, publicJob } from './lib/jobs.mjs';
 import { INTERCEPT_CAPABILITIES } from './lib/intercepts.mjs';
@@ -63,6 +64,15 @@ if (process.env.HUB_SKIP_CLI_INSTALL !== '1') {
   watchCatalog(config.hubDir, (r) => broadcast({ type: 'catalog', install: r }));
 }
 
+// 화면 파일(html·js·css) 판 표시. 열린 화면이 예전 파일을 쥐고 있는지 비교하는 데 쓴다(public/ui-refresh.js)
+let uiVer = { at: 0, v: '' };
+function uiVersion() {
+  if (Date.now() - uiVer.at < 2000) return uiVer.v;
+  const dir = path.join(ROOT, 'public');
+  const sig = fs.readdirSync(dir).filter((n) => /[.](html|js|css)$/.test(n)).sort().map((n) => { const s = fs.statSync(path.join(dir, n)); return `${n}:${s.size}:${Math.round(s.mtimeMs)}`; }).join('|');
+  uiVer = { at: Date.now(), v: createHash('sha1').update(sig).digest('hex').slice(0, 12) };
+  return uiVer.v;
+}
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' };
 
 function send(res, code, body, type = 'application/json; charset=utf-8', extra = {}) {
@@ -125,6 +135,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/prompts' && req.method === 'GET') return json(res, jobs.prompts.list({ status: url.searchParams.get('status') === 'all' ? 'all' : 'pending', jobId: url.searchParams.get('jobId') || undefined }));
     const promptAnswer = p.match(/^\/api\/prompts\/([^/]+)\/answer$/);
     if (promptAnswer && req.method === 'POST') return json(res, jobs.prompts.answer(promptAnswer[1], await readBody(req), req.hubViewer));
+    if (p === '/api/ui-version') return json(res, { v: uiVersion() });
     if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
     if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 } });
     if (p === '/api/usage') return json(res, await usageStatus(config, { force: url.searchParams.has('force') }));
