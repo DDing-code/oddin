@@ -791,3 +791,7 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 .ubig-h b.mid{color:var(--warn)}.ubig-h b.hi{color:var(--err)}
 .ubig small.u-reset{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg2);margin-top:5px}
 .ubig small.u-reset .ico{width:12px;height:12px;flex:none;color:var(--muted)}
+/* 한도 막대 위 눈금 = 초기화까지 남은 시간 비율 (2026-10-04) */
+.meter.has-tick{position:relative;overflow:visible}
+.u-tick{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;border-radius:1px;background:#f4f4f6;box-shadow:0 0 0 1px rgba(0,0,0,.6);pointer-events:none;transition:left .4s}
+.u-tick-key{display:inline-block;width:2px;height:10px;margin-right:5px;vertical-align:-1px;border-radius:1px;background:#f4f4f6}

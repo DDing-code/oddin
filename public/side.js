@@ -175,6 +175,22 @@ function quotaLeft(w) {
   if (u == null || u === '' || !Number.isFinite(Number(u))) return null;
   return Math.max(0, Math.min(100, 100 - Number(u)));
 }
+// 한도 창 길이(분): Codex 는 key 가 w<분>, Claude 는 5시간·주간(모델 전용 한도도 주간)
+function windowMinutes(w) {
+  const m = /^w([0-9]+)$/.exec(w?.key || ''); if (m) return Number(m[1]) || null;
+  if (w?.key === 'five_hour' || w?.label === '5시간') return 300;
+  if (w?.key === 'seven_day' || w?.scope === 'model' || /주간/.test(w?.label || '')) return 10080;
+  return null;
+}
+// 초기화까지 남은 시간을 창 길이에 대한 비율(0~100)로. 창 길이·초기화 시각을 모르면 null
+function timeLeftPct(w) {
+  const len = windowMinutes(w), t = w?.resetsAt ? new Date(w.resetsAt).getTime() : NaN;
+  if (!len || !Number.isFinite(t)) return null;
+  return Math.max(0, Math.min(100, ((t - Date.now()) / 60000 / len) * 100));
+}
+// 막대 위 눈금 = 남은 시간 비율. 막대(남은 한도)가 눈금보다 길면 지금 속도로 초기화까지 버틴다
+const tickHtml = (tp) => (tp == null ? '' : `<b class="u-tick" style="left:${tp.toFixed(1)}%"></b>`);
+const tickText = (tp) => (tp == null ? '' : ` · 남은 시간 ${Math.round(tp)}%`);
 // 막대 색: 기존 기준(사용 60%·80% 이상) = 남은 40%·20% 이하. 경고 줄 기준은 commands.js
 const leftTone = (r) => (r <= 20 ? 'hi' : r <= 40 ? 'mid' : '');
 const leftText = (r, w) => `${Math.round(r)}% 남음${w?.resetsAt ? ` · ${resetPhrase(w.resetsAt)}` : ''}`;
@@ -185,9 +201,10 @@ const meterAria = (tool, label, r, w) => r == null
 // 한도 한 줄: 창 · 막대 · 남은 % · 초기화까지. AI 이름은 머리줄로 올려 막대 폭을 넓힌다 (2026-10-04 "가시성 올리고 리셋까지 남은 기간도")
 function uRow(tool, { tag, label, w }) {
   const r = quotaLeft(w);
-  const tip = `title="${esc(`${tool === 'claude' ? 'Claude' : 'Codex'} ${label} 한도 ${r == null ? '기록 없음' : leftText(r, w)}`)}"`;
+  const tp = r == null ? null : timeLeftPct(w);
+  const tip = `title="${esc(`${tool === 'claude' ? 'Claude' : 'Codex'} ${label} 한도 ${r == null ? '기록 없음' : leftText(r, w) + tickText(tp)}`)}"`;
   if (r == null) return `<span class="u-l" ${tip}>${esc(tag)}</span><div class="meter" ${meterAria(tool, label, r, w)} ${tip}><i style="width:0"></i></div><span class="p na" aria-hidden="true" ${tip}>–</span><span class="u-rs na" aria-hidden="true" ${tip}>기록 없음</span>`;
-  return `<span class="u-l" ${tip}>${esc(tag)}</span><div class="meter ${tool} ${leftTone(r)}" ${meterAria(tool, label, r, w)} ${tip}><i style="width:${r}%"></i></div><span class="p ${leftTone(r)}" aria-hidden="true" ${tip}>${Math.round(r)}%</span><span class="u-rs" aria-hidden="true" ${tip}>${esc(resetIn(w?.resetsAt) || '–')}</span>`;
+  return `<span class="u-l" ${tip}>${esc(tag)}</span><div class="meter ${tool} ${leftTone(r)}${tp == null ? '' : ' has-tick'}" ${meterAria(tool, label, r, w)} ${tip}><i style="width:${r}%"></i>${tickHtml(tp)}</div><span class="p ${leftTone(r)}" aria-hidden="true" ${tip}>${Math.round(r)}%</span><span class="u-rs" aria-hidden="true" ${tip}>${esc(resetIn(w?.resetsAt) || '–')}</span>`;
 }
 function renderUsage() {
   const u = S.usage; const el = $('#usage');
@@ -202,7 +219,7 @@ function renderUsage() {
     rows.push(`<span class="u-name"><i style="background:var(--${tool})"></i>${name}${x?.plan ? `<small>${esc(String(x.plan).toUpperCase())}</small>` : ''}</span>`, ...shown.map((c) => uRow(tool, c)));
   };
   add('claude', 'Claude', u.claude); add('codex', 'Codex', u.codex);
-  el.innerHTML = `<div class="u-grid"><span class="u-cap">남은 한도</span><span class="u-cap r">초기화까지</span>${rows.join('')}</div>`;
+  el.innerHTML = `<div class="u-grid"><span class="u-cap">남은 한도</span><span class="u-cap r" title="막대 위 눈금 = 초기화까지 남은 시간 비율. 막대가 눈금보다 길면 지금 속도로 초기화까지 넉넉해요"><i class="u-tick-key"></i>초기화까지</span>${rows.join('')}</div>`;
   if (S.insp?.tab === 'usage') renderInspector();
 }
 // 초기화까지 남은 시간이 흐르도록 1분마다 다시 그린다
@@ -306,13 +323,13 @@ function usagePane() {
     for (const w of labels) {
       const v = x?.windows?.find((y) => y.label === w); const r = quotaLeft(v);
       if (r == null) { h += `<div class="ubig na"><div class="ubig-h"><span>${esc(w)} 한도</span><span>기록 없음</span></div><div class="meter" ${meterAria(name, w, r, v)}><i style="width:0"></i></div></div>`; continue; }
-      h += `<div class="ubig"><div class="ubig-h"><span>${esc(w)} 한도</span><b class="${leftTone(r)}">${Math.round(r)}%<span class="u-unit">남음</span></b></div><div class="meter lg ${name} ${leftTone(r)}" ${meterAria(name, w, r, v)}><i style="width:${r}%"></i></div>${v.resetsAt ? `<small class="u-reset">${icon('clock')}${esc(resetPhrase(v.resetsAt))}</small>` : ''}</div>`;
+      h += `<div class="ubig"><div class="ubig-h"><span>${esc(w)} 한도</span><b class="${leftTone(r)}">${Math.round(r)}%<span class="u-unit">남음</span></b></div><div class="meter lg ${name} ${leftTone(r)}${timeLeftPct(v) == null ? '' : ' has-tick'}" ${meterAria(name, w, r, v)}><i style="width:${r}%"></i>${tickHtml(timeLeftPct(v))}</div>${v.resetsAt ? `<small class="u-reset">${icon('clock')}${esc(resetPhrase(v.resetsAt) + tickText(timeLeftPct(v)))}</small>` : ''}</div>`;
     }
     if (x?.observedAt) h += `<small class="c-muted">${hm(x.observedAt)} 기준${x.status === 'stale' ? ' · 지난 기록' : ''}</small>`;
     return h + '</div>';
   };
   return (!u ? '<div class="insp-empty"><p>불러오는 중…</p></div>' : block('claude', 'Claude', u.claude) + block('codex', 'Codex', u.codex))
-    + `<button class="btn wide" data-usage-refresh>${icon('refresh')}새로고침</button><p class="fine">Claude는 CLI에서 실시간으로 조회해요. Codex는 최근 실행 기록에 남은 값이라 5시간 한도가 비어 있을 수 있어요. 숫자와 막대는 남은 한도예요. 자동 분배는 남은 한도에 맞춰 Claude·Codex 비중을 나누고, 남은 한도가 5% 이하인 쪽 작업은 다른 AI로 넘겨요. Fable 주간 한도가 25% 이하로 남으면 자동 선택이 Opus로 바꿔요.</p>`;
+    + `<button class="btn wide" data-usage-refresh>${icon('refresh')}새로고침</button><p class="fine">Claude는 CLI에서 실시간으로 조회해요. Codex는 최근 실행 기록에 남은 값이라 5시간 한도가 비어 있을 수 있어요. 숫자와 막대는 남은 한도이고, 막대 위 흰 눈금은 초기화까지 남은 시간의 비율이에요. 막대가 눈금보다 길면 지금 속도로 초기화까지 넉넉하고, 짧으면 그 전에 바닥날 수 있어요. 자동 분배는 남은 한도에 맞춰 Claude·Codex 비중을 나누고, 남은 한도가 5% 이하인 쪽 작업은 다른 AI로 넘겨요. Fable 주간 한도가 25% 이하로 남으면 자동 선택이 Opus로 바꿔요.</p>`;
 }
 function infoPane(s) {
   const jobs = sessionJobs(s.id);
