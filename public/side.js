@@ -219,10 +219,10 @@ $('#btnAccount').addEventListener('click', (e) => {
 });
 
 /* ================= 오른쪽 패널 ================= */
-const TABS = [['tasks', '작업', 'list'], ['files', '파일', 'file'], ['usage', '사용량', 'gauge'], ['info', '정보', 'info']];
-// 확장 탭: 기능 파일이 window.hubTabs.push({ key, label, icon, render(body, session) })로 오른쪽 패널에 탭을 더한다
+const TABS = [['tasks', '작업', 'list'], ['usage', '사용량', 'gauge'], ['info', '정보', 'info']]; // '파일' 탭은 changes.js 의 '변경' 탭에 합쳤다 (filesPane 은 그 탭의 대체 목록으로 쓴다)
+// 확장 탭: 기능 파일이 window.hubTabs.push({ key, label, icon, render(body, session) })로 오른쪽 패널에 탭을 더한다 ('작업' 다음에 끼운다)
 window.hubTabs = window.hubTabs || [];
-const allTabs = () => [...TABS, ...window.hubTabs.map((t) => [t.key, t.label, t.icon])];
+const allTabs = () => [TABS[0], ...window.hubTabs.map((t) => [t.key, t.label, t.icon]), ...TABS.slice(1)];
 S.insp = { tab: S.prefs.inspTab || 'tasks' };
 function renderInspTabs() {
   $('#inspTabs').innerHTML = allTabs().map(([k, l, i]) => `<button class="tab ${S.insp.tab === k ? 'on' : ''}" data-tab="${k}" role="tab" aria-selected="${S.insp.tab === k}">${icon(i)}<span>${l}</span></button>`).join('');
