@@ -6,6 +6,9 @@
   "maxParallel": 3,
   "planner": "auto",
   "taskTimeoutMinutes": 90,
+  "terminal": {
+    "maxTerminals": 8
+  },
   "tools": {
     "claude": {
       "enabled": true,
