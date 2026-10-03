@@ -177,27 +177,36 @@ function quotaLeft(w) {
 }
 // 막대 색: 기존 기준(사용 60%·80% 이상) = 남은 40%·20% 이하. 경고 줄 기준은 commands.js
 const leftTone = (r) => (r <= 20 ? 'hi' : r <= 40 ? 'mid' : '');
-const leftText = (r, w) => `${Math.round(r)}% 남음${w?.resetsAt ? ` · ${resetText(w.resetsAt)} 초기화` : ''}`;
+const leftText = (r, w) => `${Math.round(r)}% 남음${w?.resetsAt ? ` · ${resetPhrase(w.resetsAt)}` : ''}`;
 // 막대 하나의 접근성 속성 (미확인이면 숫자 없이 이름만)
 const meterAria = (tool, label, r, w) => r == null
   ? `role="img" aria-label="${esc(`${tool === 'claude' ? 'Claude' : 'Codex'} ${label} 한도 미확인`)}"`
   : `role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(r)}" aria-valuetext="${esc(leftText(r, w))}" aria-label="${esc(`${tool === 'claude' ? 'Claude' : 'Codex'} ${label} 남은 한도`)}"`;
-function uCell(tool, label, tag, w) {
+// 한도 한 줄: 창 · 막대 · 남은 % · 초기화까지. AI 이름은 머리줄로 올려 막대 폭을 넓힌다 (2026-10-04 "가시성 올리고 리셋까지 남은 기간도")
+function uRow(tool, { tag, label, w }) {
   const r = quotaLeft(w);
-  if (r == null) return `<div class="u-cell na" title="${esc(label)}: 기록 없음"><span class="u-l" aria-hidden="true">${tag}</span><div class="meter" ${meterAria(tool, label, r, w)}><i style="width:0"></i></div><span class="p" aria-hidden="true">–</span></div>`;
-  return `<div class="u-cell" title="${esc(label)} 한도 ${esc(leftText(r, w))}"><span class="u-l" aria-hidden="true">${tag}</span><div class="meter ${tool} ${leftTone(r)}" ${meterAria(tool, label, r, w)}><i style="width:${r}%"></i></div><span class="p" aria-hidden="true">${Math.round(r)}%</span></div>`;
+  const tip = `title="${esc(`${tool === 'claude' ? 'Claude' : 'Codex'} ${label} 한도 ${r == null ? '기록 없음' : leftText(r, w)}`)}"`;
+  if (r == null) return `<span class="u-l" ${tip}>${esc(tag)}</span><div class="meter" ${meterAria(tool, label, r, w)} ${tip}><i style="width:0"></i></div><span class="p na" aria-hidden="true" ${tip}>–</span><span class="u-rs na" aria-hidden="true" ${tip}>기록 없음</span>`;
+  return `<span class="u-l" ${tip}>${esc(tag)}</span><div class="meter ${tool} ${leftTone(r)}" ${meterAria(tool, label, r, w)} ${tip}><i style="width:${r}%"></i></div><span class="p ${leftTone(r)}" aria-hidden="true" ${tip}>${Math.round(r)}%</span><span class="u-rs" aria-hidden="true" ${tip}>${esc(resetIn(w?.resetsAt) || '–')}</span>`;
 }
 function renderUsage() {
   const u = S.usage; const el = $('#usage');
-  const row = (name, label, x) => {
-    const cells = ['5시간', '주간'].map((w, i) => uCell(name, w, i ? '7d' : '5h', x?.windows?.find((y) => y.label === w))).join('');
-    return `<div class="u-line"><span class="u-name"><i style="background:var(--${name})"></i>${label}</span>${cells}</div>`;
+  if (!u) { el.innerHTML = '<div class="c-muted u-load">사용량 불러오는 중…</div>'; return; }
+  const rows = [];
+  const add = (tool, name, x) => {
+    const all = ['5시간', '주간'].map((l) => ({ tag: l, label: l, w: x?.windows?.find((y) => y.label === l && y.scope !== 'model') }));
+    for (const w of (x?.windows || []).filter((y) => y.scope === 'model')) all.push({ tag: w.label.replace(' 주간', ''), label: w.label, w });
+    // 기록 없는 창(대개 Codex 5시간)은 줄을 차지하지 않는다. 전부 없으면 주간 한 줄만 '기록 없음' — 자세한 건 오른쪽 사용량 탭
+    let shown = all.filter((c) => quotaLeft(c.w) != null);
+    if (!shown.length) shown = [all[1]];
+    rows.push(`<span class="u-name"><i style="background:var(--${tool})"></i>${name}${x?.plan ? `<small>${esc(String(x.plan).toUpperCase())}</small>` : ''}</span>`, ...shown.map((c) => uRow(tool, c)));
   };
-  const scoped = (u?.claude?.windows || []).filter((w) => w.scope === 'model').map((w) =>
-    `<div class="u-line sub"><span class="u-name">${esc(w.label.replace(' 주간', ''))}</span><span></span>${uCell('claude', w.label, '7d', w)}</div>`).join('');
-  el.innerHTML = !u ? '<div class="c-muted u-load">사용량 불러오는 중…</div>' : '<div class="u-cap">남은 한도</div>' + row('claude', 'Claude', u.claude) + scoped + row('codex', 'Codex', u.codex);
+  add('claude', 'Claude', u.claude); add('codex', 'Codex', u.codex);
+  el.innerHTML = `<div class="u-grid"><span class="u-cap">남은 한도</span><span class="u-cap r">초기화까지</span>${rows.join('')}</div>`;
   if (S.insp?.tab === 'usage') renderInspector();
 }
+// 초기화까지 남은 시간이 흐르도록 1분마다 다시 그린다
+setInterval(() => { if (S.usage) renderUsage(); }, 60_000);
 $('#usage').addEventListener('click', () => showUsage());
 
 function renderAccount() {
@@ -297,7 +306,7 @@ function usagePane() {
     for (const w of labels) {
       const v = x?.windows?.find((y) => y.label === w); const r = quotaLeft(v);
       if (r == null) { h += `<div class="ubig na"><div class="ubig-h"><span>${esc(w)} 한도</span><span>기록 없음</span></div><div class="meter" ${meterAria(name, w, r, v)}><i style="width:0"></i></div></div>`; continue; }
-      h += `<div class="ubig"><div class="ubig-h"><span>${esc(w)} 한도</span><b>${Math.round(r)}%<span class="u-unit">남음</span></b></div><div class="meter lg ${name} ${leftTone(r)}" ${meterAria(name, w, r, v)}><i style="width:${r}%"></i></div>${v.resetsAt ? `<small>${esc(resetText(v.resetsAt))} 초기화</small>` : ''}</div>`;
+      h += `<div class="ubig"><div class="ubig-h"><span>${esc(w)} 한도</span><b class="${leftTone(r)}">${Math.round(r)}%<span class="u-unit">남음</span></b></div><div class="meter lg ${name} ${leftTone(r)}" ${meterAria(name, w, r, v)}><i style="width:${r}%"></i></div>${v.resetsAt ? `<small class="u-reset">${icon('clock')}${esc(resetPhrase(v.resetsAt))}</small>` : ''}</div>`;
     }
     if (x?.observedAt) h += `<small class="c-muted">${hm(x.observedAt)} 기준${x.status === 'stale' ? ' · 지난 기록' : ''}</small>`;
     return h + '</div>';

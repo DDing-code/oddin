@@ -774,3 +774,20 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 .ui-stale{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:10px;padding:6px 6px 6px 14px;background:#2a2a31;border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:13px;color:var(--fg)}
 .ui-stale button{border:0;border-radius:7px;padding:5px 10px;background:var(--codex);color:#fff;font:inherit;font-weight:600;cursor:pointer}
 .ui-stale button:hover{filter:brightness(1.1)}
+/* 왼쪽 아래 남은 한도: 한도 하나당 한 줄 — 굵은 막대·큰 숫자·초기화까지 남은 시간 (2026-10-04) */
+.usage{font-size:12.5px;padding:9px 10px}
+.u-grid{display:grid;grid-template-columns:max-content minmax(24px,1fr) max-content max-content;align-items:center;column-gap:7px;row-gap:4px}
+.u-grid .u-cap{grid-column:1 / 3;margin:0;font-size:11px;font-weight:550;color:var(--muted)}
+.u-grid .u-cap.r{grid-column:3 / 5;text-align:right}
+.u-grid .u-name{grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12.5px;font-weight:600;color:var(--fg)}
+.u-grid .u-name i{width:8px;height:8px;border-radius:50%}
+.u-grid .u-name small{font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--muted)}
+.u-grid .u-l{padding-left:14px;font-size:11.5px;color:var(--fg2)}
+.u-grid .meter{height:7px;background:rgba(255,255,255,.1)}
+.u-grid .p{min-width:30px;text-align:right;font-size:12.5px;font-weight:650;color:var(--fg);font-variant-numeric:tabular-nums}
+.u-grid .p.mid{color:var(--warn)}.u-grid .p.hi{color:var(--err)}.u-grid .p.na{color:var(--faint);font-weight:500}
+.u-grid .u-rs{text-align:right;font-size:11.5px;color:var(--fg2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.u-grid .u-rs.na{color:var(--faint)}
+.ubig-h b.mid{color:var(--warn)}.ubig-h b.hi{color:var(--err)}
+.ubig small.u-reset{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg2);margin-top:5px}
+.ubig small.u-reset .ico{width:12px;height:12px;flex:none;color:var(--muted)}

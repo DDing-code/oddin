@@ -90,6 +90,19 @@ function dur(a, b) { if (!a) return ''; const s = Math.max(0, ((b ? new Date(b) 
 function ago(iso) { const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return '방금'; if (s < 3600) return `${(s / 60) | 0}분`; if (s < 86400) return `${(s / 3600) | 0}시간`; return `${(s / 86400) | 0}일`; }
 function shortPath(p, n = 2) { const parts = String(p || '').split(/[\\/]/).filter(Boolean); return parts.length > n ? parts.slice(-n).join('\\') : p; }
 function cmdLabel(c) { return c.kind === 'goal' ? '목표' : c.kind === 'agent' ? `@${c.name}` : c.kind === 'skill' ? `스킬 ${c.name}` : `/${c.name}`; }
+// 초기화까지 남은 시간: 43분 · 2시간 59분 · 4일 15시간 (이미 지났으면 '곧')
+function resetIn(iso) {
+  if (!iso) return '';
+  const m = Math.round((new Date(iso) - Date.now()) / 60000);
+  if (!Number.isFinite(m)) return '';
+  if (m <= 0) return '곧';
+  if (m < 60) return `${m}분`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간${m % 60 ? ` ${m % 60}분` : ''}`;
+  return `${Math.floor(h / 24)}일${h % 24 ? ` ${h % 24}시간` : ''}`;
+}
+// "2시간 59분 뒤 초기화 (오늘 04:10)"
+function resetPhrase(iso) { const t = resetIn(iso); if (!t) return ''; return `${t === '곧' ? '곧' : `${t} 뒤`} 초기화 (${resetText(iso)})`; }
 function resetText(iso) { if (!iso) return ''; const d = new Date(iso); return d.toDateString() === new Date().toDateString() ? `오늘 ${hm(iso)}` : `${d.getMonth() + 1}/${d.getDate()} ${hm(iso)}`; }
 
 /* ---------- 모델·강도 ---------- */
