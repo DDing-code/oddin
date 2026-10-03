@@ -205,6 +205,12 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// 마지막 안전장치: 자식 프로세스 통로가 끊겨 생기는 오류는 기록만 하고 허브를 살려 둔다 (다른 오류는 원래대로 종료)
+process.on('uncaughtException', (e) => {
+  if (['EPIPE', 'ENOTCONN', 'ECONNRESET', 'ERR_STREAM_DESTROYED'].includes(e?.code)) { console.error(`[무시한 통로 오류] ${e.code}: ${e.message}`); return; }
+  console.error(e); process.exit(1);
+});
+
 server.listen(config.port, config.host || '127.0.0.1', () => {
   console.log(`AI Hub  http://${config.host || '127.0.0.1'}:${config.port}  (허브: ${config.hubDir})`);
   const settings = remote.readConfig();
