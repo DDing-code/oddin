@@ -8,6 +8,7 @@ import { URL } from 'node:url';
 import { ROOT, readJson, readText } from './lib/util.mjs';
 import { JobManager, publicJob } from './lib/jobs.mjs';
 import { INTERCEPT_CAPABILITIES } from './lib/intercepts.mjs';
+import { sessionToolsRoute, SESSION_CAPABILITIES } from './lib/session-tools.mjs';
 import { toolStatus, invalidateToolStatus } from './lib/tools.mjs';
 import { memoryOverview, memoryFiles, readMemoryFile, hubBoardDir } from './lib/memory.mjs';
 import { modelOptions } from './lib/options.mjs';
@@ -65,7 +66,7 @@ function send(res, code, body, type = 'application/json; charset=utf-8', extra =
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 const json = (res, body, code = 200) => send(res, code, body);
-const fail = (res, e, code) => json(res, { error: String(e?.message || e), ...(e?.code ? { code: e.code } : {}) }, code || e?.status || 400);
+const fail = (res, e, code) => json(res, { error: String(e?.message || e), ...(e?.code ? { code: e.code } : {}), ...(e?.files ? { files: e.files } : {}) }, code || e?.status || 400);
 
 async function readBody(req, limit = 2_000_000) {
   let s = ''; for await (const c of req) { s += c; if (s.length > limit) { const e = new Error('본문이 너무 큽니다'); e.status = 413; throw e; } }
@@ -114,7 +115,7 @@ const server = http.createServer(async (req, res) => {
       clients.set(res, req); res.on('close', () => clients.delete(res)); return;
     }
     // ---- 상태·선택지·사용량 ----
-    if (p === '/api/status') return json(res, { capabilities: INTERCEPT_CAPABILITIES, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
+    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
     if (p === '/api/options') return json(res, modelOptions(config));
     if (p === '/api/usage') return json(res, await usageStatus(config, { force: url.searchParams.has('force') }));
     if (p === '/api/projects') return json(res, projectsList());
@@ -134,12 +135,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/dir') { const d = path.resolve(url.searchParams.get('path') || ''); return json(res, { path: d, exists: fs.existsSync(d) && fs.statSync(d).isDirectory() }); }
     // ---- 세션 ----
-    if (p === '/api/sessions' && req.method === 'GET') return json(res, jobs.listSessions());
+    if (p === '/api/sessions' && req.method === 'GET') return json(res, jobs.listSessions({ archived: url.searchParams.get('archived') === '1' }));
     if (p === '/api/sessions' && req.method === 'POST') return json(res, jobs.createSession(await readBody(req)), 201);
+    if (await sessionToolsRoute({ req, res, url, jobs, readBody, json, send })) return;
     let r;
     if ((r = m(/^\/api\/sessions\/([\w-]+)$/))) {
       if (req.method === 'PATCH') return json(res, jobs.updateSession(r[1], await readBody(req)));
-      if (req.method === 'DELETE') return json(res, { removed: jobs.deleteSession(r[1]) });
+      if (req.method === 'DELETE') return json(res, { removed: jobs.sessions.has(r[1]) ? await jobs.sessionTools.delete(r[1], url.searchParams.get('cleanup') === '1') : false });
     }
     if ((r = m(/^\/api\/sessions\/([\w-]+)\/jobs$/))) return json(res, jobs.sessionJobs(r[1]));
     if ((r = m(/^\/api\/sessions\/([\w-]+)\/goal\/(stop|resume)$/)) && req.method === 'POST') return json(res, r[2] === 'stop' ? jobs.stopGoal(r[1]) : await jobs.resumeGoal(r[1]));
