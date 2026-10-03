@@ -389,6 +389,7 @@ function renderPalette() {
     { label: '사용량 새로고침', icon: 'refresh', run: showUsage },
     { label: '설정 및 상태', icon: 'gear', run: () => openSettings() },
     { label: '원격 접속 (다른 컴퓨터에서 열기)', icon: 'globe', run: () => openSettings('remoteSec') },
+    ...(window.hubCommands || []).flatMap((f) => { try { return f() || []; } catch { return []; } }), // 확장: 기능 파일이 window.hubCommands.push(() => [{ label, desc, icon, kbd, run }]) 로 명령을 더한다
   ].filter((c) => !q || c.label.toLowerCase().includes(q));
   const hit = (s) => {
     if (!q) return { score: 1, snip: '' };
