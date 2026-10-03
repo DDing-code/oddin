@@ -17,7 +17,7 @@ function renderTree() {
   requestAnimationFrame(() => {
     treeQ = false;
     if (S.current) markSeen(S.current);
-    const all = [...S.sessions.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const all = [...S.sessions.values()].filter((s) => !s.archived).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); // 보관한 세션은 보관함(sessions-ui.js)에서만
     const pinned = all.filter((s) => s.pinned).sort((a, b) => a.pinned.localeCompare(b.pinned));
     const rest = all.filter((s) => !s.pinned);
     const view = S.prefs.sideView || 'folder';
@@ -28,7 +28,7 @@ function renderTree() {
     let body = '';
     if (view === 'folder') {
       const groups = new Map();
-      for (const s of rest) { const k = s.cwd.toLowerCase(); if (!groups.has(k)) groups.set(k, { cwd: s.cwd, list: [] }); groups.get(k).list.push(s); }
+      for (const s of rest) { const home = s.git?.isolated && s.git.repo ? s.git.repo : s.cwd; const k = home.toLowerCase(); if (!groups.has(k)) groups.set(k, { cwd: home, list: [] }); groups.get(k).list.push(s); } // 격리(worktree) 세션은 원본 저장소 폴더 아래에 묶는다
       const cur = currentCwd().toLowerCase();
       if (!S.current && cur && !groups.has(cur)) groups.set(cur, { cwd: currentCwd(), list: [] });
       for (const [k, g] of groups) {
@@ -48,6 +48,7 @@ function renderTree() {
       for (const [b, list] of groups) body += `<div class="group"><div class="dhead">${b}</div>${list.map((s) => rowHtml(s, false, true)).join('')}</div>`;
     }
     h += section('recent', '세션', body || '<div class="empty-row">아직 세션이 없어요. 위의 새 세션으로 시작하세요.</div>', viewBtn);
+    for (const f of window.hubTreeExtras || []) { try { h += f() || ''; } catch {} } // 확장: 기능 파일이 세션 목록 아래에 구역(보관함 등)을 더한다
     $('#tree').innerHTML = h;
     renderAccount();
   });
@@ -123,6 +124,7 @@ function openSessionMenu(id, anchor) {
     { label: '폴더 경로 복사', icon: 'copy', run: () => { closePop(); copyText(s.cwd, '폴더 경로를 복사했어요'); } },
     { label: '이 폴더에서 새 세션', icon: 'plus', run: () => { closePop(); newSession(s.cwd); } },
     ...(live ? [{ label: '실행 중인 작업 중지', icon: 'stop', run: () => { closePop(); for (const j of sessionJobs(id)) if (LIVE.has(j.status)) api(`/api/jobs/${j.id}/cancel`, { method: 'POST' }); } }] : []),
+    ...(window.hubSessionMenuItems || []).flatMap((f) => { try { return f(s, { live, anchor }) || []; } catch { return []; } }), // 확장: 기능 파일이 세션 메뉴 항목(보관·갈래·내보내기 등)을 더한다
     { sep: true },
     { label: '삭제', icon: 'trash', danger: true, kbd: 'Del', run: () => { closePop(); deleteSession(id); } },
   ], { below: true, onClose: () => row?.classList.remove('menu-open') });
@@ -139,6 +141,7 @@ function openFolderMenu(cwd, anchor) {
 async function setPinned(id, pinned) { try { await api(`/api/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ pinned }) }); toast(pinned ? '고정했어요' : '고정을 해제했어요'); } catch (e) { toast(e.message, true); } }
 async function deleteSession(id) {
   const s = S.sessions.get(id); if (!s) return;
+  if (window.hubDeleteSession && window.hubDeleteSession(s)) return; // 확장: 기능 파일이 삭제를 대신 처리하면(격리 세션의 worktree 정리 선택 등) true
   if (!confirm(`"${s.title}" 세션을 목록에서 지울까요?\n작업 결과 파일과 실행 기록 폴더는 그대로 남습니다.`)) return;
   try { await api(`/api/sessions/${id}`, { method: 'DELETE' }); toast('세션을 지웠어요'); } catch (e) { toast(e.message, true); }
 }
@@ -219,9 +222,12 @@ $('#btnAccount').addEventListener('click', (e) => {
 
 /* ================= 오른쪽 패널 ================= */
 const TABS = [['tasks', '작업', 'list'], ['files', '파일', 'file'], ['usage', '사용량', 'gauge'], ['info', '정보', 'info']];
+// 확장 탭: 기능 파일이 window.hubTabs.push({ key, label, icon, render(body, session) })로 오른쪽 패널에 탭을 더한다
+window.hubTabs = window.hubTabs || [];
+const allTabs = () => [...TABS, ...window.hubTabs.map((t) => [t.key, t.label, t.icon])];
 S.insp = { tab: S.prefs.inspTab || 'tasks' };
 function renderInspTabs() {
-  $('#inspTabs').innerHTML = TABS.map(([k, l, i]) => `<button class="tab ${S.insp.tab === k ? 'on' : ''}" data-tab="${k}" role="tab" aria-selected="${S.insp.tab === k}">${icon(i)}<span>${l}</span></button>`).join('');
+  $('#inspTabs').innerHTML = allTabs().map(([k, l, i]) => `<button class="tab ${S.insp.tab === k ? 'on' : ''}" data-tab="${k}" role="tab" aria-selected="${S.insp.tab === k}">${icon(i)}<span>${l}</span></button>`).join('');
 }
 $('#inspTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; S.insp.tab = b.dataset.tab; S.prefs.inspTab = b.dataset.tab; savePrefs(); renderInspTabs(); renderInspector(); });
 let inspT = null;
@@ -233,8 +239,10 @@ function renderInspector() {
   const body = $('#inspBody'); const s = S.sessions.get(S.current);
   const keep = body.scrollTop;
   const tab = S.insp.tab;
+  const ext = window.hubTabs.find((t) => t.key === tab);
+  if (ext) { try { ext.render(body, s || null); } catch (e) { body.innerHTML = `<div class="insp-empty"><p>${esc(e.message)}</p></div>`; } body.scrollTop = keep; return; }
   if (tab === 'usage') body.innerHTML = usagePane();
-  else if (!s) body.innerHTML = `<div class="insp-empty">${icon(TABS.find((t) => t[0] === tab)[2])}<p>세션을 열면 ${tab === 'tasks' ? '진행 상황이' : tab === 'files' ? '바뀐 파일이' : '세션 정보가'} 여기에 보여요</p></div>`;
+  else if (!s) body.innerHTML = `<div class="insp-empty">${icon((allTabs().find((t) => t[0] === tab) || TABS[0])[2])}<p>세션을 열면 ${tab === 'tasks' ? '진행 상황이' : tab === 'files' ? '바뀐 파일이' : '세션 정보가'} 여기에 보여요</p></div>`;
   else if (tab === 'tasks') body.innerHTML = tasksPane(s);
   else if (tab === 'files') body.innerHTML = filesPane(s);
   else body.innerHTML = infoPane(s);

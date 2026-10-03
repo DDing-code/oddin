@@ -115,7 +115,8 @@ function renderTop() {
   $('#title').textContent = s ? s.title : '새 세션';
   $('#folderText').textContent = shortPath(currentCwd(), 3);
   $('#folderChip').title = `${currentCwd()}\n${s ? '눌러서 탐색기로 열기 · 오른쪽 클릭으로 경로 복사' : '눌러서 폴더 바꾸기'}`;
-  $('#topActions').innerHTML = s ? `${s.pinned ? `<span class="pin-flag" title="고정된 세션">${icon('pin')}</span>` : ''}<button class="icon-btn" id="btnSessMenu" title="세션 메뉴">${icon('more')}</button>` : '';
+  // 확장: 기능 파일이 window.hubTopExtras.push((session|null) => html)로 상단 바에 칩을 더한다 (세션이 없으면 null)
+  $('#topActions').innerHTML = (window.hubTopExtras || []).map((f) => { try { return f(s || null) || ''; } catch { return ''; } }).join('') + (s ? `${s.pinned ? `<span class="pin-flag" title="고정된 세션">${icon('pin')}</span>` : ''}<button class="icon-btn" id="btnSessMenu" title="세션 메뉴">${icon('more')}</button>` : '');
   renderSend();
 }
 $('#topActions').addEventListener('click', (e) => { const b = e.target.closest('#btnSessMenu'); if (b && S.current) openSessionMenu(S.current, b); });
@@ -194,6 +195,8 @@ function jobHtml(j) {
     h += `<div class="report">${j.tasks.length > 1 ? `<div class="report-h">${icon('board')}보고</div>` : ''}<div class="md">${md(j.report, j.cwd)}</div></div>`;
   }
   if (previewsFor(j).length) h += `<div class="pv-slot" data-pv-job="${esc(j.id)}"></div>`;
+  // 확장: 기능 파일이 window.hubJobExtras.push((job) => html)로 작업 카드 끝에 내용을 더한다
+  for (const f of window.hubJobExtras || []) { try { h += f(j) || ''; } catch {} }
   if (j.error) h += `<div class="jerr">${esc(j.error)}</div>`;
 
   // 꼬리
@@ -440,6 +443,8 @@ async function submit() {
   if (S.current) body.sessionId = S.current; else body.cwd = currentCwd();
   S.submitting = true; $('#btnSend').disabled = true;
   try {
+    // 확장: 새 세션 옵션(격리 등)이 있으면 기능 파일이 세션을 먼저 만들고 id를 돌려준다 (window.hubCreateSession(cwd) → sessionId|null)
+    if (!S.current && window.hubCreateSession) { const sid = await window.hubCreateSession(body.cwd); if (sid) { body.sessionId = sid; delete body.cwd; } }
     const job = await api('/api/jobs', { method: 'POST', body: JSON.stringify(body) });
     if (text) S.history.push(text); S.histIdx = -1;
     input.value = ''; autosize(); S.atts = []; renderAtts();
@@ -743,6 +748,8 @@ function connect() {
   const es = new EventSource('/api/events');
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
+    // 확장: 기능 파일은 window.addEventListener('hub:event', (e) => e.detail)로 모든 실시간 이벤트를 받는다
+    try { window.dispatchEvent(new CustomEvent('hub:event', { detail: ev })); } catch {}
     if (ev.type === 'hello') {
       for (const j of ev.jobs) icMergeJob(S.jobs.get(j.id), j);
       S.sessions = new Map(ev.sessions.map((s) => [s.id, s])); S.jobs = new Map(ev.jobs.map((j) => [j.id, j]));
