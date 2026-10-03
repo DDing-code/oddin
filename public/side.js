@@ -219,9 +219,12 @@ $('#btnAccount').addEventListener('click', (e) => {
 
 /* ================= 오른쪽 패널 ================= */
 const TABS = [['tasks', '작업', 'list'], ['files', '파일', 'file'], ['usage', '사용량', 'gauge'], ['info', '정보', 'info']];
+// 확장 탭: 기능 파일이 window.hubTabs.push({ key, label, icon, render(body, session) })로 오른쪽 패널에 탭을 더한다
+window.hubTabs = window.hubTabs || [];
+const allTabs = () => [...TABS, ...window.hubTabs.map((t) => [t.key, t.label, t.icon])];
 S.insp = { tab: S.prefs.inspTab || 'tasks' };
 function renderInspTabs() {
-  $('#inspTabs').innerHTML = TABS.map(([k, l, i]) => `<button class="tab ${S.insp.tab === k ? 'on' : ''}" data-tab="${k}" role="tab" aria-selected="${S.insp.tab === k}">${icon(i)}<span>${l}</span></button>`).join('');
+  $('#inspTabs').innerHTML = allTabs().map(([k, l, i]) => `<button class="tab ${S.insp.tab === k ? 'on' : ''}" data-tab="${k}" role="tab" aria-selected="${S.insp.tab === k}">${icon(i)}<span>${l}</span></button>`).join('');
 }
 $('#inspTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; S.insp.tab = b.dataset.tab; S.prefs.inspTab = b.dataset.tab; savePrefs(); renderInspTabs(); renderInspector(); });
 let inspT = null;
@@ -233,8 +236,10 @@ function renderInspector() {
   const body = $('#inspBody'); const s = S.sessions.get(S.current);
   const keep = body.scrollTop;
   const tab = S.insp.tab;
+  const ext = window.hubTabs.find((t) => t.key === tab);
+  if (ext) { try { ext.render(body, s || null); } catch (e) { body.innerHTML = `<div class="insp-empty"><p>${esc(e.message)}</p></div>`; } body.scrollTop = keep; return; }
   if (tab === 'usage') body.innerHTML = usagePane();
-  else if (!s) body.innerHTML = `<div class="insp-empty">${icon(TABS.find((t) => t[0] === tab)[2])}<p>세션을 열면 ${tab === 'tasks' ? '진행 상황이' : tab === 'files' ? '바뀐 파일이' : '세션 정보가'} 여기에 보여요</p></div>`;
+  else if (!s) body.innerHTML = `<div class="insp-empty">${icon((allTabs().find((t) => t[0] === tab) || TABS[0])[2])}<p>세션을 열면 ${tab === 'tasks' ? '진행 상황이' : tab === 'files' ? '바뀐 파일이' : '세션 정보가'} 여기에 보여요</p></div>`;
   else if (tab === 'tasks') body.innerHTML = tasksPane(s);
   else if (tab === 'files') body.innerHTML = filesPane(s);
   else body.innerHTML = infoPane(s);
@@ -383,6 +388,7 @@ function renderPalette() {
     { label: '사용량 새로고침', icon: 'refresh', run: showUsage },
     { label: '설정 및 상태', icon: 'gear', run: () => openSettings() },
     { label: '원격 접속 (다른 컴퓨터에서 열기)', icon: 'globe', run: () => openSettings('remoteSec') },
+    ...(window.hubCommands || []).flatMap((f) => { try { return f() || []; } catch { return []; } }), // 확장: 기능 파일이 window.hubCommands.push(() => [{ label, desc, icon, kbd, run }]) 로 명령을 더한다
   ].filter((c) => !q || c.label.toLowerCase().includes(q));
   const hit = (s) => {
     if (!q) return { score: 1, snip: '' };
