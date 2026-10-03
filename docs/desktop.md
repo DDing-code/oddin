@@ -37,3 +37,8 @@
 화면 쪽 파일
 - `public/desktop.js` — 알림·진행 표시·경로 끌어놓기·트레이 명령 연결
 - `public/hubs.js`, `public/hubs.css` — 사이드바의 허브 전환과 원격 세션 목록, 허브 추가·관리 창
+
+## 아이콘·로고 (2026-10-04, 시안 B '엮인 O')
+- 원본: `desktop/build/icon.svg`(앱 타일), `desktop/build/tray.svg`(작은 크기용, 선이 굵음). 허브 화면 로고는 투명 바탕 `public/mark.svg`(같은 고리, 엮인 자리는 마스크), 탭 아이콘은 `public/icon.svg`(= tray.svg). 데스크탑 로딩·연결 안 됨 화면은 보안 정책(img-src data:)상 mark.svg 를 HTML 안에 직접 넣었다.
+- 원본을 고친 뒤: `desktop` 폴더에서 `npx electron scripts/make-icons.cjs build/icon.svg build/tray.svg` → `icon-512.png`·`icon.png`(256)·`icon.ico`(16~256)·`tray.png`·`tray@2x.png` 다시 생성. 그다음 버전을 올려 `npm run dist` → 설치.
+- 설치 뒤에도 바탕화면·작업 표시줄에 옛 아이콘이 보이면 Windows 아이콘 캐시 문제다(`ie4uinit.exe -show`, 작업 표시줄 고정 아이콘은 고정을 풀었다 다시 하거나 로그아웃 후 반영).

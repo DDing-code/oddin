@@ -795,3 +795,8 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 .meter.has-tick{position:relative;overflow:visible}
 .u-tick{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;border-radius:1px;background:#f4f4f6;box-shadow:0 0 0 1px rgba(0,0,0,.6);pointer-events:none;transition:left .4s}
 .u-tick-key{display:inline-block;width:2px;height:10px;margin-right:5px;vertical-align:-1px;border-radius:1px;background:#f4f4f6}
+/* ODDIN 로고(2026-10-04 아이콘 시안 B '엮인 O'): 원 두 개 대신 mark.svg. 상호·첫 화면·말풍선 아바타·허브 전환 버튼 공통 */
+.mark{width:20px;height:20px;background:url(mark.svg) center/contain no-repeat}
+.mark i{display:none}
+.hero .mark{width:52px;height:52px;margin-bottom:16px}
+.avatar .mark{width:18px;height:18px}

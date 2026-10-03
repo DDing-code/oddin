@@ -33,10 +33,8 @@ button:disabled{cursor:default}
 
 .top{display:flex;align-items:center;justify-content:space-between;gap:10px;height:46px;padding:0 16px 0 18px;border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:14px;letter-spacing:-.01em}
-.mark{position:relative;width:26px;height:18px;flex:none}
-.mark i{position:absolute;top:0;width:18px;height:18px;border-radius:50%}
-.mark i:first-child{left:0;background:var(--claude)}
-.mark i:last-child{left:8px;background:var(--codex);opacity:.85;mix-blend-mode:screen}
+.mark{width:20px;height:20px;flex:none}
+.mark svg{display:block;width:100%;height:100%}
 .state-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:999px;border:1px solid rgba(239,107,103,.3);background:rgba(239,107,103,.1);color:#f6aaa7;font-size:11.5px;font-weight:600;white-space:nowrap}
 .dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--faint)}
 .dot.offline,.dot.err{background:var(--err)}
@@ -126,7 +124,7 @@ code{font:12.5px var(--mono);color:#f0c38e;background:var(--panel2);border:1px s
 <body>
 <main class="win" id="win">
   <header class="top">
-    <span class="brand"><span class="mark" aria-hidden="true"><i></i><i></i></span>ODDIN</span>
+    <span class="brand"><span class="mark" aria-hidden="true"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="74 74 364 364"><defs><linearGradient id="orange" gradientUnits="userSpaceOnUse" x1="0" y1="96" x2="0" y2="416"><stop offset="0" stop-color="#eb8b64"/><stop offset="1" stop-color="#d06e4d"/></linearGradient><linearGradient id="blue" gradientUnits="userSpaceOnUse" x1="0" y1="96" x2="0" y2="416"><stop offset="0" stop-color="#74aaff"/><stop offset="1" stop-color="#4f8fe8"/></linearGradient><mask id="under-orange" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><path d="M305.93 118.80 A146 146 0 0 1 383.69 185.22" fill="none" stroke="#000" stroke-width="96" stroke-linecap="round"/></mask><mask id="under-blue" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><path d="M218.21 397.03 A146 146 0 0 1 128.31 326.78" fill="none" stroke="#000" stroke-width="96" stroke-linecap="round"/></mask></defs><g fill="none" stroke-linecap="round" stroke-width="72"><path d="M326.78 128.31 A146 146 0 1 1 128.31 326.78" stroke="url(#blue)" mask="url(#under-orange)"/><path d="M383.69 185.22 A146 146 0 1 0 185.22 383.69" stroke="url(#orange)" mask="url(#under-blue)"/><path d="M281.35 399.78 A146 146 0 0 1 128.31 326.78" stroke="url(#blue)"/></g></svg></span>ODDIN</span>
     <span class="state-pill"><i class="dot err" aria-hidden="true"></i>연결 안 됨</span>
   </header>
 

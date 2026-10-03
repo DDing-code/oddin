@@ -26,13 +26,10 @@ body{display:flex;align-items:center;justify-content:center;font:14.5px/1.6 var(
 .stage{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;animation:fade .35s ease-out both}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
-/* 로고: 허브 사이드바의 .mark(18px 원 두 개, 8px 겹침)를 같은 비율로 키운 것 */
-.logo{position:relative;width:64px;height:44px;margin-bottom:20px}
-.logo i{position:absolute;top:0;width:44px;height:44px;border-radius:50%}
-.logo .c1{left:0;background:var(--claude);animation:meet-l 2.4s ease-in-out infinite}
-.logo .c2{left:20px;background:var(--codex);opacity:.85;mix-blend-mode:screen;animation:meet-r 2.4s ease-in-out infinite}
-@keyframes meet-l{0%,100%{transform:translateX(-5px)}50%{transform:translateX(0)}}
-@keyframes meet-r{0%,100%{transform:translateX(5px)}50%{transform:translateX(0)}}
+/* 로고: 허브와 같은 ODDIN 고리(public/mark.svg 인라인). 천천히 숨 쉬듯 커졌다 작아진다 */
+.logo{width:56px;height:56px;margin-bottom:20px;animation:breathe 2.4s ease-in-out infinite}
+.logo svg{display:block;width:100%;height:100%}
+@keyframes breathe{0%,100%{transform:scale(.92);opacity:.82}50%{transform:scale(1);opacity:1}}
 
 .word{font-weight:650;font-size:17px;letter-spacing:-.01em;margin-bottom:28px}
 .status{margin:0;font-size:14px;color:var(--fg2);min-height:22px;transition:opacity .18s ease;word-break:keep-all}
@@ -47,7 +44,7 @@ body{display:flex;align-items:center;justify-content:center;font:14.5px/1.6 var(
 
 @media (prefers-reduced-motion:reduce){
   .stage{animation:none}
-  .logo .c1,.logo .c2{animation:none;transform:none}
+  .logo{animation:none;transform:none}
   .bar i{animation:none;left:0;width:100%;opacity:.45}
   .status,.sub{transition:none}
 }
@@ -56,7 +53,7 @@ body{display:flex;align-items:center;justify-content:center;font:14.5px/1.6 var(
 <body>
 <div class="glow" aria-hidden="true"></div>
 <main class="stage" aria-busy="true">
-  <div class="logo" aria-hidden="true"><i class="c1"></i><i class="c2"></i></div>
+  <div class="logo" aria-hidden="true"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="74 74 364 364"><defs><linearGradient id="orange" gradientUnits="userSpaceOnUse" x1="0" y1="96" x2="0" y2="416"><stop offset="0" stop-color="#eb8b64"/><stop offset="1" stop-color="#d06e4d"/></linearGradient><linearGradient id="blue" gradientUnits="userSpaceOnUse" x1="0" y1="96" x2="0" y2="416"><stop offset="0" stop-color="#74aaff"/><stop offset="1" stop-color="#4f8fe8"/></linearGradient><mask id="under-orange" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><path d="M305.93 118.80 A146 146 0 0 1 383.69 185.22" fill="none" stroke="#000" stroke-width="96" stroke-linecap="round"/></mask><mask id="under-blue" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><path d="M218.21 397.03 A146 146 0 0 1 128.31 326.78" fill="none" stroke="#000" stroke-width="96" stroke-linecap="round"/></mask></defs><g fill="none" stroke-linecap="round" stroke-width="72"><path d="M326.78 128.31 A146 146 0 1 1 128.31 326.78" stroke="url(#blue)" mask="url(#under-orange)"/><path d="M383.69 185.22 A146 146 0 1 0 185.22 383.69" stroke="url(#orange)" mask="url(#under-blue)"/><path d="M281.35 399.78 A146 146 0 0 1 128.31 326.78" stroke="url(#blue)"/></g></svg></div>
   <div class="word">ODDIN</div>
   <p class="status" id="status" role="status" aria-live="polite">허브에 연결하는 중…</p>
   <p class="sub" id="sub" aria-hidden="true"></p>
