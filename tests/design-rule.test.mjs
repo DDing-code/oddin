@@ -84,3 +84,32 @@ test('자동 분배: 디자인과 구현이 섞인 작업은 기획(Claude)과 �
   assert.equal(self.enforceDesignRule(noClaude, ['codex']).length, 0);
   assert.match(noClaude.notes.join(), /쓸 수 없어/);
 });
+
+test('최상위 모델(Fable·Astra)은 기획·디자인 기획·중요한 글쓰기에만', async () => {
+  const { premiumAllowed, capPremium } = await import('../lib/router.mjs');
+  assert.equal(premiumAllowed({}, { title: '서버 API 구현' }), false);
+  assert.equal(premiumAllowed({}, { title: '신규 기능 기획서 작성' }), true);
+  assert.equal(premiumAllowed({}, { title: 'README 문서 작성' }), true);
+  assert.equal(premiumAllowed({}, { title: '디자인 기획: 로고', designPlan: true }), true);
+  assert.equal(premiumAllowed({}, { title: '로고 구현 (디자인 기획 명세 따름)', designImpl: true }), false);
+  assert.equal(premiumAllowed({}, { title: '정리', agent: 'writer' }), true);
+  assert.equal(premiumAllowed({ premiumModels: { enabled: false } }, { title: '버그 수정' }), true);
+  assert.equal(capPremium({}, 'claude', 'fable', false).model, 'opus');
+  assert.equal(capPremium({}, 'codex', 'gpt-6-astra', false).model, 'gpt-6.1-sol');
+  assert.equal(capPremium({}, 'claude', 'fable', true).model, 'fable');
+  assert.equal(capPremium({}, 'claude', 'opus', false).model, 'opus');
+  // applyChoice: 자동 선택이 최상위를 골라도 일반 작업이면 기본 모델, 직접 고른 모델은 그대로
+  const self = Object.assign(Object.create(JobManager.prototype), { config: { defaults: {} }, _cat: { agents: [] } });
+  const job = { goal: 'x', input: 'x', settings: { claude: { model: 'auto', effort: 'auto' }, codex: { model: 'auto', effort: 'auto' } }, tasks: [] };
+  const t1 = { id: 't1', title: '큰 리팩터링 구현', assignee: 'codex', prompt: 'x', agent: null };
+  const t2 = { id: 't2', title: '출시 전략 기획', assignee: 'claude', prompt: 'x', agent: null };
+  job.tasks.push(t1, t2);
+  self.applyChoice(job, t1, { model: 'gpt-6-astra', effort: 'xhigh' }, null);
+  assert.equal(t1.model, 'gpt-6.1-sol'); assert.match(t1.reason, /최상위 모델/);
+  self.applyChoice(job, t2, { model: 'fable', effort: 'high' }, null);
+  assert.equal(t2.model, 'fable');
+  const fixedJob = { goal: 'x', settings: { claude: { model: 'fable', effort: 'high' } }, tasks: [] };
+  const t3 = { id: 't1', title: '버그 수정', assignee: 'claude', prompt: 'x', agent: null }; fixedJob.tasks.push(t3);
+  self.applyChoice(fixedJob, t3, { model: 'fable', effort: 'high' }, null);
+  assert.equal(t3.settings.model, 'fable');
+});
