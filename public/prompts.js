@@ -344,7 +344,7 @@
   const diffCounts = (list) => { let add = 0, del = 0; for (const d of list || []) { if (d.unified) for (const l of String(d.unified).split('\n')) { if (l[0] === '+' && !l.startsWith('+++')) add++; else if (l[0] === '-' && !l.startsWith('---')) del++; } else { if (d.after != null) add += String(d.after).split('\n').length; if (d.before != null) del += String(d.before).split('\n').length; } } return { add, del }; };
   function toolSummary(e, kind) {
     const i = e.input || {};
-    if (kind === 'cmd') return `<span class="tc-s mono">${esc(firstLine(i.command || e.detail))}</span>`;
+    if (kind === 'cmd') { const shown = window.ProcessModel?.displayCommand ? window.ProcessModel.displayCommand(i.command || e.detail || '') : (i.command || e.detail); return `<span class="tc-s mono" title="${esc(String(i.command || e.detail || '').slice(0, 500))}">${esc(firstLine(shown))}</span>`; }
     if (kind === 'edit') { const paths = e.diff?.map((d) => d.path) || i.paths || [i.file_path].filter(Boolean); const p = paths[0] || e.detail || ''; const c = diffCounts(e.diff); return `<span class="tc-s"><b>${esc(baseName(p))}</b>${paths.length > 1 ? ` <small>외 ${paths.length - 1}개</small>` : ''} <small>${esc(dirName(p))}</small></span>${c.add || c.del ? `<span class="tc-cnt">${c.add ? `<span class="add">+${c.add}</span>` : ''}${c.del ? `<span class="del">−${c.del}</span>` : ''}</span>` : ''}`; }
     if (kind === 'read') { const p = i.file_path || i.path || e.detail || ''; return `<span class="tc-s"><b>${esc(baseName(p))}</b> <small>${esc(dirName(p))}</small></span>`; }
     if (kind === 'search') return `<span class="tc-s"><code class="mono">${esc(i.pattern || i.query || e.detail || '')}</code>${i.path ? ` <small>${esc(i.path)}</small>` : ''}</span>`;

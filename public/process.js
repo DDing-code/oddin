@@ -45,7 +45,7 @@
   }
   function toolHtml(e, s) {
     if (!e.callId) return `<li class="proc-i k-legacy"><span class="pi-ic">${icon('bolt')}</span><div class="pi-c">${H.lineHtml(e, s.assignee)}</div>${stamp(e, s)}</li>`;
-    const id = e.callId, kind = e.toolKind, open = P.toolOpen.has(id), command = String(e.input?.command || e.detail || '');
+    const id = e.callId, kind = e.toolKind, open = P.toolOpen.has(id), command = M.displayCommand(e.input?.command || e.detail || '');
     const hasBody = !!(e.output || e.diff?.length || e.status === 'error' || kind === 'cmd' && command.includes('\n') || kind !== 'cmd' && kind !== 'edit' && kind !== 'read' && e.input && Object.keys(e.input).length);
     const extra = kind === 'cmd' && command.split('\n').length > 1 ? `<small class="proc-lines">+${command.split('\n').length - 1}줄</small>` : '';
     let body = '';
@@ -159,15 +159,23 @@
     if (card) { const b = card.querySelector('[data-proc-tool]'); P.toolOpen.delete(b.dataset.procTool); redraw(jobId, b.id); }
     else { setOpen(`proc:${jobId}`, false); redraw(jobId, `proch-${jobId}`); }
   });
+  // 긴 설명·오류만 "더 보기"를 보인다. 다시 그려진 항목도 매번 잰다 (처음 붙을 때 한 번만 재면 새 항목이 빠진다)
+  function measureClamps() {
+    document.querySelectorAll('.proc-body [data-pi-line-limit]:not([data-pi-measured])').forEach((content) => {
+      if (!content.offsetParent) return; // 접혀 있어 높이를 잴 수 없으면 다음 기회에
+      content.dataset.piMeasured = '1';
+      const cs = getComputedStyle(content);
+      const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 20;
+      const open = content.dataset.piOpen === 'true', long = content.scrollHeight > lh * Number(content.dataset.piLineLimit) + 2;
+      content.classList.toggle('pi-clamp', long && !open);
+      if (content.nextElementSibling) content.nextElementSibling.hidden = !long && !open;
+    });
+  }
   function mount() {
+    measureClamps();
     document.querySelectorAll('.proc-body').forEach((body) => {
       if (mounted.has(body)) return; mounted.add(body);
       const jobId = body.closest('.proc').dataset.proc, saved = scrolls.get(jobId);
-      body.querySelectorAll('[data-pi-line-limit]').forEach((content) => {
-        const open = content.dataset.piOpen === 'true', long = content.scrollHeight > parseFloat(getComputedStyle(content).lineHeight) * Number(content.dataset.piLineLimit);
-        content.classList.toggle('pi-clamp', long && !open);
-        content.nextElementSibling.hidden = !long && !open;
-      });
       body.scrollTop = saved?.bottom === false ? saved.top : body.scrollHeight;
       if (focus.has(jobId)) { document.getElementById(focus.get(jobId))?.focus({ preventScroll: true }); focus.delete(jobId); }
       body.addEventListener('scroll', () => {

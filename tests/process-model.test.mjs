@@ -290,3 +290,23 @@ test('오른쪽 작업 클릭과 추론 과정에서 보기 버튼은 블록·�
     assert.equal(r.state.open.has('proc:j'), true); assert.equal(r.state.open.has('proc:j/t1'), true);
   }
 });
+
+test('명령 표시: 셸 껍데기를 벗기고 실제 명령만', () => {
+  const ps = String.raw`"C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe" -Command "node -e \"console.log(1)\""`;
+  assert.equal(M.displayCommand(ps), 'node -e "console.log(1)"');
+  assert.equal(M.displayCommand("/usr/bin/bash -lc 'npm test'"), 'npm test');
+  assert.equal(M.displayCommand('cmd /c dir'), 'dir');
+  assert.equal(M.displayCommand('git status'), 'git status');
+  const preview = M.preview([{ kind: 'tool', toolKind: 'cmd', input: { command: ps }, at: '2026-10-03T00:00:00Z' }]);
+  assert.equal(preview.text, 'node -e "console.log(1)"');
+});
+
+test('최종 결과와 같은 마지막 설명은 추론 과정에서 뺀다', () => {
+  const job = { id: 'j', mode: 'codex', status: 'done', tasks: [{ id: 't1', title: 'x', assignee: 'codex', status: 'done', resultText: '최종 요약입니다' }] };
+  const logs = { 'j/t1': [
+    { kind: 'message', text: '확인하겠습니다', at: '2026-10-03T00:00:01Z' },
+    { kind: 'message', text: '최종 요약입니다', at: '2026-10-03T00:00:09Z' },
+  ] };
+  const m = M.build(job, logs, []);
+  assert.equal(JSON.stringify(Array.from(m.sections[0].items, (e) => e.text)), JSON.stringify(['확인하겠습니다']));
+});

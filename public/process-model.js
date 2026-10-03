@@ -21,6 +21,32 @@
     const s = Math.floor(value), mm = Math.floor(s / 60), ss = String(s % 60).padStart(2, '0');
     return s < 3600 ? `+${mm}:${ss}` : `+${Math.floor(s / 3600)}:${String(mm % 60).padStart(2, '0')}:${ss}`;
   }
+  /**
+   * 화면에 보여 줄 명령: Codex 가 감싼 셸 껍데기(powershell -Command "…", bash -lc '…', cmd /c …)를 벗겨 실제 명령만 남긴다.
+   * 벗길 수 없으면 원문 그대로.
+   */
+  function displayCommand(raw) {
+    let s = String(raw || '').trim();
+    const unquote = (x) => {
+      x = x.trim();
+      if (x.length >= 2 && ((x[0] === '"' && x.endsWith('"')) || (x[0] === "'" && x.endsWith("'")))) {
+        const q = x[0]; x = x.slice(1, -1);
+        if (q === '"') x = x.replace(/\\"/g, '"').replace(/`"/g, '"');
+        else x = x.replace(/'\\''/g, "'");
+      }
+      return x;
+    };
+    for (let i = 0; i < 2; i++) {
+      const ps = s.match(/^"?(?:[^"]*[\\/])?(?:powershell|pwsh)(?:\.exe)?"?(?:\s+-(?:NoProfile|NoLogo|NonInteractive|ExecutionPolicy\s+\S+))*\s+-(?:Command|c)\s+([\s\S]+)$/i);
+      if (ps) { s = unquote(ps[1]); continue; }
+      const sh = s.match(/^"?(?:[^"\s]*[\\/])?(?:bash|sh|zsh)(?:\.exe)?"?\s+-l?c\s+([\s\S]+)$/i);
+      if (sh) { s = unquote(sh[1]); continue; }
+      const cmd = s.match(/^"?(?:[^"\s]*[\\/])?cmd(?:\.exe)?"?\s+\/[cs]\s+([\s\S]+)$/i);
+      if (cmd) { s = unquote(cmd[1]); continue; }
+      break;
+    }
+    return s;
+  }
   function thinkingTitle(text) {
     return String(text || '').split('\n').map((s) => s.trim().replace(/^(?:#+\s*|\*\*)+/, '').replace(/(?:\*\*|\s|\.|#)+$/, '').trim()).filter(Boolean).join('\n');
   }
@@ -111,7 +137,7 @@
     // 시작 위치가 아닌 마지막 갱신 시각으로 현재 단계를 고른다
     const e = list.reduce((last, item) => !last || (time(item.endedAt || item.at) ?? 0) >= (time(last.endedAt || last.at) ?? 0) ? item : last, null);
     if (!e) return null;
-    const text = e.kind === 'tool' ? e.toolKind === 'cmd' ? String(e.input?.command || e.detail || e.name || '').split('\n')[0] : `${e.name || ''} ${e.detail || ''}` : e.kind === 'prompt' ? e.prompt.title || '사용자 응답 기다리는 중' : e.text;
+    const text = e.kind === 'tool' ? e.toolKind === 'cmd' ? displayCommand(e.input?.command || e.detail || e.name || '').split('\n')[0] : `${e.name || ''} ${e.detail || ''}` : e.kind === 'prompt' ? e.prompt.title || '사용자 응답 기다리는 중' : e.text;
     return { text: String(text || '').replace(/\s+/g, ' ').slice(0, 160), mono: e.toolKind === 'cmd', at: e.endedAt || e.at };
   }
   function build(job, logs, prompts = []) {
@@ -119,7 +145,10 @@
     const requests = prompts.filter((p) => p.jobId === job.id);
     const sections = [];
     const append = (task, taskId, own) => {
-      const key = `${job.id}/${taskId}`, items = itemsFor(get(key), own, key);
+      const key = `${job.id}/${taskId}`;
+      // 최종 결과와 같은 마지막 설명은 보고와 겹치므로 추론 과정에서 뺀다
+      const result = String(task.resultText || '').trim();
+      const items = itemsFor(get(key), own, key).filter((e) => !(result && e.kind === 'message' && String(e.text || '').trim() === result));
       sections.push({ ...task, key, taskId, items, rows: groupItems(items, key), counts: counts(items), preview: preview(items), waiting: !!task.waiting || own.some((p) => p.status === 'pending'), startedAt: task.startedAt || items[0]?.at || job.startedAt || job.createdAt });
     };
     if (job.mode === 'auto' && (get(`${job.id}/plan`).length || requests.some((p) => !p.taskId || p.taskId === 'plan'))) append({ title: '계획', assignee: job.planner, status: job.status === 'planning' ? 'running' : job.tasks?.length ? 'done' : job.status, startedAt: job.startedAt, finishedAt: job.tasks?.[0]?.startedAt || job.finishedAt }, 'plan', requests.filter((p) => !p.taskId || p.taskId === 'plan'));
@@ -130,5 +159,5 @@
     const waiting = !!pending || !!job.waiting || sections.some((s) => s.waiting);
     return { sections, counts: total, pending, waiting, preview: latest, multi: sections.length > 1, visible: sections.some((s) => s.items.length) || active(job.status), status: waiting ? 'waiting' : active(job.status) ? 'running' : ['cancelled', 'interrupted'].includes(job.status) ? 'stopped' : job.status };
   }
-  return { active, terminal, toolKind, seconds, elapsed, offset, thinkingTitle, exitCode, missingResult, mergeCalls, itemsFor, counts, groupItems, preview, build };
+  return { active, terminal, toolKind, seconds, elapsed, offset, displayCommand, thinkingTitle, exitCode, missingResult, mergeCalls, itemsFor, counts, groupItems, preview, build };
 });
