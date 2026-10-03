@@ -1,1 +1,238 @@
-/* 세션 보관·갈래·내보내기, 세션 격리(worktree)·git 패널 */
+/* 세션 보관·갈래·내보내기, 세션 격리(worktree)·git 패널 (sessions-ui.js)
+   색·간격·모서리는 style.css 를 따른다: 카드 12px · 버튼 8px · 칩 pill · 대화상자 16px (hubs.css 의 .hub-dlg 와 같은 크기) */
+
+/* ---------------- 상단 바 칩: 격리해서 시작 · 브랜치 ---------------- */
+.chip.su-iso{gap:5px;color:var(--muted)}
+.chip.su-iso .ico{color:var(--faint)}
+.chip.su-iso:hover .ico{color:var(--fg2)}
+.chip.su-iso.on{color:var(--fg);border-color:rgba(164,139,242,.55);background:rgba(164,139,242,.12)}
+.chip.su-iso.on .ico{color:var(--run)}
+.chip.su-branch{gap:6px;color:var(--fg2);border-color:rgba(164,139,242,.4);background:rgba(164,139,242,.08);max-width:min(240px,22vw)}
+.chip.su-branch .ico{color:var(--run)}
+.chip.su-branch:hover{color:var(--fg);border-color:rgba(164,139,242,.7)}
+.chip.su-branch .su-bn{font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;unicode-bidi:plaintext}
+.chip.su-branch.off{color:var(--muted);border-color:var(--line2);background:none}
+.chip.su-branch.off .ico{color:var(--faint)}
+.su-mini{font-style:normal;font-size:10.5px;font-weight:600;padding:0 6px;border-radius:999px;background:rgba(227,181,92,.14);color:var(--warn);flex:none}
+.top-actions{align-items:center;min-width:0}
+@media (max-width:860px){.chip.su-branch{max-width:34vw}.chip.su-iso span{display:none}.chip.su-iso{padding:3px 8px}}
+
+/* ---------------- 대화 위 안내 줄 (갈래 · 보관 · 정리됨) ---------------- */
+#suBar{padding:0 20px 8px;flex:none;display:flex;flex-direction:column;gap:6px}
+.su-row{display:flex;align-items:center;gap:10px;max-width:860px;width:100%;margin:0 auto;padding:8px 8px 8px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:13px;color:var(--fg2);min-width:0}
+.su-row > .ico{width:16px;height:16px;flex:none;color:var(--muted)}
+.su-row.fork > .ico{color:var(--codex)}
+.su-row.arch{border-color:rgba(227,181,92,.3);background:rgba(227,181,92,.06)}
+.su-row.arch > .ico{color:var(--warn)}
+.su-row.clean{border-color:rgba(239,107,103,.3);background:rgba(239,107,103,.05)}
+.su-row.clean > .ico{color:var(--err)}
+.su-row-t{flex:1;min-width:0;line-height:1.5;overflow-wrap:anywhere}
+.su-row-t b{color:var(--fg);font-weight:600}
+.su-row-t em{font-style:normal;color:var(--fg);font-weight:550}
+.su-row-t small{color:var(--faint)}
+.su-row .btn{flex:none;padding:4px 10px;font-size:12.5px}
+@media (max-width:860px){#suBar{padding:0 12px 8px}.su-row{flex-wrap:wrap;padding:8px 10px}.su-row .btn{margin-left:26px}}
+
+/* 보관·정리된 세션: 입력창 잠금 */
+#composer.su-locked{opacity:.55;pointer-events:none}
+#composer.su-locked #in{cursor:not-allowed}
+
+/* 안내 쪽지 */
+.su-note-w{display:inline-flex;align-items:flex-start;gap:7px;color:#f0cf8f}
+.su-note-w .ico{width:14px;height:14px;margin-top:3px;flex:none}
+
+/* ---------------- 작업 카드: 여기서 갈래 만들기 ---------------- */
+.su-jx{display:flex;justify-content:flex-end;margin-top:10px}
+.su-link{display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:3px 8px;border-radius:7px;color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer}
+.su-link .ico{width:13px;height:13px}
+.su-link:hover,.su-link:focus-visible{color:var(--fg);background:var(--hover)}
+.turn .su-jx .su-link{opacity:.72}
+.turn:hover .su-jx .su-link,.turn .su-jx .su-link:focus-visible{opacity:1}
+
+/* ---------------- 사이드바: 보관함 ---------------- */
+.su-arch{margin:10px 0 2px;padding-top:8px;border-top:1px solid var(--line)}
+.su-arch-h{display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 8px;border:0;border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:13px;text-align:left}
+.su-arch-h:hover,.su-arch-h:focus-visible{background:rgba(255,255,255,.05);color:var(--fg)}
+.su-arch-h > .ico{width:15px;height:15px;color:var(--faint);flex:none}
+.su-arch-h:hover > .ico{color:var(--fg2)}
+.su-arch-h .lbl{flex:1;min-width:0}
+.su-cnt{font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.su-arch-h .chev{width:13px;height:13px;color:var(--faint);transition:transform .15s}
+.su-arch.open .su-arch-h .chev{transform:rotate(90deg)}
+.su-arch-b{padding:2px 0 0 10px;margin-left:12px;border-left:1px solid rgba(255,255,255,.06)}
+.su-arow .s-ic{color:var(--faint)}
+.su-arow .t{color:var(--fg2)}
+.su-arow.on .t{color:var(--fg)}
+.su-arch-note{font-size:11.5px;color:var(--faint);padding:6px 8px 2px;line-height:1.5}
+
+/* ---------------- 대화상자 (.hub-dlg 와 같은 외형) ---------------- */
+.su-dlg{width:min(460px,calc(100vw - 32px));max-height:calc(100vh - 48px);margin:auto;padding:0;border:1px solid var(--line2);border-radius:16px;background:var(--panel);color:var(--fg);box-shadow:0 30px 80px rgba(0,0,0,.5);overflow:hidden;display:flex;flex-direction:column}
+.su-dlg:not([open]){display:none}
+.su-dlg::backdrop{background:rgba(0,0,0,.55)}
+.su-dlg.wide{width:min(600px,calc(100vw - 32px))}
+.su-dlg form{display:contents}
+.su-dlg-h{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 20px;border-bottom:1px solid var(--line);flex:none}
+.su-dlg-h b{font-weight:650;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.su-dlg-b{padding:16px 20px 6px;overflow:auto;min-height:0;scrollbar-width:thin;font-size:13.5px}
+.su-dlg-f{display:flex;align-items:center;gap:8px;padding:12px 20px 16px;flex:none;min-width:0}
+.su-dlg .btn.primary,.su-card .btn.primary{background:var(--fg);color:#141416;border-color:transparent;font-weight:600}
+.su-dlg .btn.primary:hover:not(:disabled),.su-card .btn.primary:hover:not(:disabled){background:#fff;color:#141416}
+.su-dlg .btn.primary.danger{background:var(--err);color:#fff}
+.su-dlg .btn.primary.danger:hover:not(:disabled){background:#f58a86;color:#141416}
+.su-dlg .btn:disabled,.su-card .btn:disabled{opacity:.45;cursor:default}
+.su-dlg .btn:disabled:hover,.su-card .btn:disabled:hover{background:var(--panel);color:var(--fg2);border-color:var(--line2)}
+.su-dlg .btn.primary:disabled:hover{background:var(--fg);color:#141416}
+.su-dlg .btn .spinner,.su-card .btn.primary .spinner{width:13px;height:13px}
+.su-dlg .btn.primary .spinner{border-color:rgba(20,20,22,.25);border-top-color:#141416}
+.su-ferr{display:flex;align-items:flex-start;gap:6px;min-width:0;font-size:12.5px;line-height:1.5;color:var(--err)}
+.su-ferr:empty{display:none}
+.su-ferr .ico{width:14px;height:14px;margin-top:2px;flex:none}
+.su-p{margin:0 0 14px;line-height:1.6;color:var(--fg2)}
+.su-p b{color:var(--fg);font-weight:600}
+.su-p .mono,.su-tips .mono,.su-check .mono,.su-row-t .mono{font-size:12px;color:#f0c38e;background:var(--panel2);padding:1px 6px;border-radius:5px;word-break:break-all}
+.su-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.su-field > label{font-size:12.5px;font-weight:550;color:var(--fg2)}
+.su-field .fine{margin:0}
+.su-in{width:100%;height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:var(--bg);color:var(--fg);font:inherit;outline:none;min-width:0}
+.su-in::placeholder,.su-ta::placeholder{color:var(--faint)}
+.su-in:focus,.su-ta:focus{border-color:var(--codex)}
+.su-ta{display:block;width:100%;padding:8px 12px;border-radius:10px;border:1px solid var(--line2);background:var(--bg);color:var(--fg);font:inherit;line-height:1.5;outline:none;resize:vertical;min-height:40px;max-height:200px}
+.su-ta:disabled,.su-in:disabled{opacity:.5;cursor:not-allowed}
+.su-check{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);cursor:pointer;margin-bottom:6px}
+.su-check:hover{border-color:var(--line2)}
+.su-check input{margin:3px 0 0;accent-color:var(--codex);flex:none}
+.su-check > span{display:flex;flex-direction:column;gap:2px;min-width:0;line-height:1.5}
+.su-check > span > b{font-weight:600;color:var(--fg)}
+.su-check > span > small{font-size:12px;color:var(--muted)}
+.su-tips{list-style:none;margin:2px 0 8px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.55;color:var(--fg2)}
+.su-tips li{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.su-tips .ico{width:14px;height:14px;margin-top:3px;flex:none;color:var(--muted)}
+.su-tips b{font-weight:600;color:var(--fg)}
+.su-empty-inline{font-size:12.5px;color:var(--muted);padding:10px 12px;border-radius:10px;border:1px dashed var(--line2)}
+
+/* 갈래: 작업 고르기 */
+.su-jobs{display:flex;flex-direction:column;gap:2px;max-height:min(40vh,300px);overflow:auto;padding:4px;border-radius:10px;border:1px solid var(--line);background:var(--bg);scrollbar-width:thin}
+.su-job{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;min-width:0}
+.su-job:hover{background:rgba(255,255,255,.04)}
+.su-job.on{background:rgba(255,255,255,.07)}
+.su-job input{position:absolute;opacity:0;pointer-events:none}
+.su-job .n{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--panel2);color:var(--muted);flex:none}
+.su-job.on .n{background:var(--fg);color:#141416}
+.su-job-t{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+.su-job-t b{font-weight:500;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.su-job-t small{font-size:11.5px;color:var(--faint)}
+.su-job .st{width:16px;height:16px}
+.su-job:has(input:focus-visible){outline:2px solid var(--codex);outline-offset:-2px}
+
+/* 갈래: 어디서 시작 (분할 선택) */
+.su-seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.su-seg label{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-radius:10px;border:1px solid var(--line2);background:var(--bg);cursor:pointer;min-width:0}
+.su-seg label:hover{border-color:var(--faint)}
+.su-seg label.on{border-color:var(--run);background:rgba(164,139,242,.08)}
+.su-seg label.off{opacity:.5;cursor:not-allowed}
+.su-seg label.off:hover{border-color:var(--line2)}
+.su-seg input{position:absolute;opacity:0;pointer-events:none}
+.su-seg label:has(input:focus-visible){outline:2px solid var(--codex);outline-offset:2px}
+.su-seg span{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--fg);font-size:13px}
+.su-seg span .ico{width:14px;height:14px;color:var(--muted)}
+.su-seg label.on span .ico{color:var(--run)}
+.su-seg small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:860px){.su-seg{grid-template-columns:1fr}.su-dlg{width:calc(100vw - 24px);border-radius:14px}.su-dlg-b{padding:14px 16px 2px}.su-dlg-h{padding-left:16px}.su-dlg-f{padding:10px 16px 14px;flex-wrap:wrap}.su-ferr{flex-basis:100%}}
+
+/* ---------------- 오른쪽 패널: 탭이 늘어나도 잘리지 않게 (Git 탭 추가로 5개 이상) ---------------- */
+.insp-head{container-type:inline-size}
+.insp-head .tabs{overflow-x:auto;scrollbar-width:none}
+.insp-head .tabs::-webkit-scrollbar{display:none}
+@container (max-width:440px){.insp-head .tab{padding:0 8px;gap:5px}.insp-head .tab .ico{display:none}}
+
+/* ---------------- 오른쪽 패널: Git 탭 ---------------- */
+.su-card{padding:12px}
+.su-card .card-h{margin-bottom:8px}
+.su-card .card-h b{font-weight:600;color:var(--fg);font-size:13px}
+.su-badges{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
+.su-badges .badge .ico{width:12px;height:12px}
+.icon-btn.xs{width:26px;height:26px;border-radius:7px}
+.icon-btn.xs .ico{width:14px;height:14px}
+.icon-btn[aria-busy="true"] .ico{animation:spin .8s linear infinite}
+a.icon-btn{text-decoration:none}
+.su-branch-name{font-size:13px;font-weight:600;color:var(--fg);padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--line);line-height:1.45;word-break:break-all;overflow-wrap:anywhere;margin-bottom:8px}
+.su-kvs{display:flex;flex-direction:column}
+.su-kv{display:grid;grid-template-columns:76px 1fr;gap:8px;align-items:center;padding:5px 0;font-size:12.5px;border-bottom:1px solid rgba(255,255,255,.04);min-width:0}
+.su-kv:last-child{border-bottom:0}
+.su-kv > span:first-child{color:var(--faint)}
+.su-kv > b{font-weight:550;color:var(--fg2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.su-kv .link{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
+.su-kv .link:hover{color:var(--codex)}
+.su-ab{display:inline-flex;gap:8px;font-variant-numeric:tabular-nums}
+.su-ab i{font-style:normal;font-weight:600}
+.su-ab .up{color:var(--ok)}
+.su-ab .down{color:var(--warn)}
+.su-a{display:inline-flex;align-items:center;gap:5px;color:var(--fg2);text-decoration:none;font-size:12.5px;min-width:0;max-width:100%}
+.su-a > span,.su-a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.su-a .ico{width:13px;height:13px;color:var(--muted);flex:none}
+.su-a:hover{color:var(--codex)}
+.su-a:hover .ico{color:var(--codex)}
+.su-ell{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.su-ell-inline{display:inline-block;max-width:100%;vertical-align:bottom;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.su-path{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%}
+.su-path .mono{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
+.su-path-line{margin-top:6px;font-size:12px;max-width:100%}
+.su-hint{display:flex;align-items:flex-start;gap:8px;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.035);font-size:12.5px;line-height:1.5;color:var(--muted)}
+.su-hint .ico{width:14px;height:14px;margin-top:2px;flex:none}
+.su-hint .spin-xs{margin-top:3px}
+.su-ok{display:flex;align-items:flex-start;gap:8px;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(95,191,127,.08);border:1px solid rgba(95,191,127,.25);font-size:12.5px;line-height:1.5;color:var(--fg2)}
+.su-ok > .ico{width:14px;height:14px;margin-top:2px;flex:none;color:var(--ok)}
+.su-ok .mono{font-size:11.5px}
+.su-ok.col > div{display:flex;flex-direction:column;gap:6px;min-width:0;align-items:flex-start}
+.su-ok small{font-size:12px}
+.su-pr-link{padding:5px 11px;font-size:12.5px;text-decoration:none;background:var(--fg);color:#141416;border-color:transparent;font-weight:600}
+.su-pr-link:hover{background:#fff;color:#141416}
+.su-err{display:flex;align-items:flex-start;gap:8px;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(239,107,103,.08);border:1px solid rgba(239,107,103,.3);font-size:12.5px;line-height:1.5;color:#f3a29f}
+.su-err > .ico{width:14px;height:14px;margin-top:2px;flex:none;color:var(--err)}
+.su-err > div{min-width:0;flex:1}
+.su-err b{font-weight:600;color:#f6aaa7}
+.su-err .fine{display:block;margin:4px 0 0;color:var(--muted)}
+.su-flist-sm{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--fg2)}
+.su-flist-sm li{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.su-flist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.su-flist li{display:flex;align-items:center;gap:8px;padding:5px 4px;border-radius:7px;min-width:0}
+.su-flist li:hover{background:rgba(255,255,255,.03)}
+.su-flist .fk{width:52px;text-align:center;flex:none}
+.su-flist .fk.k-ok{color:var(--ok);background:rgba(95,191,127,.12)}
+.su-flist .fk.k-err{color:var(--err);background:rgba(239,107,103,.12)}
+.su-flist .fk.k-warn{color:var(--warn);background:rgba(227,181,92,.12)}
+.su-fn{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.su-fn b{font-weight:550;color:var(--fg);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+.su-fn small{font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;unicode-bidi:plaintext}
+.su-card > .su-link{margin-top:4px}
+.su-note-card{display:flex;gap:10px;align-items:flex-start}
+.su-note-card > .ico{width:16px;height:16px;color:var(--codex);flex:none;margin-top:2px}
+.su-note-card > div{min-width:0;flex:1}
+.su-note-card .su-p{margin-bottom:10px;font-size:12.5px}
+.su-acts{display:flex;align-items:center;gap:8px;margin-top:8px;min-width:0}
+.su-acts.wrap{flex-wrap:wrap}
+.su-acts .btn{font-size:12.5px;padding:5px 11px}
+.su-acts .btn .spinner{width:13px;height:13px}
+.su-acts .fine-inline{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.su-card .su-ta{font-size:13px;min-height:44px}
+.su-card .fine{margin:8px 0 0}
+.su-card .ibtns{margin-top:4px}
+.su-ci{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px}
+.su-ci-st{display:inline-flex;align-items:center;gap:6px;font-weight:600;padding:3px 10px 3px 8px;border-radius:999px;background:rgba(255,255,255,.06)}
+.su-ci-st .ico{width:14px;height:14px}
+.su-ci-st.c-ok{background:rgba(95,191,127,.13)}
+.su-ci-st.c-err{background:rgba(239,107,103,.13)}
+.su-ci-st.c-warn{background:rgba(227,181,92,.13)}
+.su-card .c-run{color:#c9bbff}
+.su-ci-st.c-run{background:rgba(164,139,242,.14)}
+.su-checks{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.su-checks li{display:flex;align-items:center;gap:8px;padding:4px 4px;font-size:12.5px;color:var(--fg2);min-width:0}
+.su-checks li > span:first-child{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.su-checks li > span:first-child .ico{width:14px;height:14px}
+.su-checks .su-ell{flex:1}
+.su-skel{display:flex;flex-direction:column;gap:10px}
+.su-skel i{display:block;height:92px;border-radius:12px;background:linear-gradient(90deg,var(--panel2) 0%,var(--hover) 50%,var(--panel2) 100%);background-size:200% 100%;animation:rmshimmer 1.4s ease-in-out infinite}
+.su-skel i:nth-child(2){height:120px}
+.su-skel i:last-child{height:140px}
+.insp-empty .btn{margin-top:6px}
+@media (prefers-reduced-motion:reduce){.su-skel i{animation:none}.su-arch-h .chev{transition:none}.icon-btn[aria-busy="true"] .ico{animation:none}}
