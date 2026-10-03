@@ -9,6 +9,12 @@
   },
   "planner": "auto",
   "taskTimeoutMinutes": 90,
+  "checkpoints": {
+    "enabled": true,
+    "maxFileMB": 20,
+    "maxFiles": 20000,
+    "exclude": []
+  },
   "tools": {
     "claude": {
       "enabled": true,
