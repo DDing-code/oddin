@@ -45,6 +45,7 @@
     }
   },
   "defaults": {
+    "permission": "auto",
     "claude": {
       "model": "auto",
       "effort": "auto"
@@ -53,6 +54,9 @@
       "model": "auto",
       "effort": "auto"
     }
+  },
+  "prompts": {
+    "autoAnswerMinutes": 20
   },
   "autoFloor": {
     "claude": {
