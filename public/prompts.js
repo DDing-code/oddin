@@ -264,10 +264,6 @@
       : `${icon(cls === 'ok' ? 'check' : cls === 'err' ? 'x' : cls === 'run' ? 'pencil' : 'minus')}<span title="${esc(answerText(p))}">${esc(answerText(p))}</span>${p.answeredAt ? `<small class="c-muted"> · ${hm(p.answeredAt)}${p.viewer?.remote ? ' · 원격' : ''}</small>` : ''}`;
     return `<div class="pr-row s-${esc(p.status)} k-${esc(p.kind)} ${a.action ? `a-${esc(a.action)}` : ''}">${icon(p.kind === 'question' ? 'help' : p.kind === 'plan' ? 'clipboard' : 'shieldq')}<span class="prov ${esc(p.tool)}">${TOOL_KO[p.tool] || p.tool}</span><span class="pr-rt"><b>${esc(kindOfPrompt(p))}</b>${rowSummary(p)}</span><span class="pr-rs ${cls}">${st}</span>${pend ? `<button type="button" class="btn" data-pr-focus="${esc(p.id)}">${icon('bell')}답하기</button>` : ''}</div>`;
   }
-  (window.hubJobExtras = window.hubJobExtras || []).push((j) => {
-    const list = [...P.map.values()].filter((p) => p.jobId === j.id).sort(byCreated);
-    return list.length ? `<div class="prs" aria-label="승인·질문 기록">${list.map(rowHtml).join('')}</div>` : '';
-  });
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-pr-focus]'); if (!b) return;
     const card = dock.querySelector(`.pr-card[data-pid="${CSS.escape(b.dataset.prFocus)}"]`);
@@ -398,6 +394,7 @@
     return `<div class="${cls}"><span class="k">${esc(mark)}</span><span>${esc(text)}</span></div>`;
   }
   const baseLogHtml = window.logHtml;
+  window.hubPrompts = { P, toolCard, lineHtml, diffHtml, cutText, TOOL_KIND, rowSummary, answerText, kindOfPrompt, toolSummary, diffCounts };
   window.logHtml = function (key, tool) {
     const raw = (S.logs.get(key) || []).filter((e) => !['result', 'raw'].includes(e.kind));
     if (!raw.some((e) => e.kind === 'tool' && e.callId)) return baseLogHtml(key, tool); // 구조화 기록이 없는 예전 로그는 그대로

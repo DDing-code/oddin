@@ -1,0 +1,80 @@
+/* 추론 과정: 기존 색·글꼴·도구 본문을 사용한다 */
+.proc{--proc-rail:var(--line2);--proc-x:12px;--proc-ic:14px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);margin-top:10px;overflow:hidden;min-width:0}
+.proc-head{display:flex;align-items:center;gap:8px;padding-right:14px;min-width:0}
+.proc-h{display:flex;align-items:center;gap:10px;flex:1;min-width:0;min-height:38px;padding:0 0 0 14px;font:13px var(--font);color:var(--fg2);background:none;border:0;text-align:left}
+.proc-h b{color:var(--fg);font-weight:600;white-space:nowrap}
+.proc-h>.st{width:18px;flex:none}
+.proc .chev{display:inline-flex;flex:none;width:14px;height:14px;color:var(--faint);transition:transform .15s;margin-left:auto}
+.proc .chev.turned{transform:rotate(90deg)}
+.proc .btn.sm{padding:3px 9px;font-size:12px;white-space:nowrap;flex:none}
+.proc .icon-btn.sm{width:26px;height:26px;flex:none}
+.proc-sum{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;font-size:12.5px}
+.proc-now{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.proc-now em{font-style:normal;color:var(--fg2)}
+.proc-now code{font:12px var(--mono);color:#f0c38e}
+.proc-now .prov{margin:0 4px}
+.proc-body{max-height:min(60vh,560px);overflow:auto;scrollbar-width:thin;border-top:1px solid var(--line);position:relative;overflow-anchor:none}
+.proc-sec-h{display:flex;align-items:center;gap:8px;width:100%;min-height:34px;padding:0 14px;background:rgba(255,255,255,.02);border:0;border-top:1px solid var(--line);text-align:left;color:var(--fg2);font:12.5px var(--font);min-width:0}
+.proc-sec:first-child>.proc-sec-h{border-top:0}
+.proc-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proc-tl{list-style:none;margin:0;padding:4px 0;position:relative}
+.proc-tl::before{content:"";position:absolute;left:calc(var(--proc-x) + 9px);top:14px;bottom:14px;width:1px;background:var(--proc-rail)}
+.proc-i,.proc .tc-h,.pi-h{display:grid;grid-template-columns:20px minmax(0,1fr) auto;column-gap:8px;align-items:start;padding:5px 14px 5px var(--proc-x);min-height:28px;font:13px/1.5 var(--font);min-width:0}
+.pi-ic,.proc .tc-h>.ico{width:var(--proc-ic);height:var(--proc-ic);margin:3px;background:var(--panel);color:var(--muted);position:relative;z-index:1}
+.pi-ic>.ico{width:14px;height:14px;display:block}
+.pi-c{min-width:0;overflow-wrap:anywhere}
+.pi-m{font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:2px}
+.k-think .pi-c{font-size:12.5px;color:var(--muted);white-space:pre-line;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.k-msg .pi-c{color:var(--fg2)}
+.proc .pi-c .md{font-size:13px;line-height:1.5}
+.proc .pi-c .md>:first-child{margin-top:0}.proc .pi-c .md>:last-child{margin-bottom:0}
+.pi-clamp{display:-webkit-box;-webkit-line-clamp:var(--pi-lines,6);-webkit-box-orient:vertical;overflow:hidden}
+.k-err .pi-ic,.k-err .pi-c{color:var(--err)}
+.k-intercept .pi-ic{color:var(--run)}
+.k-intercept .pi-c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg2)}
+.k-waiting,.k-waiting .pi-ic{color:var(--warn)}
+.k-end{color:var(--muted);font-size:12.5px}.k-end.s-done{color:var(--ok)}.k-end.s-failed{color:var(--err)}
+.pi-dot{width:6px;height:6px;margin:6px 7px;background:currentColor;border-radius:50%;position:relative;z-index:1}
+.proc .tc{border:0;background:none;margin:0;border-radius:0;overflow:visible}
+.proc .tc-h{grid-template-columns:20px minmax(0,1fr) auto auto auto;align-items:center;width:100%;position:relative}
+.proc .tc-h:disabled{opacity:1}
+.proc .tc-h>.ico{grid-column:1;grid-row:1}
+.proc .tc-s{grid-column:2;grid-row:1;font-size:12.5px}
+.proc .tc-s.mono,.proc .tc-s code{font:12px var(--mono)}
+.proc .tc-cnt{grid-column:3;grid-row:1}
+.proc .tc-m{grid-column:4;grid-row:1;justify-self:end;font-variant-numeric:tabular-nums}
+.proc .tc-h>.chev{grid-column:5;grid-row:1}
+.proc .tc-b{padding:0 14px 6px 40px;font-size:12px;gap:6px}
+.proc .tc.s-error .tc-h::before,.proc .tc.s-running .tc-h::before{content:"";position:absolute;left:calc(var(--proc-x) + 6px);top:11px;width:6px;height:6px;border-radius:50%;background:var(--err);z-index:2;pointer-events:none}
+.proc .tc.s-running .tc-h::before{background:var(--run)}
+.proc-lines{color:var(--faint);font-size:11.5px;white-space:nowrap;grid-column:3;grid-row:1}
+.proc .tc-out.empty{color:var(--faint)}
+.proc-group{min-width:0;position:relative}
+.pi-h{border:0;background:none;color:var(--fg2);text-align:left;width:100%;align-items:center}
+.pi-h .tc-m{grid-column:3;display:flex;gap:6px;align-items:center}
+.proc-group>.pi-h:hover,.proc-sec-h:hover,.proc-h:hover{background:var(--hover)}
+.proc-group>.pi-h .pi-c{font-size:12.5px}
+.proc-warnings{padding:4px 14px 6px 40px;color:var(--warn)}
+.proc-warnings pre{margin:0 0 4px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono)}
+.k-prompt .pi-ic{color:inherit}.k-prompt .pi-c{font-size:12.5px}.k-prompt .pi-c code{font:12px var(--mono);color:#f0c38e}
+.k-prompt.c-run{color:var(--run)}
+.k-prompt.s-pending .pi-ic{color:var(--warn);animation:proc-pulse 2s ease-in-out infinite}
+.k-prompt.s-pending .pi-ic::before{content:"";position:absolute;left:4px;top:4px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.pi-pmeta{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--faint);white-space:nowrap}
+.pi-prompt-h{display:flex;align-items:center;gap:6px;border:0;background:none;color:inherit;width:100%;text-align:left;font:inherit;min-width:0}
+.pi-prompt-h span:not(.chev){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.proc-empty{padding:10px 14px 10px 40px;color:var(--faint);font-size:12.5px}
+.proc-previous{margin:4px 0 4px 34px}
+.proc-new{position:sticky;bottom:8px;margin:0 auto;display:block;background:var(--panel2);border:1px solid var(--line2);border-radius:999px;z-index:3}
+.proc [hidden]{display:none!important}
+.proc button:focus-visible,.proc pre:focus-visible{outline:2px solid var(--codex);outline-offset:-2px}
+.proc .lg{padding:0;display:block;font:12.5px/1.5 var(--font)}.proc .lg .k{display:none}
+@keyframes proc-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media(max-width:860px){
+  .proc{--proc-x:10px}.proc-head{padding-right:10px;align-items:flex-start}.proc-head>.btn,.proc-head>.icon-btn{margin-top:6px}
+  .proc-h{flex-wrap:wrap;padding:6px 0 6px 10px;gap:6px}.proc-h>.chev{margin-left:auto}.proc-sum .opt{display:none}
+  .proc-now{flex-basis:100%;order:10}.proc-i,.proc .tc-h,.pi-h{padding-left:10px;padding-right:10px;min-height:36px}.pi-m{display:none}
+  .proc .tc-b,.proc-warnings{padding-left:30px;padding-right:10px}.proc-sec-h{flex-wrap:wrap;padding:6px 10px;min-height:36px}
+  .proc .tc-m{font-size:10.5px}.proc .tc-h{column-gap:5px}.pi-pmeta{gap:4px}.proc-sum{font-size:11.5px}
+}
+@media(prefers-reduced-motion:reduce){.proc .chev{transition:none}.k-prompt.s-pending .pi-ic{animation:none}}
