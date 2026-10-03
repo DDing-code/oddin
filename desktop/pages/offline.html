@@ -91,7 +91,6 @@ code{font:12.5px var(--mono);color:#f0c38e;background:var(--panel2);border:1px s
 .hub .nm{display:flex;flex-direction:column;min-width:0;line-height:1.35}
 .hub .nm b{font-weight:550;font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hub .nm small{font:12px var(--mono);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hub .nm small.plain{font-family:var(--font)}
 .hub .st{font-size:12px;color:var(--muted);white-space:nowrap}
 .hub .st.online{color:var(--ok)}
 .hub svg{width:14px;height:14px;color:var(--faint)}
@@ -172,6 +171,8 @@ code{font:12.5px var(--mono);color:#f0c38e;background:var(--panel2);border:1px s
 </main>
 
 <script>
+  // 이름이 이미 '허브'로 끝나면 '허브'를 또 붙이지 않는다 (예: 시험 허브)
+  function hubLabel(name) { name = String(name || '').trim(); return /허브$/.test(name) ? name : name + ' 허브'; }
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
@@ -230,7 +231,7 @@ code{font:12.5px var(--mono);color:#f0c38e;background:var(--panel2);border:1px s
   /* ---------- 고정 내용 ---------- */
   function renderStatic() {
     el.title.textContent = info.local ? '이 PC의 허브에 연결하지 못했어요'
-      : (info.hub ? info.hub + ' 허브에 연결하지 못했어요' : '허브에 연결하지 못했어요');
+      : (info.hub ? hubLabel(info.hub) + '에 연결하지 못했어요' : '허브에 연결하지 못했어요');
     el.msg.textContent = info.error || '허브가 응답하지 않아요';
     if (info.url) {
       el.kind.textContent = info.local ? '이 PC' : '원격';
@@ -299,12 +300,12 @@ code{font:12.5px var(--mono);color:#f0c38e;background:var(--panel2);border:1px s
       var dot = node('i', 'dot ' + st); dot.setAttribute('aria-hidden', 'true');
       var nm = node('span', 'nm');
       nm.appendChild(node('b', '', h.name || h.url || '허브'));
-      nm.appendChild(node('small', h.local ? 'plain' : '', h.local ? '이 PC' : (h.url || '')));
+      nm.appendChild(node('small', '', h.url || ''));
       var s = node('span', 'st ' + st, STATUS[st]);
       b.appendChild(dot); b.appendChild(nm); b.appendChild(s); b.appendChild(svg('M9 6l6 6-6 6'));
-      b.setAttribute('aria-label', (h.name || '허브') + ' 허브로 열기 · ' + STATUS[st]);
+      b.setAttribute('aria-label', hubLabel(h.name || '허브') + '로 열기 · ' + STATUS[st]);
       if (st === 'offline' && h.error) b.title = h.error;
-      b.addEventListener('click', function () { go(h.id, (h.name || '다른') + ' 허브로 전환하는 중…'); });
+      b.addEventListener('click', function () { go(h.id, hubLabel(h.name || '다른') + '로 전환하는 중…'); });
       li.appendChild(b);
       return li;
     });
@@ -333,7 +334,7 @@ code{font:12.5px var(--mono);color:#f0c38e;background:var(--panel2);border:1px s
     start.then(function () {
       var id = current || (info.local ? localId() : '');
       if (!id) { showAlert('허브 목록을 가져오지 못했어요. 프로그램을 다시 열어 주세요.'); return; }
-      go(id, info.local ? '이 PC 허브에 다시 연결하는 중…' : (info.hub || '원격') + ' 허브에 다시 연결하는 중…');
+      go(id, info.local ? '이 PC 허브에 다시 연결하는 중…' : hubLabel(info.hub || '원격') + '에 다시 연결하는 중…');
     });
   });
   el.btnLocal.addEventListener('click', function () { go(localId(), '이 PC 허브로 전환하는 중…'); });

@@ -187,12 +187,46 @@ function main() {
     wc.on('did-fail-load', (_e, code, desc, url, isMain) => {
       if (!isMain || code === -3 || url.startsWith('file:')) return;
       const hub = current();
+      // 연결 실패를 바로 상태에 반영해야 안내 화면이 "응답해요"라고 잘못 말하지 않는다
+      live.set(hub.id, { ...statusOf(hub.id), status: 'offline', error: `연결할 수 없어요 (${desc})`, checkedAt: Date.now() });
+      buildTray();
       showPage('offline', { hub: hub.name, url: hub.url, error: `연결할 수 없어요 (${desc})`, local: hub.local ? '1' : '' });
     });
     wc.on('did-create-window', (child) => { child.setMenuBarVisibility(false); child.webContents.on('will-navigate', (e, url) => { if (!H.isHubOrigin(state, url)) { e.preventDefault(); openExternal(url); } }); });
   }
   function openExternal(url) {
     try { const u = new URL(url); if (u.protocol === 'http:' || u.protocol === 'https:') shell.openExternal(u.href); } catch {}
+  }
+
+  /* ---------- 자동 업데이트 (이 PC 허브가 내려주는 설치 파일로) ---------- */
+  // 허브의 /desktop-updates/ 가 desktop/dist 의 latest.yml·설치 파일을 내려준다. 다른 PC는 Tailscale 주소의 허브에서 받는다.
+  let updater = null, update = null; // update: { version, state: 'downloading'|'ready', percent }
+  function setupUpdater() {
+    if (!app.isPackaged) return;
+    try { updater = require('electron-updater').autoUpdater; } catch { return; }
+    updater.autoDownload = true; updater.autoInstallOnAppQuit = true; updater.logger = null;
+    updater.on('update-available', (i) => { update = { version: i.version, state: 'downloading', percent: 0 }; buildTray(); });
+    updater.on('download-progress', (p) => { if (update) update.percent = Math.round(p.percent || 0); });
+    updater.on('update-downloaded', (i) => {
+      update = { version: i.version, state: 'ready' }; buildTray();
+      if (Notification.isSupported()) {
+        const n = new Notification({ title: `AI Hub ${i.version} 업데이트 준비됨`, body: '눌러서 다시 시작하면 적용돼요. 그냥 두면 다음에 끌 때 적용돼요.', icon: ICON });
+        n.on('click', () => installUpdate()); n.show();
+      }
+    });
+    updater.on('error', () => { if (update?.state === 'downloading') { update = null; buildTray(); } });
+  }
+  function installUpdate() { if (update?.state === 'ready') { quitting = true; updater.quitAndInstall(false, true); } }
+  async function checkUpdates(manual = false) {
+    const say = (title, body = '') => { if (manual && Notification.isSupported()) new Notification({ title, body, icon: ICON }).show(); };
+    if (!updater) return say('개발 실행에서는 업데이트를 확인하지 않아요');
+    const src = [local(), ...state.hubs.filter((h) => !h.local)].find((h) => statusOf(h.id).status === 'online');
+    if (!src) return say('업데이트를 확인할 허브에 연결할 수 없어요');
+    try {
+      updater.setFeedURL({ provider: 'generic', url: `${src.url}/desktop-updates/` });
+      const r = await updater.checkForUpdates();
+      if (!r?.isUpdateAvailable) say('최신 버전이에요', `지금 버전 ${app.getVersion()}`);
+    } catch (e) { say('업데이트 확인에 실패했어요', String(e?.message || e).slice(0, 160)); }
   }
 
   /* ---------- 트레이 ---------- */
@@ -212,6 +246,9 @@ function main() {
       { type: 'separator' },
       { label: 'Windows 시작 시 실행', type: 'checkbox', checked: !!login.openAtLogin, click: (item) => { app.setLoginItemSettings({ ...loginOpts(), openAtLogin: item.checked }); buildTray(); } },
       ...(root ? [{ label: '허브 폴더 열기', click: () => shell.openPath(root) }] : []),
+      update?.state === 'ready'
+        ? { label: `다시 시작해서 ${update.version} 적용`, click: installUpdate }
+        : { label: update?.state === 'downloading' ? `업데이트 받는 중… ${update.version}` : `업데이트 확인 (지금 ${app.getVersion()})`, enabled: !update, click: () => checkUpdates(true) },
       { type: 'separator' },
       { label: '종료', click: () => { quitting = true; app.quit(); } },
     ]));
@@ -306,12 +343,15 @@ function main() {
     const trayImg = nativeImage.createFromPath(TRAY_ICON);
     tray = new Tray(trayImg.isEmpty() ? nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }) : trayImg);
     tray.on('click', () => (win && win.isVisible() && win.isFocused() ? win.hide() : showWindow()));
-    if (app.isPackaged) { try { writeShortcut(startMenuLink()); } catch {} } // 프로그램 위치가 바뀌어도 알림 바로가기를 맞춘다
+    if (app.isPackaged && !fs.existsSync(startMenuLink())) { try { writeShortcut(startMenuLink()); } catch {} } // 알림에 필요한 시작 메뉴 바로가기가 없으면 만든다
+    setupUpdater();
     createWindow(); buildTray();
     showPage('loading');
     await openHub(current());
     refreshAll();
     setInterval(refreshAll, REFRESH_MS).unref?.();
+    setTimeout(() => checkUpdates(false), 15_000); // 켠 뒤 잠시 있다가, 그다음은 6시간마다
+    setInterval(() => checkUpdates(false), 6 * 3600_000).unref?.();
   });
 }
 

@@ -173,6 +173,16 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/board') return json(res, { board: readText(path.join(hubBoardDir(config.hubDir), 'BOARD.md'), '') });
     if (p.startsWith('/api/')) return fail(res, '없는 API', 404);
 
+    // ---- 데스크탑 프로그램 업데이트 (desktop/dist 의 업데이트 정보·설치 파일만) ----
+    if (p.startsWith('/desktop-updates/') && req.method === 'GET') {
+      const name = decodeURIComponent(p.slice('/desktop-updates/'.length));
+      if (!/^(latest\.yml|AI-Hub-Setup-\d+\.\d+\.\d+\.exe(\.blockmap)?)$/.test(name)) return send(res, 404, 'not found', 'text/plain');
+      const upd = path.join(ROOT, 'desktop', 'dist', name);
+      if (!fs.existsSync(upd)) return send(res, 404, 'not found', 'text/plain');
+      res.writeHead(200, { 'Content-Type': name.endsWith('.yml') ? 'text/yaml; charset=utf-8' : 'application/octet-stream', 'Content-Length': fs.statSync(upd).size, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      return fs.createReadStream(upd).pipe(res);
+    }
+
     // ---- 정적 파일 ----
     const file = path.join(ROOT, 'public', p === '/' ? 'index.html' : p.replace(/^\/+/, ''));
     if (!file.startsWith(path.join(ROOT, 'public'))) return send(res, 403, 'forbidden', 'text/plain');
