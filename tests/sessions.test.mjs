@@ -116,7 +116,7 @@ test('7713 격리 시험 서버: API·다운로드 헤더·SSE·보관함·갈�
   let output = ''; child.stdout.on('data', (c) => { output += c; }); child.stderr.on('data', (c) => { output += c; });
   t.after(async () => { if (child.exitCode === null) { const exited = new Promise((resolve) => child.once('exit', resolve)); child.kill(); await exited; } });
   const call = async (p, method = 'GET', body) => { const r = await fetch(`http://127.0.0.1:7713${p}`, { method, ...(body !== undefined ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10_000) }); return { r, body: await r.json() }; };
-  for (let n = 0; !output.includes('AI Hub  http://127.0.0.1:7713'); n++) { if (child.exitCode !== null || n > 100) assert.fail(output || '시험 서버 시작 실패'); await delay(30); }
+  for (let n = 0; !output.includes('ODDIN  http://127.0.0.1:7713'); n++) { if (child.exitCode !== null || n > 100) assert.fail(output || '시험 서버 시작 실패'); await delay(30); }
   const created = await call('/api/sessions', 'POST', { cwd: root, title: 'API 격리', isolate: true }); assert.equal(created.r.status, 201); const id = created.body.id; assert.equal(created.body.git.isolated, true);
   const sse = await new Promise((resolve, reject) => {
     const stream = http.get('http://127.0.0.1:7713/api/events', (res) => {

@@ -1,4 +1,6 @@
-# ai-hub — Claude Code + Codex 공동 작업 허브
+# ai-hub (ODDIN) — Claude Code + Codex 공동 작업 허브
+
+화면·프로그램에 보이는 이름은 **ODDIN**(오딘, 2026-10-03 변경)이다. 폴더·패키지·내부 식별자(`ai-hub`, `local.aihub.desktop`, 작업자 지시문의 `[AI Hub …]` 표식)는 그대로 둔다(자동 업데이트·알림·시험 호환).
 
 로컬 대시보드(`http://127.0.0.1:7700`)에서 명령 하나를 넣으면 플래너가 작업을 쪼개 Claude Code(`claude -p`)와 Codex(`codex exec`)에 나눠 실행하고 보고서를 만든다. 의존성 없음, Node 22.
 

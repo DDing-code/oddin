@@ -1,4 +1,6 @@
-# AI Hub — Claude Code + Codex 로컬 공동 작업 대시보드
+# ODDIN (오딘) — Claude Code + Codex 로컬 공동 작업 허브
+
+> **O**rchestrated **D**ual-**D**riven **I**ntelligence **N**etwork. 북유럽 신화의 오딘은 두 까마귀 후긴(생각)과 무닌(기억)을 세상에 보내 소식을 모읍니다. ODDIN은 Claude Code와 Codex 두 AI를 보내 일을 나눠 맡기고, 둘이 함께 쓰는 공유 메모리에 기억을 남깁니다. (예전 이름: AI Hub · 폴더 이름 `ai-hub`는 그대로)
 
 명령 하나를 넣으면 **플래너가 일을 쪼개 Claude Code와 Codex에 나눠 주고**, 둘이 병렬로 실행한 뒤 **보고서**를 만듭니다. 두 도구는 이미 `~/.ai-shared`로 지침·메모리·스킬을 공유하므로, 허브는 그 위에서 "지휘"만 합니다.
 
@@ -19,14 +21,14 @@ start-hub.cmd
 - CLI 상태 확인: `npm run check` · 테스트: `npm test`
 
 ## 데스크탑 프로그램 (2026-10-03)
-허브 화면을 독립 창으로 쓰는 프로그램입니다. 시작 메뉴·바탕화면의 **AI Hub** 아이콘으로 켭니다. 자세한 내용: [docs/desktop.md](docs/desktop.md)
+허브 화면을 독립 창으로 쓰는 프로그램입니다. 시작 메뉴·바탕화면의 **ODDIN** 아이콘으로 켭니다. 자세한 내용: [docs/desktop.md](docs/desktop.md)
 
 - 허브 서버가 꺼져 있으면 프로그램이 숨김 실행으로 켭니다. 프로그램을 꺼도 서버는 계속 돕니다.
 - 창을 닫으면 트레이로 숨습니다. 완전히 끄려면 트레이 아이콘 메뉴의 **종료**를 누릅니다.
 - 작업이 끝나면 Windows 알림이 뜨고, 누르면 그 세션으로 이동합니다.
 - 탐색기에서 파일·폴더를 끌어다 놓으면 실제 경로가 입력창에 들어갑니다. 이미지는 지금처럼 첨부됩니다.
 - **원격 세션**: 사이드바 맨 위 허브 이름을 눌러 다른 PC의 허브(Tailscale 주소)를 추가하면, 그 허브의 세션이 사이드바 "원격 세션"에 나오고 눌러서 바로 이어서 작업할 수 있습니다. 상대 PC 허브에서 원격 접속이 켜져 있어야 합니다(아래 "다른 컴퓨터에서 열기").
-- 다시 빌드: `npm run desktop:build` (결과 `desktop\dist\win-unpacked\AI Hub.exe`, 바로가기도 다시 만듦) · 개발 실행: `npm run desktop`
+- 다시 빌드: `npm run desktop:build` (결과 `desktop\dist\win-unpacked\ODDIN.exe`, 바로가기도 다시 만듦) · 개발 실행: `npm run desktop`
 - 다른 PC용 설치 파일: `npm --prefix desktop run installer` → `desktop\dist\AI-Hub-Setup-<버전>.exe`
 
 ## 다른 컴퓨터에서 열기

@@ -2,7 +2,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
-const exe = path.join(__dirname, '..', 'dist', 'win-unpacked', 'AI Hub.exe');
+const exe = path.join(__dirname, '..', 'dist', 'win-unpacked', 'ODDIN.exe');
 const args = ['--install-shortcuts'];
 let cmd = exe;
 if (!fs.existsSync(exe)) { cmd = require('electron'); args.unshift(path.join(__dirname, '..')); }

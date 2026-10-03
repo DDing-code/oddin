@@ -92,7 +92,7 @@ function projectsList() {
   for (const [p, slug] of Object.entries(sync.memoryAliases || {})) out.push({ path: path.resolve(p), slug, memories: 0 });
   for (const p of sync.extraPaths || []) out.push({ path: path.resolve(p), slug: null, memories: 0 });
   for (const s of jobs.listSessions()) out.push({ path: s.cwd, slug: null, memories: 0 });
-  const fixed = [{ path: config.defaultCwd, label: '허브 작업 공간 (기본)' }, { path: ROOT, label: 'AI Hub 자체' }];
+  const fixed = [{ path: config.defaultCwd, label: '허브 작업 공간 (기본)' }, { path: ROOT, label: 'ODDIN 자체 (허브 코드)' }];
   const seen = new Set(); const res = [];
   for (const p of [...fixed, ...out.sort((a, b) => b.memories - a.memories)]) {
     const k = p.path.toLowerCase(); if (seen.has(k) || k === 'c:\\users\\d2jk') continue; seen.add(k);
@@ -188,7 +188,7 @@ const server = http.createServer(async (req, res) => {
     // ---- 데스크탑 프로그램 업데이트 (desktop/dist 의 업데이트 정보·설치 파일만) ----
     if (p.startsWith('/desktop-updates/') && req.method === 'GET') {
       const name = decodeURIComponent(p.slice('/desktop-updates/'.length));
-      if (!/^(latest\.yml|AI-Hub-Setup-\d+\.\d+\.\d+\.exe(\.blockmap)?)$/.test(name)) return send(res, 404, 'not found', 'text/plain');
+      if (!/^(latest\.yml|(AI-Hub|ODDIN)-Setup-\d+\.\d+\.\d+\.exe(\.blockmap)?)$/.test(name)) return send(res, 404, 'not found', 'text/plain');
       const upd = path.join(ROOT, 'desktop', 'dist', name);
       if (!fs.existsSync(upd)) return send(res, 404, 'not found', 'text/plain');
       res.writeHead(200, { 'Content-Type': name.endsWith('.yml') ? 'text/yaml; charset=utf-8' : 'application/octet-stream', 'Content-Length': fs.statSync(upd).size, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -212,7 +212,7 @@ process.on('uncaughtException', (e) => {
 });
 
 server.listen(config.port, config.host || '127.0.0.1', () => {
-  console.log(`AI Hub  http://${config.host || '127.0.0.1'}:${config.port}  (허브: ${config.hubDir})`);
+  console.log(`ODDIN  http://${config.host || '127.0.0.1'}:${config.port}  (허브: ${config.hubDir})`);
   const settings = remote.readConfig();
   console.log(settings.enabled ? `원격 접속: ${settings.url} (허용 계정 ${settings.logins.length}개)` : '원격 접속: 꺼짐');
   if (!LOOPBACK.has(config.host || '127.0.0.1')) console.warn('허브는 127.0.0.1에만 바인딩해야 합니다. 비루프백 요청은 원격 게이트에서 차단합니다');

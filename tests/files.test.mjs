@@ -29,7 +29,7 @@ test('파일·터미널·미리보기 API: 7714 격리 서버', { timeout: 15000
     for (const id of terminals) await fetch(`${base}/api/terminals/${id}`, { method: 'DELETE' }).catch(() => {});
     child.kill(); await closed; fs.rmSync(dir, { recursive: true, force: true });
   });
-  for (let n = 0; !serverLog.includes('AI Hub  http://127.0.0.1:7714'); n++) { assert.ok(n < 100 && child.exitCode === null, serverLog || '시험 서버가 시작되지 않았어요'); await delay(50); }
+  for (let n = 0; !serverLog.includes('ODDIN  http://127.0.0.1:7714'); n++) { assert.ok(n < 100 && child.exitCode === null, serverLog || '시험 서버가 시작되지 않았어요'); await delay(50); }
   const file = (name) => `${base}/api/file?${new URLSearchParams({ path: path.join(cwd, name) })}`;
   const list = (suffix = '') => `${base}/api/files/list?${new URLSearchParams({ path: cwd })}${suffix}`;
   const post = (route, body) => fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

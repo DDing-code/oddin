@@ -787,7 +787,7 @@ function connect() {
 function finished(job) {
   const s = S.sessions.get(job.sessionId);
   if (job.sessionId !== S.current) toast(`${s?.title || '작업'} — ${ST_KO[job.status]}`, job.status === 'failed');
-  document.title = `${job.status === 'done' ? '✓' : '!'} ${s?.title || 'AI Hub'}`; setTimeout(() => (document.title = 'AI Hub'), 8000);
+  document.title = `${job.status === 'done' ? '✓' : '!'} ${s?.title || 'ODDIN'}`; setTimeout(() => (document.title = 'ODDIN'), 8000);
   setTimeout(() => api('/api/usage').then((u) => { S.usage = u; renderUsage(); }).catch(() => {}), 3000);
 }
 

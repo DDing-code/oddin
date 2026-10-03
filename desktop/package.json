@@ -1,8 +1,8 @@
 {
   "name": "ai-hub-desktop",
-  "productName": "AI Hub",
-  "version": "0.1.1",
-  "description": "AI Hub 데스크탑 프로그램 (허브 화면 + 트레이·알림·원격 세션)",
+  "productName": "ODDIN",
+  "version": "0.1.2",
+  "description": "ODDIN(오딘) 데스크탑 프로그램 — Claude·Codex 공동 작업 허브 (구 AI Hub)",
   "main": "main.cjs",
   "private": true,
   "author": "D2JK",
@@ -20,7 +20,7 @@
   },
   "build": {
     "appId": "local.aihub.desktop",
-    "productName": "AI Hub",
+    "productName": "ODDIN",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -45,8 +45,8 @@
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
-      "shortcutName": "AI Hub",
-      "artifactName": "AI-Hub-Setup-${version}.${ext}",
+      "shortcutName": "ODDIN",
+      "artifactName": "ODDIN-Setup-${version}.${ext}",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "runAfterFinish": false

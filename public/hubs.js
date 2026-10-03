@@ -113,7 +113,7 @@
       brand.prepend(btn);
     }
     const cur = curHub();
-    const name = cur ? cur.name : 'AI Hub';
+    const name = cur ? cur.name : 'ODDIN';
     const remote = cur ? !cur.local : HUB.api.isLocalHub === false;
     const st = HUB.busy === 'switch' ? 'checking' : cur ? (cur.status || 'checking') : 'checking';
     const stText = HUB.busy === 'switch' ? '전환 중' : cur ? stKo(st) : (HUB.hubsErr || '확인 중');

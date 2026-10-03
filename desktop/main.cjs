@@ -1,4 +1,4 @@
-// AI Hub 데스크탑 프로그램: 허브 화면을 창으로 감싸고 트레이·알림·허브 전환(원격 세션)을 더한다.
+// ODDIN(오딘, 구 AI Hub) 데스크탑 프로그램: 허브 화면을 창으로 감싸고 트레이·알림·허브 전환(원격 세션)을 더한다.
 // 허브 서버는 따로 돈다. 프로그램은 서버가 꺼져 있으면 숨김 실행만 하고, 끌 때 서버를 끄지 않는다.
 'use strict';
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, shell, nativeImage, net, session } = require('electron');
@@ -16,19 +16,20 @@ const TRAY_ICON = path.join(__dirname, 'build', 'tray.png');
 
 /* ---------- 바로가기 (시작 메뉴 바로가기에 앱 식별자를 넣어야 Windows 알림이 뜬다) ---------- */
 function writeShortcut(file) {
-  const opts = { target: process.execPath, cwd: path.dirname(process.execPath), description: 'AI Hub — Claude Code·Codex 공동 작업', icon: app.isPackaged ? process.execPath : path.join(__dirname, 'build', 'icon.ico'), iconIndex: 0, appUserModelId: APP_ID };
+  const opts = { target: process.execPath, cwd: path.dirname(process.execPath), description: 'ODDIN — Claude Code·Codex 공동 작업', icon: app.isPackaged ? process.execPath : path.join(__dirname, 'build', 'icon.ico'), iconIndex: 0, appUserModelId: APP_ID };
   if (!app.isPackaged) opts.args = `"${app.getAppPath()}"`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   return shell.writeShortcutLink(file, fs.existsSync(file) ? 'replace' : 'create', opts);
 }
-const startMenuLink = () => path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'AI Hub.lnk');
+const startMenuLink = () => path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'ODDIN.lnk');
 
 app.setAppUserModelId(APP_ID);
-if (process.env.AI_HUB_DESKTOP_DATA) app.setPath('userData', process.env.AI_HUB_DESKTOP_DATA); // 시험용 설정 폴더 분리
+// 설정 폴더: 이름이 ODDIN으로 바뀌어도 예전(AI Hub) 설정을 계속 쓴다. 시험 때는 AI_HUB_DESKTOP_DATA 로 분리
+app.setPath('userData', process.env.AI_HUB_DESKTOP_DATA || path.join(app.getPath('appData'), 'AI Hub'));
 if (process.argv.includes('--install-shortcuts')) {
   // 실행 중인 프로그램이 있어도 바로가기만 만들고 끝낸다
   app.whenReady().then(() => {
-    const ok = [writeShortcut(startMenuLink()), writeShortcut(path.join(app.getPath('desktop'), 'AI Hub.lnk'))].every(Boolean);
+    const ok = [writeShortcut(startMenuLink()), writeShortcut(path.join(app.getPath('desktop'), 'ODDIN.lnk'))].every(Boolean);
     console.log(ok ? '바로가기를 만들었어요 (시작 메뉴·바탕화면)' : '바로가기 일부를 만들지 못했어요');
     app.exit(ok ? 0 : 1);
   });
@@ -76,7 +77,7 @@ function main() {
   async function probe(hub) {
     try {
       const st = await getJson(`${hub.url}/api/status`, hub.local ? 2500 : 6000);
-      if (!H.looksLikeHub(st)) throw new Error('AI Hub 가 아닌 주소예요');
+      if (!H.looksLikeHub(st)) throw new Error('ODDIN 허브가 아닌 주소예요');
       return { status: 'online', error: null };
     } catch (e) { return { status: 'offline', error: e.message }; }
   }
@@ -157,7 +158,7 @@ function main() {
     const ws = H.readJson(files.win, {}) || {};
     win = new BrowserWindow({
       width: ws.width || 1360, height: ws.height || 880, x: ws.x, y: ws.y,
-      minWidth: 720, minHeight: 520, show: false, title: 'AI Hub', icon: ICON,
+      minWidth: 720, minHeight: 520, show: false, title: 'ODDIN', icon: ICON,
       backgroundColor: '#141416', autoHideMenuBar: false,
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false },
     });
@@ -172,7 +173,7 @@ function main() {
       e.preventDefault(); win.hide();
       if (!prefs.trayHintShown && Notification.isSupported()) {
         prefs.trayHintShown = true; savePrefs();
-        new Notification({ title: 'AI Hub 는 트레이에서 계속 실행 중이에요', body: '작업이 끝나면 알려 드려요. 완전히 끄려면 트레이 아이콘 메뉴에서 "종료"를 누르세요.', icon: ICON }).show();
+        new Notification({ title: 'ODDIN은 트레이에서 계속 실행 중이에요', body: '작업이 끝나면 알려 드려요. 완전히 끄려면 트레이 아이콘 메뉴에서 "종료"를 누르세요.', icon: ICON }).show();
       }
     });
     win.on('focus', () => { win.flashFrame(false); refreshAll(); });
@@ -210,7 +211,7 @@ function main() {
     updater.on('update-downloaded', (i) => {
       update = { version: i.version, state: 'ready' }; buildTray();
       if (Notification.isSupported()) {
-        const n = new Notification({ title: `AI Hub ${i.version} 업데이트 준비됨`, body: '눌러서 다시 시작하면 적용돼요. 그냥 두면 다음에 끌 때 적용돼요.', icon: ICON });
+        const n = new Notification({ title: `ODDIN ${i.version} 업데이트 준비됨`, body: '눌러서 다시 시작하면 적용돼요. 그냥 두면 다음에 끌 때 적용돼요.', icon: ICON });
         n.on('click', () => installUpdate()); n.show();
       }
     });
@@ -238,7 +239,7 @@ function main() {
     });
     const login = app.getLoginItemSettings(loginOpts());
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'AI Hub 열기', click: showWindow },
+      { label: 'ODDIN 열기', click: showWindow },
       { type: 'separator' },
       { label: '허브 전환', submenu: hubItems },
       { label: '원격 허브 추가…', click: () => command({ type: 'add-hub' }) },
@@ -252,7 +253,7 @@ function main() {
       { type: 'separator' },
       { label: '종료', click: () => { quitting = true; app.quit(); } },
     ]));
-    tray.setToolTip(busy ? `AI Hub · 작업 ${busy}개 실행 중` : `AI Hub · ${current().name}`);
+    tray.setToolTip(busy ? `ODDIN · 작업 ${busy}개 실행 중` : `ODDIN · ${current().name}`);
   }
   function loginOpts() {
     return app.isPackaged ? { path: process.execPath, args: ['--hidden'] } : { path: process.execPath, args: [app.getAppPath(), '--hidden'] };
@@ -314,7 +315,7 @@ function main() {
     if (win && win.isVisible() && win.isFocused()) return;
     const hubId = state.current;
     const sessionId = /^[\w-]{1,80}$/.test(String(n?.sessionId || '')) ? String(n.sessionId) : null;
-    const note = new Notification({ title: String(n?.title || 'AI Hub').slice(0, 120), body: String(n?.body || '').slice(0, 240), icon: ICON });
+    const note = new Notification({ title: String(n?.title || 'ODDIN').slice(0, 120), body: String(n?.body || '').slice(0, 240), icon: ICON });
     note.on('click', () => { showWindow(); if (sessionId) switchHub(hubId, sessionId).catch(() => {}); });
     note.show();
     if (win) win.flashFrame(true);
@@ -327,7 +328,7 @@ function main() {
   });
 
   /* ---------- 시작 ---------- */
-  // 두 번째 실행: 창 보이기. "AI Hub.exe --quit"이면 실행 중인 프로그램을 끈다(받아 둔 업데이트가 있으면 이때 설치)
+  // 두 번째 실행: 창 보이기. "ODDIN.exe --quit"이면 실행 중인 프로그램을 끈다(받아 둔 업데이트가 있으면 이때 설치)
   app.on('second-instance', (_e, argv) => { if (argv.includes('--quit')) { quitting = true; app.quit(); return; } showWindow(); });
   app.on('before-quit', () => { quitting = true; });
   app.on('window-all-closed', () => {}); // 트레이에 남는다
