@@ -39,7 +39,7 @@ function fixture() {
   const cli = path.resolve('tests/fixtures/memory-cli.mjs');
   const command = (tool) => `"${process.execPath}" "${cli}" --tool ${tool} --fixture "${configFile}"`;
   const config = { hubDir, defaultCwd: cwd, maxParallel: 2, planner: 'codex', fastPath: { enabled: false }, // 계획 단계를 시험하므로 작은 요청 바로 처리는 끔
-    tools: { claude: { command: command('claude') }, codex: { command: command('codex') } }, defaults: { claude: { model: 'opus', effort: 'high' }, codex: { model: 'gpt-6.1-sol', effort: 'high' } } };
+    tools: { claude: { command: command('claude'), transport: 'legacy' }, codex: { command: command('codex'), transport: 'legacy' } }, defaults: { claude: { model: 'opus', effort: 'high' }, codex: { model: 'gpt-6.1-sol', effort: 'high' } } };
   return { root, hubDir, cwd, mem, probe, configFile, captures, config };
 }
 function hook(f, mode, session = 'same') {

@@ -8,6 +8,7 @@ import { URL } from 'node:url';
 import { ROOT, readJson, readText } from './lib/util.mjs';
 import { JobManager, publicJob } from './lib/jobs.mjs';
 import { INTERCEPT_CAPABILITIES } from './lib/intercepts.mjs';
+import { PERMISSIONS, permissionSetting } from './lib/prompts.mjs';
 import { toolStatus, invalidateToolStatus } from './lib/tools.mjs';
 import { memoryOverview, memoryFiles, readMemoryFile, hubBoardDir } from './lib/memory.mjs';
 import { modelOptions } from './lib/options.mjs';
@@ -114,8 +115,11 @@ const server = http.createServer(async (req, res) => {
       clients.set(res, req); res.on('close', () => clients.delete(res)); return;
     }
     // ---- 상태·선택지·사용량 ----
-    if (p === '/api/status') return json(res, { capabilities: INTERCEPT_CAPABILITIES, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
-    if (p === '/api/options') return json(res, modelOptions(config));
+    if (p === '/api/prompts' && req.method === 'GET') return json(res, jobs.prompts.list({ status: url.searchParams.get('status') === 'all' ? 'all' : 'pending', jobId: url.searchParams.get('jobId') || undefined }));
+    const promptAnswer = p.match(/^\/api\/prompts\/([^/]+)\/answer$/);
+    if (promptAnswer && req.method === 'POST') return json(res, jobs.prompts.answer(promptAnswer[1], await readBody(req), req.hubViewer));
+    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, prompts: true, toolRecords: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
+    if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 } });
     if (p === '/api/usage') return json(res, await usageStatus(config, { force: url.searchParams.has('force') }));
     if (p === '/api/projects') return json(res, projectsList());
     if (p === '/api/catalog') { const c = catalog(config.hubDir); return json(res, { commands: c.commands.map(({ body, file, ...x }) => x), agents: c.agents.map(({ body, file, ...x }) => x), skills: c.skills.map(({ file, ...x }) => x) }); }
