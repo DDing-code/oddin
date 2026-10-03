@@ -1,0 +1,169 @@
+/* AI Hub — 데스크탑 프로그램 안에서만 보이는 허브 전환·원격 세션 화면 (hubs.js)
+   body.hub-desktop 이 붙은 뒤에만 쓰이는 규칙이다. 일반 브라우저에서는 어떤 요소도 만들어지지 않는다.
+   색·간격·줄 높이는 style.css 의 사이드바(.sess 32px, .ghead 30px, #pop, .modal-win)를 그대로 따른다. */
+
+/* ---------------- 사이드바 맨 위: 허브 전환 버튼 ---------------- */
+body.hub-desktop .side-top .brand{flex:1 1 auto;min-width:0;gap:0}
+body.hub-desktop .brand > .remote-badge{display:none}
+.hub-btn{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%;height:36px;margin-left:-8px;padding:0 6px 0 8px;border:0;border-radius:9px;background:none;color:var(--fg);font:inherit;font-weight:650;letter-spacing:-.01em;text-align:left;white-space:nowrap}
+.hub-btn:hover,.hub-btn.on{background:rgba(255,255,255,.05)}
+.hub-btn .mark{flex:none}
+.hub-st{position:absolute;right:-4px;bottom:-4px;width:11px;height:11px;border-radius:50%;border:2px solid var(--side);background:var(--faint);transition:background .2s,border-color .12s}
+.hub-btn:hover .hub-st,.hub-btn.on .hub-st{border-color:#262629}
+.hub-st.online{background:var(--ok)}
+.hub-st.offline{background:var(--err)}
+.hub-st.checking{background:var(--warn);animation:hubpulse 1.2s ease-in-out infinite}
+.hub-name{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:15px}
+.hub-tag{display:inline-flex;align-items:center;gap:4px;flex:none;padding:1px 7px 1px 5px;border-radius:999px;border:1px solid rgba(95,191,127,.35);background:rgba(95,191,127,.1);color:var(--ok);font:600 11px/1.4 var(--font);letter-spacing:0}
+.hub-tag .ico{width:11px;height:11px}
+.hub-btn > .ico{width:14px;height:14px;flex:none;color:var(--faint);transition:transform .15s}
+.hub-btn.on > .ico{transform:rotate(180deg)}
+@keyframes hubpulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* 상태 점 (팝오버·허브 머리줄·관리 창 공용) */
+.hub-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.hub-dot.online{background:var(--ok);box-shadow:0 0 0 3px rgba(95,191,127,.16)}
+.hub-dot.offline{background:var(--err)}
+.hub-dot.checking{background:var(--warn);animation:hubpulse 1.2s ease-in-out infinite}
+
+/* ---------------- 허브 팝오버 (#pop 과 같은 외형) ---------------- */
+.hub-pop{position:fixed;z-index:30;min-width:264px;max-width:340px;max-height:min(70vh,560px);overflow:auto;background:#222227;border:1px solid var(--line2);border-radius:12px;padding:6px;box-shadow:0 18px 50px rgba(0,0,0,.5);scrollbar-width:thin}
+.hub-pop .ph{padding:8px 10px 4px;font-size:11.5px;font-weight:600;color:var(--faint);letter-spacing:.04em}
+.hub-pop .psep{height:1px;background:var(--line);margin:5px 4px}
+.hub-pi{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;outline:none}
+.hub-pi:hover,.hub-pi:focus-visible{background:var(--hover)}
+.hub-pi .pic{width:16px;height:16px;flex:none;color:var(--muted);display:inline-flex;align-items:center;justify-content:center}
+.hub-pi .pic .ico{width:16px;height:16px}
+.hub-pi .l{flex:1;min-width:0}
+.hub-pi .l b{display:block;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hub-pi .l span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hub-pi.off .l b{color:var(--fg2)}
+.hub-pi.off .l span{color:var(--faint)}
+.hub-pi .ck{width:16px;height:16px;color:var(--ok);flex:none}
+.hub-pi .ck .ico{width:16px;height:16px}
+
+/* ---------------- 사이드바: 원격 세션 구역 (#tree 아래, .side-bottom 위) ---------------- */
+/* 높이: 위 메뉴·아래 사용량을 뺀 남은 공간의 절반 남짓까지만 쓰고, 나머지는 세션 목록(#tree)에 남긴다 */
+#hubRemote{display:flex;flex-direction:column;flex:0 1 auto;min-height:0;max-height:clamp(132px,calc((100% - 380px) * .55),400px);border-top:1px solid var(--line);padding:0 8px}
+#hubRemote.closed,#hubRemote.lite{max-height:none}
+#hubRemote.lite{border-top:0;padding:0 8px 6px}
+.hub-sec-h{display:flex;align-items:center;gap:2px;height:32px;padding:0 4px 0 10px;flex:none}
+.hub-sec-h .sec-t{flex:1;min-width:0;display:inline-flex;align-items:center;gap:4px;height:100%;cursor:pointer}
+.hub-sec-h .sec-t .chev{transform:none}
+.hub-sec-h:hover .sec-t .chev,.hub-sec-h .sec-t:focus-visible .chev{opacity:1}
+#hubRemote.closed .sec-t .chev{transform:rotate(-90deg);opacity:1}
+.hub-sec-h .sec-btn{padding:0;width:24px;height:24px;justify-content:center;border-radius:6px}
+.hub-sec-h .sec-btn .ico{width:13px;height:13px}
+.hub-sec-h .sec-btn[aria-busy="true"] .ico{animation:spin .8s linear infinite}
+.hub-sec-b{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding-bottom:6px;scrollbar-width:thin}
+.hub-cnt{font-size:11px;font-weight:500;color:var(--faint);margin-left:2px}
+
+/* 허브 머리줄 — .ghead(폴더 머리줄)와 같은 높이·간격 */
+.hub-ghead{padding-left:4px}
+.hub-gt{flex:1;min-width:0;display:flex;align-items:center;gap:6px;height:100%;padding:0 2px;border:0;border-radius:6px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.hub-gt .chev{width:13px;height:13px;color:var(--faint);transition:transform .15s;transform:rotate(90deg)}
+.hub-ghead.closed .hub-gt .chev{transform:none}
+.hub-gt .g-ic{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px}
+.hub-ghead.off .gname{color:var(--faint)}
+.hub-off{font-size:11px;color:var(--faint);white-space:nowrap;padding-right:2px}
+.hub-ghead:hover .hub-off,.hub-ghead:focus-within .hub-off{display:none}
+.hub-ghead:focus-within .gacts{display:flex}
+.hub-ghead:focus-within .gcount{display:none}
+
+/* 세션 줄 — .sess 와 같은 모양을 버튼으로 */
+.hub-sess{width:100%;border:0;background:none;font:inherit;color:var(--fg2);text-align:left}
+.hub-sess:hover .meta,.hub-sess:focus-visible .meta{display:inline}
+.hub-sess .s-ic .c-muted .ico{width:13px;height:13px}
+.hub-sess.busy .s-ic > *{display:none}
+.hub-sess.busy .s-ic::after{content:"";width:12px;height:12px;border-radius:50%;border:1.6px solid rgba(164,139,242,.28);border-top-color:var(--run);animation:spin .8s linear infinite}
+.hub-offrow{display:flex;align-items:center;gap:6px;min-height:30px;padding:0 4px 0 8px;font-size:12.5px;color:var(--faint)}
+.hub-offrow > .ico{width:13px;height:13px;flex:none}
+.hub-offrow > span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hub-offrow .rm-link{flex:none;padding:2px 6px;font-size:12px}
+.hub-more{display:block;width:100%;height:28px;padding:0 8px;border:0;border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:12px;text-align:left}
+.hub-more:hover{background:rgba(255,255,255,.05);color:var(--fg)}
+.hub-note{display:flex;align-items:flex-start;gap:7px;margin:4px 2px 6px;padding:7px 10px;border-radius:9px;font-size:12px;line-height:1.5;color:#f6aaa7;background:rgba(239,107,103,.08)}
+.hub-note > .ico{width:13px;height:13px;margin-top:3px;flex:none}
+.hub-note > span{flex:1;min-width:0}
+.hub-note .rm-link{flex:none;padding:0 5px;color:inherit;font-size:12px}
+#hubRemote .rm-skel{margin:6px 2px}
+#hubRemote .rm-skel i{height:30px;border-radius:8px}
+#hubRemote .rm-skel i:last-child{height:30px;width:72%}
+
+/* 원격 허브가 없을 때: 작은 안내 버튼 하나 */
+.hub-empty{display:flex;align-items:center;gap:9px;width:100%;height:34px;padding:0 10px;border:1px dashed var(--line2);border-radius:9px;background:none;color:var(--muted);font:inherit;font-size:12.5px;text-align:left;white-space:nowrap}
+.hub-empty .ico{width:15px;height:15px;color:var(--faint);flex:none}
+.hub-empty span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.hub-empty:hover{color:var(--fg);border-color:var(--faint);background:rgba(255,255,255,.03)}
+.hub-empty:hover .ico{color:var(--fg2)}
+
+/* ---------------- 창: 원격 허브 추가 · 허브 관리 (.modal-win 과 같은 외형, 작은 크기) ---------------- */
+.hub-dlg{width:min(460px,calc(100vw - 32px));max-height:calc(100vh - 48px);margin:auto;padding:0;border:1px solid var(--line2);border-radius:16px;background:var(--panel);color:var(--fg);box-shadow:0 30px 80px rgba(0,0,0,.5);overflow:hidden;display:flex;flex-direction:column}
+.hub-dlg:not([open]){display:none}
+.hub-dlg::backdrop{background:rgba(0,0,0,.55)}
+.hub-dlg.wide{width:min(600px,calc(100vw - 32px))}
+.hub-dlg form{display:contents}
+.hub-dlg-h{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 20px;border-bottom:1px solid var(--line);flex:none}
+.hub-dlg-h b{font-weight:650;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hub-dlg-b{padding:16px 20px 4px;overflow:auto;min-height:0;scrollbar-width:thin}
+.hub-dlg-f{display:flex;align-items:center;gap:8px;padding:12px 20px 16px;flex:none}
+.hub-dlg-f .grow{flex:1}
+.hub-dlg .btn.primary{background:var(--fg);color:#141416;border-color:transparent;font-weight:600}
+.hub-dlg .btn.primary:hover:not(:disabled){background:#fff;color:#141416}
+.hub-dlg .btn:disabled{opacity:.5;cursor:default}
+.hub-dlg .btn.primary .spinner{width:13px;height:13px;border-color:rgba(20,20,22,.25);border-top-color:#141416}
+.hub-dlg .btn.danger:hover:not(:disabled){color:var(--err);border-color:rgba(239,107,103,.5)}
+
+.hub-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.hub-field label{font-size:12.5px;font-weight:550;color:var(--fg2)}
+.hub-in{width:100%;height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:var(--bg);color:var(--fg);font:inherit;outline:none;min-width:0}
+.hub-in.mono{font-family:var(--mono);font-size:13px}
+.hub-in::placeholder{color:var(--faint)}
+.hub-in:focus{border-color:var(--codex)}
+.hub-in.bad{border-color:var(--err)}
+.hub-in:disabled{opacity:.55}
+.hub-ferr{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.5;color:var(--err)}
+.hub-ferr:empty{display:none}
+.hub-ferr .ico{width:14px;height:14px;margin-top:2px;flex:none}
+.hub-tips{list-style:none;margin:2px 0 12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.55;color:var(--fg2)}
+.hub-tips li{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.hub-tips .ico{width:14px;height:14px;margin-top:3px;flex:none;color:var(--muted)}
+.hub-tips code{font:12px var(--mono);background:var(--panel2);padding:1px 6px;border-radius:5px;color:#f0c38e;word-break:break-all}
+.hub-tips b{font-weight:600;color:var(--fg)}
+
+/* 허브 관리 목록 */
+.hub-list{display:flex;flex-direction:column;margin:-6px 0 6px}
+.hub-row{display:flex;align-items:center;gap:12px;padding:10px 2px 10px 6px;border-bottom:1px solid var(--line);min-width:0}
+.hub-row:last-child{border-bottom:0}
+.hub-row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.hub-row-t{display:flex;align-items:center;gap:6px;min-width:0}
+.hub-row-t b{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hub-row-t .hub-in{height:30px;padding:0 9px;border-radius:8px;max-width:260px}
+.hub-chip{display:inline-flex;align-items:center;flex:none;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.06);color:var(--muted)}
+.hub-chip.cur{background:rgba(95,191,127,.13);color:var(--ok)}
+.hub-row-s{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.hub-row-s .mono{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
+.hub-row-s .c-err{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hub-row-acts{display:flex;gap:2px;flex:none}
+.hub-row-acts .icon-btn{width:30px;height:30px}
+.hub-row-acts .icon-btn .ico{width:16px;height:16px}
+.hub-row-acts .icon-btn.off{opacity:.35;cursor:not-allowed}
+.hub-row-acts .icon-btn.off:hover{background:none;color:var(--muted)}
+.hub-row-acts .icon-btn[aria-busy="true"] .ico{animation:spin .8s linear infinite}
+.hub-ghead .mini[aria-busy="true"] .ico{animation:spin .8s linear infinite}
+.hub-dlg .fine{margin:4px 0 8px}
+.hub-msg{font-size:12.5px;color:var(--ok);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hub-msg.err{color:var(--err)}
+.hub-msg:empty{display:none}
+
+@media (max-width:860px){
+  #hubRemote{max-height:min(42%,360px)}
+  .hub-dlg{width:calc(100vw - 24px);border-radius:14px}
+  .hub-dlg-b{padding:14px 16px 2px}
+  .hub-dlg-h{padding-left:16px}
+  .hub-dlg-f{padding:10px 16px 14px;flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){
+  .hub-st.checking,.hub-dot.checking{animation:none}
+  .hub-btn > .ico,.hub-gt .chev{transition:none}
+}

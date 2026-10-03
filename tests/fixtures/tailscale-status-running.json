@@ -1,0 +1,7 @@
+{
+  "BackendState": "Running",
+  "AuthURL": "",
+  "Self": { "DNSName": "test-host.example.ts.net.", "UserID": 123 },
+  "User": { "123": { "LoginName": "Owner@Example.com", "DisplayName": "시험 사용자" } },
+  "CertDomains": ["test-host.example.ts.net"]
+}

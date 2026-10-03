@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Hub · 연결할 수 없어요</title>
+<!-- 허브에 연결하지 못했을 때 보이는 화면 (desktop/main.cjs → showPage('offline', { hub, url, error, local })).
+     주소 쿼리: hub=허브 이름, url=허브 주소, error=이유 문장, local='1'이면 이 PC 허브.
+     프로그램 안에서는 window.hubDesktop(docs/desktop.md)으로 다시 연결·허브 전환을 하고,
+     일반 브라우저로 열면 버튼 없이 안내만 보여 준다. 쿼리 값은 전부 textContent 로만 넣는다.
+     시험용: window.offlinePage.init() 을 부르면 window.hubDesktop 을 다시 읽어 처음부터 그린다. -->
+<style>
+:root{
+  --bg:#141416;--panel:#1f1f23;--panel2:#25252a;--hover:#2a2a30;--line:#2c2c33;--line2:#393941;
+  --fg:#ececee;--fg2:#b4b4bb;--muted:#82828c;--faint:#5c5c66;
+  --claude:#d97757;--codex:#5b9cf5;--ok:#5fbf7f;--err:#ef6b67;--warn:#e3b55c;--run:#a48bf2;
+  --font:"Pretendard Variable",Pretendard,"Segoe UI Variable Text","Segoe UI","Malgun Gothic",system-ui,sans-serif;
+  --mono:"Cascadia Mono","D2Coding",Consolas,"Malgun Gothic",monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{height:100%;background:var(--bg);color:var(--fg)}
+body{margin:0;min-height:100%;display:flex;flex-direction:column;padding:28px 20px;background:var(--bg);font:14.5px/1.6 var(--font);-webkit-font-smoothing:antialiased;word-break:keep-all}
+button{font:inherit;color:inherit;cursor:pointer}
+button:disabled{cursor:default}
+:focus-visible{outline:2px solid var(--codex);outline-offset:2px}
+::selection{background:rgba(91,156,245,.35)}
+
+.win{width:min(580px,100%);margin:auto;background:var(--panel);border:1px solid var(--line2);border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.45);overflow:hidden;animation:in .28s ease-out both}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;height:46px;padding:0 16px 0 18px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:14px;letter-spacing:-.01em}
+.mark{position:relative;width:26px;height:18px;flex:none}
+.mark i{position:absolute;top:0;width:18px;height:18px;border-radius:50%}
+.mark i:first-child{left:0;background:var(--claude)}
+.mark i:last-child{left:8px;background:var(--codex);opacity:.85;mix-blend-mode:screen}
+.state-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:999px;border:1px solid rgba(239,107,103,.3);background:rgba(239,107,103,.1);color:#f6aaa7;font-size:11.5px;font-weight:600;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--faint)}
+.dot.offline,.dot.err{background:var(--err)}
+.dot.online{background:var(--ok);box-shadow:0 0 0 3px rgba(95,191,127,.18)}
+.dot.checking{background:var(--faint);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
+.body{padding:20px 22px 22px}
+.head{display:flex;gap:14px;align-items:flex-start}
+.badge{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none;background:rgba(239,107,103,.12);color:var(--err)}
+.badge svg{width:21px;height:21px}
+.ht{min-width:0;flex:1}
+h1{font-size:18px;line-height:1.4;margin:0 0 4px;letter-spacing:-.01em;font-weight:650}
+.msg{margin:0;color:var(--fg2);font-size:13.5px}
+.addr{display:flex;align-items:center;gap:7px;margin:8px 0 0;min-width:0;font-size:12.5px;color:var(--muted)}
+.addr .kind{flex:none;color:var(--fg2);font-weight:550}
+.addr .sep{flex:none;color:var(--faint)}
+.addr .mono{min-width:0;font:12.5px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:9px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font-size:13px;font-weight:600;transition:background .12s,opacity .12s,transform .06s}
+.btn:hover:not(:disabled){background:var(--hover)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:.45}
+.btn.primary{background:var(--fg);color:#141416;border-color:transparent}
+.btn.primary:hover:not(:disabled){background:#fff}
+.btn svg{width:14px;height:14px;flex:none}
+
+.state{display:flex;align-items:flex-start;gap:8px;margin:10px 0 0;font-size:13px;color:var(--fg2);min-height:20px}
+.state[data-kind="ok"]{color:#9fd7b2}
+.state .dot{margin-top:7px}
+.spin{display:inline-block;width:12px;height:12px;margin-top:4px;border-radius:50%;border:1.6px solid rgba(164,139,242,.28);border-top-color:var(--run);animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.alert{display:flex;align-items:flex-start;gap:8px;margin:10px 0 0;padding:8px 12px;border-radius:10px;background:rgba(239,107,103,.08);border:1px solid rgba(239,107,103,.3);color:#f6aaa7;font-size:13px}
+.alert svg{width:14px;height:14px;flex:none;margin-top:3px}
+.note{display:flex;align-items:flex-start;gap:8px;margin-top:16px;padding:9px 12px;border-radius:10px;background:rgba(255,255,255,.035);color:var(--fg2);font-size:13px}
+.note svg{width:14px;height:14px;flex:none;margin-top:3px;color:var(--muted)}
+
+h2{font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 8px}
+.help{margin-top:20px}
+.checks{list-style:none;margin:0;padding:0;counter-reset:c;display:flex;flex-direction:column;gap:5px}
+.checks li{counter-increment:c;display:flex;gap:10px;align-items:flex-start;font-size:13.5px;color:var(--fg2);line-height:1.5}
+.checks li::before{content:counter(c);flex:none;width:19px;height:19px;margin-top:1px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);color:var(--muted);font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.checks b{color:var(--fg);font-weight:600}
+code{font:12.5px var(--mono);color:#f0c38e;background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;overflow-wrap:anywhere}
+
+.others{margin-top:20px}
+.hubs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.hub{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:10px;width:100%;padding:8px 10px 8px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.025);text-align:left;transition:background .12s,border-color .12s}
+.hub:hover:not(:disabled){background:var(--hover);border-color:var(--line2)}
+.hub:disabled{opacity:.5}
+.hub .nm{display:flex;flex-direction:column;min-width:0;line-height:1.35}
+.hub .nm b{font-weight:550;font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hub .nm small{font:12px var(--mono);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hub .nm small.plain{font-family:var(--font)}
+.hub .st{font-size:12px;color:var(--muted);white-space:nowrap}
+.hub .st.online{color:var(--ok)}
+.hub svg{width:14px;height:14px;color:var(--faint)}
+
+@media (max-width:520px){
+  body{padding:16px 12px}
+  .body{padding:16px 16px 18px}
+  .top{padding:0 12px 0 14px}
+  .hub .nm small{display:none}
+}
+/* 창 최소 높이(520px, 제목 표시줄 빼면 약 490px)에서는 간격을 줄여 스크롤 없이 들어가게 한다 */
+@media (max-height:600px){
+  body{padding:14px 20px}
+  .top{height:42px}
+  .body{padding:16px 20px 18px}
+  .acts{margin-top:14px}
+  .help,.others{margin-top:14px}
+  h2{margin-bottom:6px}
+  .checks{gap:3px}
+  .checks li{line-height:1.45}
+  .hub{padding:6px 10px 6px 12px}
+  .hub .nm{flex-direction:row;align-items:baseline;gap:8px}
+  .hub .nm small{flex:1}
+}
+@media (prefers-reduced-motion:reduce){
+  .win{animation:none}
+  .dot.checking{animation:none;opacity:.6}
+  .spin{animation-duration:1.6s}
+  .btn{transition:none}
+}
+</style>
+</head>
+<body>
+<main class="win" id="win">
+  <header class="top">
+    <span class="brand"><span class="mark" aria-hidden="true"><i></i><i></i></span>AI Hub</span>
+    <span class="state-pill"><i class="dot err" aria-hidden="true"></i>연결 안 됨</span>
+  </header>
+
+  <div class="body">
+    <div class="head">
+      <div class="badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.6a15 15 0 0 1 20 0"/><path d="M5.3 12a10 10 0 0 1 13.4 0"/><path d="M8.6 15.4a5 5 0 0 1 6.8 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/><path d="M3 3l18 18"/></svg>
+      </div>
+      <div class="ht">
+        <h1 id="title">허브에 연결하지 못했어요</h1>
+        <p class="msg" id="msg"></p>
+        <p class="addr" id="addr" hidden><span class="kind" id="kind"></span><span class="sep" aria-hidden="true">·</span><span class="mono" id="addrText"></span></p>
+      </div>
+    </div>
+
+    <div class="acts" id="acts" hidden>
+      <button type="button" class="btn primary" id="btnRetry">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>다시 연결
+      </button>
+      <button type="button" class="btn" id="btnLocal" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>이 PC 허브로 돌아가기
+      </button>
+    </div>
+    <p class="state" id="state" aria-live="polite" hidden><span class="spin" id="stateIcon" aria-hidden="true"></span><span id="stateText"></span></p>
+    <p class="alert" id="alert" role="alert" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></svg><span id="alertText"></span>
+    </p>
+    <p class="note" id="noDesktop" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span>다시 연결과 허브 전환은 AI Hub 프로그램 안에서만 할 수 있어요. 아래 항목을 확인한 뒤 프로그램에서 다시 열어 주세요.</span>
+    </p>
+
+    <section class="help" aria-labelledby="helpTitle">
+      <h2 id="helpTitle">확인해 보세요</h2>
+      <ol class="checks" id="checks"></ol>
+    </section>
+
+    <section class="others" id="others" aria-labelledby="othersTitle" hidden>
+      <h2 id="othersTitle">다른 허브로 열기</h2>
+      <ul class="hubs" id="hubList"></ul>
+    </section>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var el = {
+    title: $('title'), msg: $('msg'), addr: $('addr'), kind: $('kind'), addrText: $('addrText'),
+    acts: $('acts'), btnRetry: $('btnRetry'), btnLocal: $('btnLocal'),
+    state: $('state'), stateIcon: $('stateIcon'), stateText: $('stateText'),
+    alert: $('alert'), alertText: $('alertText'), noDesktop: $('noDesktop'),
+    checks: $('checks'), others: $('others'), hubList: $('hubList'),
+  };
+
+  // 주소 쿼리 → 화면 값. 전부 textContent 로만 넣는다.
+  var q = new URLSearchParams(location.search);
+  var info = {
+    hub: (q.get('hub') || '').trim(),
+    url: (q.get('url') || '').trim(),
+    error: (q.get('error') || '').trim(),
+    local: q.get('local') === '1',
+  };
+
+  // 점검 목록: 문자열은 글자 그대로, {b|code: 글} 은 강조 요소로
+  var CHECKS = {
+    remote: [
+      ['상대 PC가 켜져 있고 절전 상태가 아닌지'],
+      ['상대 PC에서 ', { b: '허브가 실행 중' }, '인지'],
+      ['상대 허브의 ', { b: '설정 › 원격 접속' }, '이 켜져 있는지'],
+      ['이 PC가 상대 PC와 ', { b: '같은 Tailscale 계정' }, '으로 연결돼 있는지'],
+    ],
+    local: [
+      ['허브 폴더의 ', { code: 'start-hub.cmd' }, '를 직접 실행해 허브가 켜지는지 확인해 보세요'],
+      ['켜지지 않으면 허브 폴더의 ', { code: 'logs\\server.log' }, '에서 마지막 오류를 확인해 보세요'],
+    ],
+  };
+  var STATUS = { online: '연결 가능', offline: '연결 안 됨', checking: '확인 중' };
+
+  var desk = null, hubs = [], current = '', busy = false, unsub = null, guard = 0;
+
+  function node(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function svg(d) {
+    var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor');
+    s.setAttribute('stroke-width', '2'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true');
+    var p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); s.appendChild(p);
+    return s;
+  }
+  function localId() {
+    for (var i = 0; i < hubs.length; i++) if (hubs[i].local) return hubs[i].id;
+    return 'local';
+  }
+
+  /* ---------- 고정 내용 ---------- */
+  function renderStatic() {
+    el.title.textContent = info.local ? '이 PC의 허브에 연결하지 못했어요'
+      : (info.hub ? info.hub + ' 허브에 연결하지 못했어요' : '허브에 연결하지 못했어요');
+    el.msg.textContent = info.error || '허브가 응답하지 않아요';
+    if (info.url) {
+      el.kind.textContent = info.local ? '이 PC' : '원격';
+      el.addrText.textContent = info.url; el.addrText.title = info.url;
+      el.addr.hidden = false;
+    } else el.addr.hidden = true;
+
+    var items = CHECKS[info.local ? 'local' : 'remote'].map(function (parts) {
+      var li = document.createElement('li');
+      var tx = node('span', 'tx');   // 번호(::before)와 본문을 분리해, 본문 안의 강조가 flex 항목으로 쪼개지지 않게 한다
+      parts.forEach(function (p) {
+        if (typeof p === 'string') tx.appendChild(document.createTextNode(p));
+        else if (p.b) tx.appendChild(node('b', '', p.b));
+        else if (p.code) tx.appendChild(node('code', '', p.code));
+      });
+      li.appendChild(tx);
+      return li;
+    });
+    el.checks.replaceChildren.apply(el.checks, items);
+  }
+
+  /* ---------- 진행·오류 표시 ---------- */
+  function setState(text, kind) {
+    el.state.hidden = !text;
+    el.stateText.textContent = text || '';
+    el.state.dataset.kind = kind || 'busy';
+    el.stateIcon.className = kind === 'ok' ? 'dot online' : 'spin';
+  }
+  function showAlert(text) {
+    el.alert.hidden = !text;
+    el.alertText.textContent = text || '';
+  }
+  function setBusy(on) {
+    busy = on;
+    el.btnRetry.disabled = on; el.btnLocal.disabled = on;
+    var rows = el.hubList.querySelectorAll('button');
+    for (var i = 0; i < rows.length; i++) rows[i].disabled = on;
+  }
+
+  /* ---------- 허브 전환 ---------- */
+  // switchHub 가 끝나면 프로그램이 창을 그 허브로 바꾸거나(성공) 이 화면을 새 이유로 다시 띄운다(실패).
+  // 그래서 성공 뒤에는 진행 표시를 그대로 두고, 너무 오래 아무 일도 없을 때만 다시 시도할 수 있게 푼다.
+  function go(id, label) {
+    if (busy || !desk || !id) return;
+    showAlert(''); setBusy(true); setState(label, 'busy');
+    clearTimeout(guard);
+    guard = setTimeout(function () {
+      setBusy(false); setState('');
+      showAlert('아직 응답이 없어요. 잠시 뒤 다시 시도해 주세요.');
+    }, 30000);
+    Promise.resolve().then(function () { return desk.switchHub(id); }).catch(function (e) {
+      clearTimeout(guard);
+      setBusy(false); setState('');
+      showAlert((e && e.message) ? e.message : '허브를 전환하지 못했어요');
+    });
+  }
+
+  /* ---------- 다른 허브 목록 ---------- */
+  function renderHubs() {
+    var list = hubs.filter(function (h) { return h.id !== current; });
+    el.others.hidden = !desk || !list.length;
+    var rows = list.map(function (h) {
+      var li = document.createElement('li');
+      var b = node('button', 'hub'); b.type = 'button'; b.disabled = busy;
+      var st = STATUS[h.status] ? h.status : 'checking';
+      var dot = node('i', 'dot ' + st); dot.setAttribute('aria-hidden', 'true');
+      var nm = node('span', 'nm');
+      nm.appendChild(node('b', '', h.name || h.url || '허브'));
+      nm.appendChild(node('small', h.local ? 'plain' : '', h.local ? '이 PC' : (h.url || '')));
+      var s = node('span', 'st ' + st, STATUS[st]);
+      b.appendChild(dot); b.appendChild(nm); b.appendChild(s); b.appendChild(svg('M9 6l6 6-6 6'));
+      b.setAttribute('aria-label', (h.name || '허브') + ' 허브로 열기 · ' + STATUS[st]);
+      if (st === 'offline' && h.error) b.title = h.error;
+      b.addEventListener('click', function () { go(h.id, (h.name || '다른') + ' 허브로 전환하는 중…'); });
+      li.appendChild(b);
+      return li;
+    });
+    el.hubList.replaceChildren.apply(el.hubList, rows);
+  }
+  // 프로그램이 30초마다 다시 확인한 결과, 지금 허브가 응답하면 알려 준다.
+  function hint() {
+    if (busy) return;
+    var cur = null;
+    for (var i = 0; i < hubs.length; i++) if (hubs[i].id === current) cur = hubs[i];
+    if (cur && cur.status === 'online') setState('지금은 허브가 응답해요. 다시 연결을 눌러 주세요.', 'ok');
+    else if (el.state.dataset.kind === 'ok') setState('');
+  }
+  function refresh() {
+    if (!desk) return Promise.resolve();
+    return desk.getHubs().then(function (r) {
+      hubs = (r && Array.isArray(r.hubs)) ? r.hubs : [];
+      current = String((r && r.current) || '');
+    }).catch(function () { /* 목록을 못 받아도 다시 연결은 할 수 있다 */ })
+      .then(function () { renderHubs(); hint(); });
+  }
+
+  /* ---------- 버튼 ---------- */
+  el.btnRetry.addEventListener('click', function () {
+    var start = current ? Promise.resolve() : refresh();
+    start.then(function () {
+      var id = current || (info.local ? localId() : '');
+      if (!id) { showAlert('허브 목록을 가져오지 못했어요. 프로그램을 다시 열어 주세요.'); return; }
+      go(id, info.local ? '이 PC 허브에 다시 연결하는 중…' : (info.hub || '원격') + ' 허브에 다시 연결하는 중…');
+    });
+  });
+  el.btnLocal.addEventListener('click', function () { go(localId(), '이 PC 허브로 전환하는 중…'); });
+
+  /* ---------- 시작 ---------- */
+  function init() {
+    var d = window.hubDesktop;
+    desk = (d && typeof d.getHubs === 'function' && typeof d.switchHub === 'function') ? d : null;
+    if (unsub) { try { unsub(); } catch (e) {} unsub = null; }
+    clearTimeout(guard);
+    hubs = []; current = ''; busy = false;
+    renderStatic();
+    el.acts.hidden = !desk;
+    el.btnLocal.hidden = !desk || info.local;
+    el.noDesktop.hidden = !!desk;
+    el.btnRetry.disabled = false; el.btnLocal.disabled = false;
+    setState(''); showAlert('');
+    renderHubs();
+    if (!desk) return;
+    refresh();
+    if (typeof desk.onHubsChanged === 'function') { try { unsub = desk.onHubsChanged(function () { refresh(); }); } catch (e) {} }
+    el.btnRetry.focus({ preventScroll: true });
+  }
+  window.offlinePage = { init: init };
+  init();
+})();
+</script>
+</body>
+</html>

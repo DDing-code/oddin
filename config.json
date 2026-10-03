@@ -1,0 +1,61 @@
+{
+  "port": 7700,
+  "host": "127.0.0.1",
+  "hubDir": "C:/Users/D2JK/.ai-shared",
+  "defaultCwd": "F:/01_프로젝트/90_개발/ai-hub/workspace",
+  "maxParallel": 3,
+  "planner": "auto",
+  "taskTimeoutMinutes": 90,
+  "tools": {
+    "claude": {
+      "enabled": true,
+      "command": "claude",
+      "model": "",
+      "extraArgs": [],
+      "specialties": [
+        "UI/프론트엔드·디자인·CSS",
+        "문서·가이드·한국어 글쓰기",
+        "리서치·분석·설계 검토",
+        "브라우저 확인이 필요한 작업"
+      ]
+    },
+    "codex": {
+      "enabled": true,
+      "command": "codex",
+      "model": "",
+      "extraArgs": [],
+      "specialties": [
+        "백엔드·스크립트·CLI 자동화",
+        "리팩터링·버그 수정·테스트 작성",
+        "빌드·검증·반복 실행 작업",
+        "데이터 처리·파일 일괄 변환"
+      ]
+    }
+  },
+  "defaults": {
+    "claude": {
+      "model": "auto",
+      "effort": "auto"
+    },
+    "codex": {
+      "model": "auto",
+      "effort": "auto"
+    }
+  },
+  "autoFloor": {
+    "claude": {
+      "model": "opus",
+      "effort": "high"
+    },
+    "codex": {
+      "model": "gpt-6.1-sol",
+      "effort": "high"
+    }
+  },
+  "designRule": {
+    "enabled": true,
+    "tool": "claude",
+    "model": "fable",
+    "note": "디자인 작업은 Claude Fable 고정 (사용자 규칙 2026-10-03). 끄려면 enabled:false"
+  }
+}

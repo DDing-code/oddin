@@ -1,0 +1,14 @@
+data/
+runs/
+logs/
+workspace/
+node_modules/
+# 작업 결과로 생긴 공개 페이지·미리보기 목록 (작업마다 바뀜)
+public/chart-dungeon-*/
+public/image-previews.json
+# 데스크탑 프로그램 빌드 산출물
+desktop/node_modules/
+desktop/dist/
+desktop/hub-root.json
+# 에이전트 작업 사본
+.claude/

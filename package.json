@@ -1,0 +1,19 @@
+{
+  "name": "ai-hub",
+  "version": "0.1.0",
+  "description": "Claude Code + Codex 로컬 공동 작업 대시보드 (명령 1회 → 자동 분배 실행)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node scripts/check-tools.mjs",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "remote": "node scripts/remote-access.mjs",
+    "restart": "node scripts/restart-hub.mjs --detach",
+    "desktop": "npm --prefix desktop start",
+    "desktop:build": "npm --prefix desktop run dist && npm --prefix desktop run shortcuts"
+  }
+}

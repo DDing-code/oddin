@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Hub</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23191a1d'/%3E%3Ccircle cx='12.5' cy='16' r='6.5' fill='%23d97757'/%3E%3Ccircle cx='19.5' cy='16' r='6.5' fill='%235b9cf5' fill-opacity='.85'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="hubs.css">
+</head>
+<body>
+<div id="app">
+  <!-- 왼쪽: 탐색 · 세션 목록 · 계정 -->
+  <aside id="side" aria-label="세션 목록">
+    <div class="side-top">
+      <div class="brand"><span class="mark"><i></i><i></i></span><span>AI Hub</span></div>
+      <button class="icon-btn" id="btnCollapse" title="사이드바 닫기 (Ctrl+B)"></button>
+    </div>
+    <nav class="side-nav">
+      <button class="nav-item primary" id="btnNew"><span class="ico" data-i="newchat"></span><span class="lbl">새 세션</span><kbd>Ctrl ⇧ N</kbd></button>
+      <button class="nav-item" id="btnSearch"><span class="ico" data-i="search"></span><span class="lbl">검색</span><kbd>Ctrl K</kbd></button>
+      <button class="nav-item" data-act="library"><span class="ico" data-i="slash"></span><span class="lbl">커맨드 · 에이전트</span><kbd>/ @</kbd></button>
+      <button class="nav-item" data-act="board"><span class="ico" data-i="board"></span><span class="lbl">작업 보드</span></button>
+      <button class="nav-item" data-act="memory"><span class="ico" data-i="book"></span><span class="lbl">공유 메모리</span></button>
+    </nav>
+    <div class="side-scroll" id="tree" role="tree"></div>
+    <!-- 데스크탑 프로그램 안에서만 hubs.js 가 채우는 원격 세션 자리 (renderTree 가 #tree 를 다시 그려도 남는다) -->
+    <div id="hubRemote" hidden></div>
+    <div class="side-bottom">
+      <section id="usage" class="usage" title="남은 한도 · 눌러서 새로고침" aria-label="Claude·Codex 남은 구독 한도"></section>
+      <button class="account" id="btnAccount" title="설정과 상태"></button>
+    </div>
+    <div class="resizer" data-edge="left" title="끌어서 너비 조절 · 두 번 눌러 원래대로"></div>
+  </aside>
+
+  <!-- 가운데: 대화 -->
+  <main id="main">
+    <header id="top">
+      <button class="icon-btn" id="btnSide" title="사이드바 열기 (Ctrl+B)"></button>
+      <div class="title-wrap">
+        <h1 id="title" title="두 번 눌러 이름 바꾸기">새 세션</h1>
+        <button class="chip" id="folderChip" title="작업 폴더"><span class="ico" data-i="folder"></span><span id="folderText"></span></button>
+      </div>
+      <div class="top-actions" id="topActions"></div>
+      <button class="icon-btn" id="btnInsp" title="오른쪽 패널 (Ctrl+J)"></button>
+    </header>
+
+    <div id="connBar" hidden></div>
+    <div id="goalBar" hidden></div>
+    <div id="scroll">
+      <div id="thread"></div>
+    </div>
+
+    <div id="composerWrap">
+      <div id="warnBar" role="status" aria-live="polite" hidden></div>
+      <div id="composer">
+        <div id="icBar" hidden></div>
+        <div id="atts"></div>
+        <textarea id="in" rows="1" placeholder="무엇을 할까요?  /커맨드 · @에이전트 · /goal 목표 · 이미지 붙여넣기" spellcheck="false"></textarea>
+        <div class="bar">
+          <button class="icon-btn" id="btnAttach" title="이미지 첨부"></button>
+          <button class="pill" id="pMode" title="분배 방식"></button>
+          <button class="pill" id="pClaude" title="Claude 모델·추론 강도"></button>
+          <button class="pill" id="pCodex" title="Codex 모델·추론 강도"></button>
+          <span class="grow"></span>
+          <span class="hint" id="hint">Enter 보내기 · Shift+Enter 줄바꿈</span>
+          <button class="stop-sm" id="btnStop" type="button" title="실행 중인 작업 중지" aria-label="실행 중인 작업 중지" hidden></button>
+          <button class="send" id="btnSend" title="보내기" aria-label="보내기"></button>
+        </div>
+      </div>
+      <div id="icLive" class="sr-only" role="status" aria-live="polite"></div>
+      <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+    </div>
+    <div id="drop" hidden><div><span class="ico" data-i="clip"></span>이미지를 놓으면 첨부됩니다</div></div>
+  </main>
+
+  <!-- 오른쪽: 작업 · 파일 · 사용량 · 정보 -->
+  <aside id="insp" aria-label="세션 정보">
+    <div class="resizer" data-edge="right" title="끌어서 너비 조절 · 두 번 눌러 원래대로"></div>
+    <div class="insp-head">
+      <div class="tabs" role="tablist" id="inspTabs"></div>
+      <button class="icon-btn" id="btnInspClose" title="닫기 (Ctrl+J)"></button>
+    </div>
+    <div class="insp-body" id="inspBody"></div>
+  </aside>
+  <div id="scrim" hidden></div>
+</div>
+
+<div id="pop" role="listbox" hidden></div>
+<div id="palette" hidden>
+  <div class="pal-win" role="dialog" aria-label="검색">
+    <label class="pal-in"><span class="ico" data-i="search"></span><input id="palQ" placeholder="세션·요청 내용·명령 검색" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></label>
+    <div id="palList" role="listbox"></div>
+    <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> 이동</span><span><kbd>Enter</kbd> 열기</span><span><kbd>Esc</kbd> 닫기</span></div>
+  </div>
+</div>
+<div id="modal" hidden>
+  <div class="modal-win">
+    <div class="modal-head"><b id="modalTitle"></b><span class="grow"></span><button class="icon-btn" id="modalClose" title="닫기"></button></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+<div id="viewer" hidden>
+  <div class="vw-win" role="dialog" aria-modal="true" aria-labelledby="vwTitle" aria-describedby="vwMeta" tabindex="-1">
+    <div class="vw-head"><span class="ico" data-i="image"></span><b id="vwTitle"></b><span class="vw-count" id="vwCount"></span><span class="grow"></span><a class="icon-btn" id="vwRaw" target="_blank" rel="noopener" title="원본을 새 탭에서 열기" aria-label="원본을 새 탭에서 열기"></a><button type="button" class="icon-btn" id="vwClose" title="닫기 (Esc)" aria-label="닫기"></button></div>
+    <div class="vw-stage">
+      <button type="button" class="vw-nav prev" id="vwPrev" title="이전 (←)" aria-label="이전 이미지"></button>
+      <figure id="vwFig"><img id="vwImg" alt=""><div class="vw-fail" role="status">이미지를 불러오지 못했어요<button type="button" class="btn" id="vwRetry">다시 시도</button></div></figure>
+      <button type="button" class="vw-nav next" id="vwNext" title="다음 (→)" aria-label="다음 이미지"></button>
+    </div>
+    <div class="vw-foot"><div class="vw-thumbs" id="vwThumbs"></div><div class="vw-meta" id="vwMeta"></div></div>
+  </div>
+</div>
+<div id="toast" hidden></div>
+
+<script src="app.js"></script>
+<script src="side.js"></script>
+<script src="commands.js"></script>
+<script src="intercept.js"></script>
+<script src="remote.js"></script>
+<script src="desktop.js"></script>
+<script src="hubs.js"></script>
+</body>
+</html>

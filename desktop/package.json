@@ -1,0 +1,52 @@
+{
+  "name": "ai-hub-desktop",
+  "productName": "AI Hub",
+  "version": "0.1.0",
+  "description": "AI Hub 데스크탑 프로그램 (허브 화면 + 트레이·알림·원격 세션)",
+  "main": "main.cjs",
+  "private": true,
+  "author": "D2JK",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node scripts/write-hub-root.cjs && electron-builder --win dir",
+    "installer": "node scripts/write-hub-root.cjs && electron-builder --win nsis",
+    "shortcuts": "node scripts/run-shortcuts.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "local.aihub.desktop",
+    "productName": "AI Hub",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "lib/**",
+      "pages/**",
+      "build/icon.png",
+      "build/tray*.png",
+      "hub-root.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "AI Hub",
+      "artifactName": "AI-Hub-Setup-${version}.${ext}"
+    },
+    "asar": true,
+    "electronLanguages": [
+      "ko",
+      "en-US"
+    ]
+  }
+}

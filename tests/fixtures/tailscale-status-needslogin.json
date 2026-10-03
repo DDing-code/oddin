@@ -1,0 +1,6 @@
+{
+  "BackendState": "NeedsLogin",
+  "AuthURL": "https://login.tailscale.com/a/synthetic-test-only",
+  "Self": null,
+  "CertDomains": []
+}
