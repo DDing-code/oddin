@@ -44,7 +44,7 @@ test('전환 기준: 75% 직전은 Fable, 정확히 75%와 현재 82%는 Codex·
     assert.deepEqual([t.tool, t.model, t.switched], ['codex', 'gpt-6-astra', true], `${p}%`);
     assert.match(t.note, new RegExp(`${p}%.*75%.*Codex·gpt-6-astra에 넘김`));
   }
-  assert.deepEqual(designRule({}), { tool: 'claude', model: 'fable', switchAt: 75, fallback: { tool: 'codex', model: 'gpt-6-astra' } });
+  assert.deepEqual(designRule({}), { tool: 'claude', model: 'fable', switchAt: 75, mode: 'split', fallback: { tool: 'codex', model: 'gpt-6-astra' } });
 });
 
 test('사용률 미확인은 0%로도 초과로도 보지 않는다: 전환 없이 기본 담당 유지, 이유도 지어내지 않음', () => {
