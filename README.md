@@ -32,10 +32,10 @@ start-hub.cmd
 - 설치 파일: `npm --prefix desktop run installer` → `desktop\dist\ODDIN-Setup-<버전>.exe` (만든 PC의 허브 폴더를 가리키므로 다른 PC에서는 그 PC에서 다시 만든다 — 아래 "다른 PC에 설치")
 
 ## 다른 PC에 설치
-GitHub 비공개 저장소에서 받아 그 PC에서 허브를 따로 돌립니다. 이 PC 허브를 원격으로 쓰기만 할 거면 설치할 필요 없이 아래 "다른 컴퓨터에서 열기"를 보세요. 명령은 PowerShell 기준이고, 예시 폴더 `C:\oddin`은 원하는 곳으로 바꿔도 됩니다.
+GitHub 저장소 <https://github.com/DDing-code/oddin>에서 받아 그 PC에서 허브를 따로 돌립니다. 이 PC 허브를 원격으로 쓰기만 할 거면 설치할 필요 없이 아래 "다른 컴퓨터에서 열기"를 보세요. 명령은 PowerShell 기준이고, 예시 폴더 `C:\oddin`은 원하는 곳으로 바꿔도 됩니다.
 
 1. 준비물: Git(`winget install Git.Git`), Node.js 22 이상(`winget install OpenJS.NodeJS.LTS`), Claude Code CLI·Codex CLI 중 하나 이상(설치 후 로그인 — 아래 "사전 조건")
-2. 받기 — 비공개 저장소라 처음 한 번 GitHub 로그인 창이 뜹니다:
+2. 받기:
    ```powershell
    git clone https://github.com/DDing-code/oddin.git C:\oddin
    ```
