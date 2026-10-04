@@ -27,8 +27,10 @@ const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CO
 const config = readJson(configFile, null);
 if (!config) { console.error('config.json 을 읽지 못했습니다'); process.exit(1); }
 if (process.env.HUB_PORT) config.port = Number(process.env.HUB_PORT);
-config.hubDir = path.resolve(config.hubDir);
-config.defaultCwd = path.resolve(config.defaultCwd);
+// 경로 설정은 다른 PC에서도 그대로 쓰도록 `~`(사용자 폴더)와 허브 폴더 기준 상대 경로를 받는다.
+const expandHome = (p) => String(p).replace(/^~(?=$|[\\/])/, os.homedir());
+config.hubDir = path.resolve(ROOT, expandHome(config.hubDir || '~/.ai-shared'));
+config.defaultCwd = path.resolve(ROOT, expandHome(config.defaultCwd || '../oddin-workspace'));
 fs.mkdirSync(config.defaultCwd, { recursive: true });
 
 const jobs = new JobManager(config);

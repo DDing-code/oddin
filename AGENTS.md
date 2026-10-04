@@ -21,7 +21,7 @@
 - `lib/attachments.mjs` 이미지 업로드(서명 검사, 5MB·4장), Claude는 stream-json image 블록, Codex는 `-i`
 - `data/jobs.json`·`data/sessions.json` 작업·세션(폴더별 대화, 같은 세션의 다음 요청은 이전 요청·보고를 맥락으로 받음), `data/uploads/` 첨부 이미지, `runs/<jobId>/` 실행 기록
 - `public/` 데스크탑 앱형 화면. `app.js` = 대화·입력·작업 카드, `side.js` = 왼쪽 사이드바(고정·폴더별/날짜별·⋯/우클릭 메뉴·바로 이름 바꾸기·안 읽음 표시·계정/설정), 오른쪽 패널(작업·파일·사용량·정보 탭), Ctrl+K 검색, 양쪽 너비 조절. `side.js`는 `app.js` 다음에 읽히고 시작은 DOMContentLoaded.
-- 기본 작업 폴더는 허브 저장소 밖 `F:/01_프로젝트/90_개발/oddin-workspace`(`config.defaultCwd`, 2026-10-04 이동 — 저장소 안이면 작업자가 허브 개발 지침을 프로젝트 지침으로 받았다). 예전 `workspace/` 세션은 그대로 두고 기본 폴더로 친다(`jobs.isDefaultDir`)
+- 기본 작업 폴더는 허브 저장소 밖 옆 폴더 `../oddin-workspace`(`config.defaultCwd`, 이 PC에서는 `F:/01_프로젝트/90_개발/oddin-workspace`, 2026-10-04 이동 — 저장소 안이면 작업자가 허브 개발 지침을 프로젝트 지침으로 받았다). 예전 `workspace/` 세션은 그대로 두고 기본 폴더로 친다(`jobs.isDefaultDir`)
 - `lib/projects.mjs` 알려진 프로젝트 폴더(`knownProjects`, 폴더 고르기·플래너 후보)와 작업 폴더 검사(`validWorkdir`)
 - `lib/prompts.mjs` 실행 중 승인·질문·계획 승인 요청 관리(권한 방식 auto·edits·ask·plan, 자동 응답 시간). 두 CLI 프로토콜 연결은 `workers.mjs`·`native-workers.mjs`. 규약 `docs/approvals.md`, 화면 `public/prompts.js`
 - `lib/checkpoints.mjs` 작업별 그림자 git 스냅샷·변경 비교·되돌리기(사용자 `.git`은 건드리지 않음). 시작 스냅샷은 계획 중에 찍고 작업자 실행 직전에만 기다린다. 규약 `docs/checkpoints.md`, 화면 `public/changes.js`
@@ -39,6 +39,7 @@
 - 공유 메모리(`~/.ai-shared/memory`)는 대시보드에서 읽기만 한다. 쓰기는 각 에이전트가 공용 지침 3절대로 직접 한다.
 - 메모리 선택/경로 해석은 공용 `~/.ai-shared/sync/memory-context.cjs`를 재사용한다. `JobManager.memoryFor`는 계획·배정·각 워커·재시도·보고 직전에 최신 자료를 읽고 실행 폴더의 `memory-context.json`에 출처·해시·생략·오류를 기록한다. CLI 훅도 같은 선택기를 사용한다.
 - 생성 파일(`data/`, `runs/`, `logs/`, `workspace/`)은 커밋하지 않는다.
+- 다른 PC 설치(2026-10-05): 저장소는 GitHub에 올려 다른 PC에서 받아 쓴다(절차 README "다른 PC에 설치"). 그래서 추적되는 파일(`config.json`·스크립트·시험)에 한 PC 전용 절대 경로를 넣지 않는다. `config.json`의 `hubDir`·`defaultCwd`는 `~`(사용자 폴더) 또는 허브 폴더 기준 상대 경로로 쓰고 `server.mjs`가 풀어 쓴다. 사용자 폴더에 있는 것(`~/.ai-shared` 등)에 기대는 시험은 없으면 건너뛴다(`tests/memory.test.mjs`).
 - 워커에 넘기는 프롬프트 형식은 `lib/planner.mjs`의 `buildWorkerPrompt` 한 곳에서만 바꾼다.
 - 테스트: `npm test`. CLI 상태: `npm run check`.
 - 시험 서버: `HUB_PORT`, `HUB_DATA_DIR`, `HUB_RUNS_DIR`, `HUB_CONFIG_FILE`을 모두 분리하고 `HUB_SKIP_CLI_INSTALL=1`로 CLI 공통 설치·감시를 생략한다. 실제 CLI의 로그인 홈은 바꾸지 않는다. 원본 경로가 누락되거나 완전히 빈 경우 설치기도 기존 설치본 정리를 보류한다.

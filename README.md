@@ -29,7 +29,29 @@ start-hub.cmd
 - 탐색기에서 파일·폴더를 끌어다 놓으면 실제 경로가 입력창에 들어갑니다. 이미지는 지금처럼 첨부됩니다.
 - **원격 세션**: 사이드바 맨 위 허브 이름을 눌러 다른 PC의 허브(Tailscale 주소)를 추가하면, 그 허브의 세션이 사이드바 "원격 세션"에 나오고 눌러서 바로 이어서 작업할 수 있습니다. 상대 PC 허브에서 원격 접속이 켜져 있어야 합니다(아래 "다른 컴퓨터에서 열기").
 - 다시 빌드: `npm run desktop:build` (결과 `desktop\dist\win-unpacked\ODDIN.exe`, 바로가기도 다시 만듦) · 개발 실행: `npm run desktop`
-- 다른 PC용 설치 파일: `npm --prefix desktop run installer` → `desktop\dist\AI-Hub-Setup-<버전>.exe`
+- 설치 파일: `npm --prefix desktop run installer` → `desktop\dist\ODDIN-Setup-<버전>.exe` (만든 PC의 허브 폴더를 가리키므로 다른 PC에서는 그 PC에서 다시 만든다 — 아래 "다른 PC에 설치")
+
+## 다른 PC에 설치
+GitHub 비공개 저장소에서 받아 그 PC에서 허브를 따로 돌립니다. 이 PC 허브를 원격으로 쓰기만 할 거면 설치할 필요 없이 아래 "다른 컴퓨터에서 열기"를 보세요. 명령은 PowerShell 기준이고, 예시 폴더 `C:\oddin`은 원하는 곳으로 바꿔도 됩니다.
+
+1. 준비물: Git(`winget install Git.Git`), Node.js 22 이상(`winget install OpenJS.NodeJS.LTS`), Claude Code CLI·Codex CLI 중 하나 이상(설치 후 로그인 — 아래 "사전 조건")
+2. 받기 — 비공개 저장소라 처음 한 번 GitHub 로그인 창이 뜹니다:
+   ```powershell
+   git clone https://github.com/DDing-code/oddin.git C:\oddin
+   ```
+3. CLI 확인: `npm --prefix C:\oddin run check`
+4. 시작: `C:\oddin\start-hub.cmd` → <http://127.0.0.1:7700> · 로그온 때 자동 시작: `powershell -ExecutionPolicy Bypass -File C:\oddin\install-autostart.ps1`
+5. 데스크탑 프로그램(선택) — 한 줄씩 실행:
+   ```powershell
+   npm --prefix C:\oddin\desktop ci
+   npm --prefix C:\oddin\desktop run installer
+   npm --prefix C:\oddin\desktop run install-local
+   ```
+6. 새 버전 받기: `git -C C:\oddin pull` 다음 `npm --prefix C:\oddin run restart`
+
+- 기본 작업 폴더는 허브 폴더 옆 `oddin-workspace`(`config.json`의 `defaultCwd: "../oddin-workspace"`), 공유 지침·메모리 폴더는 `~/.ai-shared`(`hubDir`)입니다. 두 값은 `~`(사용자 폴더)나 허브 폴더 기준 상대 경로로 쓰고, 한 PC 전용 절대 경로를 넣지 않습니다.
+- `~/.ai-shared`가 없는 PC에서도 허브는 돕니다. 공유 메모리·공통 커맨드 목록만 비어 있습니다.
+- 작업 기록(`data/`·`runs/`·`logs/`)은 PC마다 따로 남고 저장소에 올라가지 않습니다.
 
 ## 다른 컴퓨터에서 열기
 **Tailscale**(본인 기기끼리만 연결되는 비공개 망)로 `https://<PC이름>.<tailnet>.ts.net/` 주소를 엽니다. 같은 네트워크든 밖이든 방법은 같습니다. 자세한 안내·문제 해결: [docs/remote-access.md](docs/remote-access.md)
