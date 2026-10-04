@@ -2,7 +2,7 @@
   "port": 7700,
   "host": "127.0.0.1",
   "hubDir": "C:/Users/D2JK/.ai-shared",
-  "defaultCwd": "F:/01_프로젝트/90_개발/ai-hub/workspace",
+  "defaultCwd": "F:/01_프로젝트/90_개발/oddin-workspace",
   "maxParallel": 3,
   "gitOps": {
     "defaultIsolate": false

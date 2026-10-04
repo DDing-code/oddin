@@ -142,7 +142,17 @@ test('새 자동 작업·의존 작업 분배·본문 갱신·보고·세션 후
   assert.notEqual(oldHash, newHash);
   const next = await completed(manager, manager.create({ goal: 'probe 메모리 이어서', mode: 'codex', sessionId: first.sessionId }));
   assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /PROBE_NEW/);
-  assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /이전 명령/);
+  // 같은 세션 후속 요청: 직전 Codex 대화를 이어 쓰므로 이전 명령 대신 [이어서] 안내 (이전 명령은 그 대화에 이미 있음)
+  const nextTask = next.tasks[0];
+  assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /\[이어서\]/);
+  assert.equal(nextTask.continuedFrom?.jobId, first.id);
+  assert.equal(nextTask.continuedFrom.sessionId, first.tasks.find((t) => t.assignee === 'codex').sessionId);
+  // 이어 쓰기를 끄면 예전처럼 이전 명령을 지시문에 붙인다
+  manager.config.continuity = { resume: false };
+  const third = await completed(manager, manager.create({ goal: 'probe 메모리 새로', mode: 'codex', sessionId: first.sessionId }));
+  assert.match(fs.readFileSync(path.join(third.runDir, 't1/prompt.md'), 'utf8'), /이전 명령/);
+  assert.equal(third.tasks[0].continuedFrom, undefined);
+  delete manager.config.continuity;
   write(f.probe, fact('probe', 'probe', 'PROBE_RETRY'));
   await completed(manager, manager.retryTask(next.id, 't1'));
   assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /PROBE_RETRY/);

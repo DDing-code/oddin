@@ -21,6 +21,7 @@ import { openLocal, normalizeLocalPath, isAllowed, resolveRelative } from './lib
 import { RemoteAccess, LOOPBACK, SECURITY_HEADERS, sendRemoteBlocked } from './lib/remote.mjs';
 import { checkpointRoute } from './lib/checkpoints.mjs';
 import { HubTools } from './lib/preview.mjs';
+import { knownProjects } from './lib/projects.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -91,25 +92,7 @@ async function readRaw(req, limit) {
   for await (const c of req) { n += c.length; if (n > limit) { const e = new Error(`이미지는 ${limit / 1024 / 1024}MB 이하만 가능합니다`); e.status = 413; throw e; } chunks.push(c); }
   return Buffer.concat(chunks);
 }
-function projectsList() {
-  const index = readText(path.join(config.hubDir, 'memory', 'projects', 'INDEX.md'), '') || '';
-  const out = [];
-  for (const line of index.split(/\r?\n/)) {
-    const cells = line.split('|').map((s) => s.trim());
-    if (cells.length >= 4 && /^[A-Za-z]:[\\/]/.test(cells[1])) out.push({ path: path.resolve(cells[1]), slug: cells[2], memories: Number(cells[3]) || 0 });
-  }
-  const sync = readJson(path.join(config.hubDir, 'sync', 'config.json'), {});
-  for (const [p, slug] of Object.entries(sync.memoryAliases || {})) out.push({ path: path.resolve(p), slug, memories: 0 });
-  for (const p of sync.extraPaths || []) out.push({ path: path.resolve(p), slug: null, memories: 0 });
-  for (const s of jobs.listSessions()) out.push({ path: s.cwd, slug: null, memories: 0 });
-  const fixed = [{ path: config.defaultCwd, label: '허브 작업 공간 (기본)' }, { path: ROOT, label: 'ODDIN 자체 (허브 코드)' }];
-  const seen = new Set(); const res = [];
-  for (const p of [...fixed, ...out.sort((a, b) => b.memories - a.memories)]) {
-    const k = p.path.toLowerCase(); if (seen.has(k) || k === 'c:\\users\\d2jk') continue; seen.add(k);
-    if (fs.existsSync(p.path)) res.push({ memories: 0, ...p });
-  }
-  return res;
-}
+function projectsList() { return knownProjects(config, jobs.listSessions()); }
 
 const server = http.createServer(async (req, res) => {
   try {

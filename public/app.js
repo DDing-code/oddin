@@ -314,7 +314,7 @@ function note(html, cls = '') {
 function renderBarPills() {
   const m = S.prefs.mode;
   const cl = toolPref('claude'), cx = toolPref('codex');
-  $('#pMode').innerHTML = `${icon('split')}<span class="v">${MODES[m].label}</span>${icon('down')}`;
+  $('#pMode').innerHTML = `${icon('split')}<span class="v">${MODES[m].label}${S.prefs.pace === 'speed' ? ' · 속도 우선' : ''}</span>${icon('down')}`;
   $('#pClaude').innerHTML = `<span class="dot" style="background:var(--claude)"></span><span class="v"><span class="nm">Claude · </span>${esc(prefLabel('claude', cl))}</span>${icon('down')}`;
   $('#pCodex').innerHTML = `<span class="dot" style="background:var(--codex)"></span><span class="v"><span class="nm">Codex · </span>${esc(prefLabel('codex', cx))}</span>${icon('down')}`;
   $('#pClaude').classList.toggle('off', m === 'codex');
@@ -396,6 +396,9 @@ function openModePicker(anchor) {
   const items = Object.entries(MODES).map(([k, v]) => ({ label: v.label, desc: v.desc, checked: S.prefs.mode === k, run: () => { S.prefs.mode = k; savePrefs(); renderBarPills(); closePop(); } }));
   items.push({ sep: true }, { header: '자동 분배일 때 계획 담당' });
   for (const [p, d] of [['auto', 'Codex 우선, 안 되면 Claude'], ['codex', 'Codex가 계획·보고'], ['claude', 'Claude가 계획·보고']]) items.push({ label: p === 'auto' ? '자동' : p === 'codex' ? 'Codex' : 'Claude', desc: d, checked: S.prefs.planner === p, run: () => { S.prefs.planner = p; savePrefs(); openModePicker(anchor); } });
+  // 작업 방식: 품질 우선(기본) = 평소 단독으로 쓸 때의 추론 강도, 속도 우선 = 근거 없으면 high로 낮춤
+  items.push({ sep: true }, { header: '작업 방식' });
+  for (const [p, l, d] of [['quality', '품질 우선 (기본)', '평소 단독으로 쓸 때와 같은 추론 강도 · 느려도 꼼꼼하게'], ['speed', '속도 우선', '근거가 없으면 강도를 high로 낮춤 · 빠르지만 얕게']]) items.push({ label: l, desc: d, checked: (S.prefs.pace || 'quality') === p, run: () => { S.prefs.pace = p; savePrefs(); renderBarPills(); closePop(); } });
   openPop(anchor, items, { sel: Object.keys(MODES).indexOf(S.prefs.mode), kind: 'mode' });
 }
 function openModelPicker(tool, anchor) {
@@ -457,7 +460,7 @@ async function submit() {
   const live = liveJob();
   if (live) return icSubmit(live); // 진행 중이면 새 요청이 아니라 현재 작업에 수정 지시
   if (S.submitting) return; // 앞선 보내기가 아직 응답을 기다리는 중 (중복 Enter·클릭)
-  const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
+  const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission, pace: S.prefs.pace === 'speed' ? 'speed' : 'quality' }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
   if (S.current) body.sessionId = S.current; else body.cwd = currentCwd();
   S.submitting = true; $('#btnSend').disabled = true;
   try {
