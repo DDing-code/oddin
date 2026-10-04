@@ -329,7 +329,7 @@ function usagePane() {
     return h + '</div>';
   };
   return (!u ? '<div class="insp-empty"><p>불러오는 중…</p></div>' : block('claude', 'Claude', u.claude) + block('codex', 'Codex', u.codex))
-    + `<button class="btn wide" data-usage-refresh>${icon('refresh')}새로고침</button><p class="fine">Claude는 CLI에서 실시간으로 조회해요. Codex는 최근 실행 기록에 남은 값이라 5시간 한도가 비어 있을 수 있어요. 숫자와 막대는 남은 한도이고, 막대 위 흰 눈금은 초기화까지 남은 시간의 비율이에요. 막대가 눈금보다 길면 지금 속도로 초기화까지 넉넉하고, 짧으면 그 전에 바닥날 수 있어요. 자동 분배는 남은 한도에 맞춰 Claude·Codex 비중을 나누고, 남은 한도가 5% 이하인 쪽 작업은 다른 AI로 넘겨요. Fable 주간 한도가 25% 이하로 남으면 자동 선택이 Opus로 바꿔요.</p>`;
+    + `<button class="btn wide" data-usage-refresh>${icon('refresh')}새로고침</button><p class="fine">Claude는 CLI에서 실시간으로 조회해요. Codex는 최근 실행 기록에 남은 값이라 5시간 한도가 비어 있을 수 있어요. 숫자와 막대는 남은 한도이고, 막대 위 흰 눈금은 초기화까지 남은 시간의 비율이에요. 막대가 눈금보다 길면 지금 속도로 초기화까지 넉넉하고, 짧으면 그 전에 바닥날 수 있어요. 자동 분배는 남은 한도에 맞춰 Claude·Codex 비중을 나누고, 남은 한도가 5% 이하인 쪽 작업은 다른 AI로 넘겨요. Fable 주간 한도가 25% 이하로 남으면 자동 선택이 Opus로 바꾸고, 디자인 기획은 Codex의 GPT-6-Astra에 넘겨요.</p>`;
 }
 function infoPane(s) {
   const jobs = sessionJobs(s.id);

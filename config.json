@@ -72,7 +72,12 @@
     "enabled": true,
     "tool": "claude",
     "model": "fable",
-    "note": "디자인은 기획만 Claude Fable(명세 작성), 구현·검증은 다른 AI (사용자 규칙 2026-10-03 갱신). 끄려면 enabled:false"
+    "switchAt": 75,
+    "fallback": {
+      "tool": "codex",
+      "model": "gpt-6-astra"
+    },
+    "note": "디자인은 기획만 Claude Fable(명세 작성), 구현·검증은 다른 AI (사용자 규칙 2026-10-03 갱신). Fable 전용 주간 사용률이 switchAt(%) 이상이면 디자인 기획만 fallback 으로 넘김 (사용자 규칙 2026-10-04, 넘기지 않으려면 fallback:false). 끄려면 enabled:false"
   },
   "fastPath": {
     "enabled": false,

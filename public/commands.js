@@ -112,7 +112,7 @@ function renderWarnings() {
   for (const k of Object.keys(S.warnLevel)) if (!ws.some((w) => w.key === k)) delete S.warnLevel[k];
   if (!ws.length) { el.hidden = true; el.innerHTML = ''; return; }
   const crit = ws.some((w) => w.level === 'crit');
-  const what = (w) => w.model ? `${w.label} 한도 — 자동 선택이 ${w.model === 'fable' ? 'Opus' : '다른 모델'}로 바꿔요` : w.level === 'crit' ? '한도 거의 소진 — 새 작업은 다른 AI로 보내요' : '자동 분배가 이쪽 비중을 줄여요';
+  const what = (w) => w.model ? `${w.label} 한도 — 자동 선택이 ${w.model === 'fable' ? 'Opus로 바꾸고, 디자인 기획은 Codex Astra에 넘겨요' : '다른 모델로 바꿔요'}` : w.level === 'crit' ? '한도 거의 소진 — 새 작업은 다른 AI로 보내요' : '자동 분배가 이쪽 비중을 줄여요';
   el.hidden = false; el.className = crit ? 'crit' : 'warn';
   el.innerHTML = `${icon('alert')}<div class="wb-list">${ws.slice(0, 3).map((w) => `<span><b>${w.tool === 'claude' ? 'Claude' : 'Codex'} ${esc(w.label)} ${w.left}% 남음</b> ${esc(what(w))}${w.resetsAt ? ` · ${esc(resetPhrase(w.resetsAt))}` : ''}</span>`).join('')}</div><button class="icon-btn" data-wb-close title="숨기기">${icon('x')}</button>`;
 }

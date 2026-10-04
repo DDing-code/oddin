@@ -19,7 +19,8 @@ test('디자인 모델 고정: 자동이면 Fable, 직접 고정·Codex·한도 
   assert.equal(applyDesignModel({}, 'claude', auto, { model: 'opus', effort: 'high' }, usage(96)).model, 'opus');
   assert.equal(applyDesignModel({}, 'claude', { model: 'opus', effort: 'high' }, { model: 'opus', effort: 'high' }, null).model, 'opus');
   assert.equal(applyDesignModel({}, 'codex', auto, { model: 'gpt-6.1-sol', effort: 'high' }, null).model, 'gpt-6.1-sol');
-  assert.deepEqual(designRule({}), { tool: 'claude', model: 'fable' });
+  const rule = designRule({});
+  assert.equal(rule.tool, 'claude'); assert.equal(rule.model, 'fable'); // 한도 전환 기본값은 design-switch.test.mjs
 });
 
 test('자동 분배: 디자인 작업은 Claude로 옮기고 다른 AI 전용 역할은 유지', () => {

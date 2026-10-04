@@ -28,7 +28,7 @@
 - `lib/terminal.mjs`·`lib/files.mjs`·`lib/preview.mjs` 파이프 터미널·파일 보기·미리보기 프록시. 규약 `docs/tools.md`, 화면 `public/tools-ui.js`
 - 화면 확장 연결 지점: `window.hubTabs`(오른쪽 패널 탭), `window.hubJobExtras`(작업 카드 끝), `hub:event`(모든 실시간 이벤트). 기능 화면은 새 파일에 두고 공용 파일은 최소로 고친다.
 - 자식 프로세스는 `util.guardChild`로 감싼다(입출력 통로 오류로 서버가 죽지 않게).
-- 모델 규칙: 최상위 모델(Fable·Astra)은 기획·디자인 기획·중요한 글쓰기에만(`router.premiumAllowed`·`capPremium`, 설정 `premiumModels`). 디자인이 섞인 작업은 기획(Fable)·구현(Sol)으로 나눈다(`jobs.enforceDesignRule`, 설정 `designRule`).
+- 모델 규칙: 최상위 모델(Fable·Astra)은 기획·디자인 기획·중요한 글쓰기에만(`router.premiumAllowed`·`capPremium`, 설정 `premiumModels`). 디자인이 섞인 작업은 기획(Fable)·구현(Sol)으로 나눈다(`jobs.enforceDesignRule`, 설정 `designRule`). Fable 전용 주간 사용률이 75% 이상이면 디자인 기획만 Codex·`gpt-6-astra`가 맡는다(`router.designTarget`, 아래 규칙).
 - `desktop/` 데스크탑 프로그램(Electron, 자체 `package.json`·`node_modules` — 허브 본체는 계속 의존성 없음). `main.cjs` 창·트레이·알림·허브 전환·원격 세션 조회, `preload.cjs` 화면 연결 객체 `window.hubDesktop`, `lib/hubs.cjs` 허브 목록·주소 검사(시험 `tests/desktop-hubs.test.mjs`), `pages/` 연결 중·연결 안 됨 화면. 규약 `docs/desktop.md`. 빌드 `npm run desktop:build`
 - `public/desktop.js` 프로그램 안에서만 동작(알림·진행 표시·경로 끌어놓기·트레이 명령), `public/hubs.js`·`hubs.css` 사이드바 허브 전환·원격 세션 목록(일반 브라우저에서는 아무것도 바꾸지 않음)
 
@@ -41,5 +41,6 @@
 - 테스트: `npm test`. CLI 상태: `npm run check`.
 - 시험 서버: `HUB_PORT`, `HUB_DATA_DIR`, `HUB_RUNS_DIR`, `HUB_CONFIG_FILE`을 모두 분리하고 `HUB_SKIP_CLI_INSTALL=1`로 CLI 공통 설치·감시를 생략한다. 실제 CLI의 로그인 홈은 바꾸지 않는다. 원본 경로가 누락되거나 완전히 빈 경우 설치기도 기존 설치본 정리를 보류한다.
 - 작업 기본 모델·강도는 `config.json`의 `defaults` (`auto` = 자동, 빈 값 = 각 CLI 평소 설정). 자동 선택 로직은 `lib/router.mjs`, 하한은 `autoFloor` (사용자 요구: Opus·high / GPT-6.1-Sol·high 이상).
-- 디자인 고정 규칙(사용자 요구 2026-10-03): 디자인 작업(시안·UI·색·아이콘·로고·폰트·일러스트·도트 등, "설계" 제외)은 자동 분배에서 Claude로 옮기고, Claude 모델이 자동이면 Fable로 고정한다. Fable 75% 강등보다 우선하며 Fable 전용 한도 95% 이상·지원 안 됨일 때만 기존 선택 유지. 사용자가 Codex만 모드나 모델을 직접 고르면 그 선택을 따른다. 판별·고정은 `lib/router.mjs`의 `isDesignText`·`applyDesignModel`, 담당 이동은 `jobs.mjs`의 `enforceDesignRule`, 설정은 `config.json`의 `designRule`(`enabled:false`로 끔).
+- 디자인 고정 규칙(사용자 요구 2026-10-03): 디자인 작업(시안·UI·색·아이콘·로고·폰트·일러스트·도트 등, "설계" 제외)은 자동 분배에서 Claude로 옮기고, Claude 모델이 자동이면 Fable로 고정한다. 사용자가 Codex만 모드나 모델을 직접 고르면 그 선택을 따른다. 판별·고정은 `lib/router.mjs`의 `isDesignText`·`applyDesignModel`, 담당 이동은 `jobs.mjs`의 `enforceDesignRule`, 설정은 `config.json`의 `designRule`(`enabled:false`로 끔).
+- 디자인 기획 한도 전환(사용자 요구 2026-10-04 "페이블 주간사용량 높으면 디자인 기획 아스트라에 넘겨"): **Fable 전용** 주간 사용률(`usage`의 `scope:'model'` 창, Claude 전체 5시간·주간과 다른 값)이 `designRule.switchAt`(기본 75) 이상이면 자동 배정되는 디자인 기획 작업의 담당을 `designRule.fallback`(기본 codex·`gpt-6-astra`)으로 바꾼다. 미만이면 Fable 유지. 사용률 미확인은 0%로도 초과로도 보지 않고 전환하지 않는다. Astra는 기획 명세에만 쓰고 구현·검증은 Sol·Opus 그대로다. 사용자가 Claude·Codex 모델을 직접 골랐거나 Codex 제외·Astra 지원 안 됨이면 전환하지 않고 기존 처리(Fable 유지 — 일반 75% Opus 강등보다 우선, Fable 전용 95% 이상·지원 안 됨이면 기존 선택)로 가며 이유를 작업 `reason`·`job.notes`에 남긴다. 판정은 `router.designTarget` 한 곳, 결정은 작업의 `designTarget`에 적고 `applyChoice`가 따른다. 계획 지시문에는 `catalogText(config, { usage, usable, settings })`로 현재 담당이 들어간다. 시험 `tests/design-switch.test.mjs`.
 - Codex 실행 파일은 `lib/util.mjs`의 `codexCommand`가 Codex 앱의 최신 CLI로 고른다. PATH 버전은 고정값으로 가정하지 않는다. 실행 파일·버전·요청 설정은 실행 폴더의 `invocation.json`·`invocations.jsonl`로 확인한다. 미지원 모델 재실행도 사용자 하한·고정값·기존 등급·강도를 유지해야 한다.
