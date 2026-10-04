@@ -92,3 +92,49 @@ test('예전 방식(mode 없음)은 그대로 기획·구현 분리', () => {
   const added = m.enforceDesignRule(job, ['claude', 'codex'], name, usage());
   assert.equal(added.length, 1); assert.equal(added[0].designPlan, true); assert.equal(job.tasks.length, 2);
 });
+
+// 사용자 규칙 2026-10-04 "디자인은 페이블 / 눈으로 확인은 아스트라" → split + check (지금 설정)
+const SPLIT_CHECK = { designRule: { enabled: true, mode: 'split', tool: 'claude', model: 'fable', check: { tool: 'codex', model: 'gpt-6-astra' } } };
+
+test('눈으로 확인 단계: 디자인은 기획(Fable)→구현(Sol)→확인(Astra), 영상 같은 시각 작업은 구현→확인, 일반·기획만 작업엔 없음, 뒤 작업은 확인 뒤로', () => {
+  const m = manager(SPLIT_CHECK);
+  const job = { mode: 'auto', notes: [], tasks: [
+    { id: 't1', title: '대시보드 디자인 CSS 구현', prompt: '버튼 색 바꾸고 CSS 구현', assignee: 'claude', dependsOn: [] },
+    { id: 't2', title: '먹방 영상 컷 편집', prompt: '영상 편집', assignee: 'codex', dependsOn: [] },
+    { id: 't3', title: '배포 스크립트 실행', prompt: '배포', assignee: 'codex', dependsOn: ['t1'] },
+    { id: 't4', title: '로고 시안 기획', prompt: '로고 방향만 정리', assignee: 'codex', dependsOn: [] },
+  ] };
+  const added = m.enforceDesignRule(job, ['claude', 'codex'], name, usage());
+  const by = Object.fromEntries(job.tasks.map((t) => [t.id, t]));
+  assert.deepEqual(added.map((t) => t.id).sort(), ['t1d', 't1v', 't2v']);
+  assert.equal(by.t1d.assignee, 'claude'); assert.equal(by.t1d.designPlan, true);
+  assert.equal(by.t1.assignee, 'codex'); assert.equal(by.t1.designImpl, true);
+  assert.deepEqual([by.t1v.assignee, by.t1v.visualCheck, by.t1v.dependsOn], ['codex', true, ['t1', 't1d']]);
+  assert.match(by.t1v.prompt, /\[눈으로 확인 단계\].*「대시보드 디자인 CSS 구현」/s); assert.match(by.t1v.prompt, /디자인 기획" 작업의 명세/);
+  assert.deepEqual(by.t2v.dependsOn, ['t2']); assert.doesNotMatch(by.t2v.prompt, /디자인 기획" 작업의 명세/);
+  assert.deepEqual(by.t3.dependsOn, ['t1', 't1v'], '뒤 작업은 확인 뒤로');
+  assert.equal(by.t4.designPlan, true); assert.equal(by.t4v, undefined, '기획만 하는 작업엔 확인 없음');
+  assert.match(job.notes.join('\n'), /눈으로 확인 규칙: 눈으로 보는 결과물 2개는 구현 뒤 Codex·gpt-6-astra가/);
+  // 확인 담당을 못 쓰면 붙이지 않고 이유를 남김
+  const j2 = { mode: 'auto', notes: [], tasks: [{ id: 't1', title: '썸네일 이미지 만들기', prompt: '썸네일', assignee: 'claude', dependsOn: [] }] };
+  m.enforceDesignRule(j2, ['claude'], name, usage());
+  assert.equal(j2.tasks.some((t) => t.visualCheck), false); assert.match(j2.notes.join('\n'), /눈으로 확인은 Codex·gpt-6-astra 담당이지만 지금 쓸 수 없어/);
+  // check 를 끄면 예전 분리만
+  const off = manager({ designRule: { ...SPLIT_CHECK.designRule, check: false } });
+  const j3 = { mode: 'auto', notes: [], tasks: [{ id: 't1', title: '썸네일 이미지 만들기', prompt: '썸네일', assignee: 'codex', dependsOn: [] }] };
+  off.enforceDesignRule(j3, ['claude', 'codex'], name, usage());
+  assert.equal(j3.tasks.some((t) => t.visualCheck), false);
+});
+
+test('눈으로 확인 모델: Astra(한도 80%여도), 사용자가 고른 모델은 그대로, 계획 담당에게 확인 작업은 만들지 말라고 알림', () => {
+  const m = manager(SPLIT_CHECK);
+  const run = (settings, u = usage()) => { const t = { id: 't1v', title: '눈으로 확인: 썸네일', prompt: '확인', assignee: 'codex', visualCheck: true }; const job = { mode: 'auto', settings, tasks: [t], input: '' }; m.applyChoice(job, t, { reason: '눈으로 확인' }, u); return t; };
+  const a = run(AUTO());
+  assert.deepEqual([a.settings.model, a.settings.effort], ['gpt-6-astra', 'xhigh']); assert.match(a.reason, /눈으로 확인 규칙: gpt-6-astra/);
+  assert.equal(run(AUTO(), usage(80)).settings.model, 'gpt-6-astra');
+  assert.equal(run({ claude: { model: 'auto', effort: 'auto' }, codex: { model: 'gpt-6.1-sol', effort: 'high' } }).settings.model, 'gpt-6.1-sol');
+  const text = catalogText(SPLIT_CHECK, {});
+  assert.match(text, /"눈으로 확인: …" 작업\(codex·gpt-6-astra, 렌더·스크린샷으로 확인하고 어긋난 곳 수정\)을 자동으로 붙입니다\. 확인 작업은 직접 만들지 마세요/);
+  assert.match(text, /\*\*기획만\*\* 담당 claude·모델 fable/);
+  assert.equal(designRule({}).check, undefined);
+});
