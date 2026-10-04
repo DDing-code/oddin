@@ -8,7 +8,9 @@ import { spawnSync } from 'node:child_process';
 const require = createRequire(import.meta.url);
 const shared = process.env.AI_SHARED_SYNC_DIR || path.join(os.homedir(), '.ai-shared', 'sync');
 // 공유 메모리 스크립트(~/.ai-shared/sync)가 없는 PC(새로 설치한 PC 등)에서는 이 파일의 시험을 건너뛴다.
-const test = fs.existsSync(path.join(shared, 'memory-context.cjs')) ? nodeTest : (name, fn) => nodeTest(name, { skip: `${shared} 가 없어 공유 메모리 시험을 건너뜀` }, fn);
+const skipped = (name, fn) => nodeTest(name, { skip: `${shared} 가 없어 공유 메모리 시험을 건너뜀` }, fn);
+skipped.after = nodeTest.after;
+const test = fs.existsSync(path.join(shared, 'memory-context.cjs')) ? nodeTest : skipped;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-hub-memory-test-'));
 process.env.HUB_DATA_DIR = path.join(temp, 'data');
 process.env.HUB_RUNS_DIR = path.join(temp, 'runs');

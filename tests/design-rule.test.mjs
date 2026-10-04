@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { isDesignText, applyDesignModel, designRule, catalogText } from '../lib/router.mjs';
 import { JobManager } from '../lib/jobs.mjs';
+
+// Codex 모델 목록은 이 PC의 ~/.codex 대신 임시 폴더의 고정 목록을 쓴다(Codex를 아직 안 쓴 PC에서도 같은 결과).
+const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-design-rule-'));
+fs.writeFileSync(path.join(codexHome, 'models_cache.json'), JSON.stringify({ models: [
+  { slug: 'gpt-6.1-sol', visibility: 'list', supported_reasoning_levels: ['low', 'medium', 'high', 'xhigh'] },
+  { slug: 'gpt-6-astra', visibility: 'list', supported_reasoning_levels: ['low', 'medium', 'high', 'xhigh'] },
+] }));
+process.env.CODEX_HOME = codexHome;
+test.after(() => fs.rmSync(codexHome, { recursive: true, force: true }));
 
 const usage = (fable) => ({ claude: { windows: [{ label: '5시간', usedPercent: 10 }, { label: 'Fable 주간', scope: 'model', model: 'fable', usedPercent: fable }] } });
 

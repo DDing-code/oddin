@@ -14,6 +14,7 @@ function fixture(t, deps) {
   const repo = path.join(root, '저장소 공백'), remote = path.join(root, 'remote.git'); fs.mkdirSync(repo);
   git(root, 'init', '--bare', remote); git(repo, 'init', '-b', 'main');
   git(repo, 'config', 'user.name', '시험'); git(repo, 'config', 'user.email', 'test@example.invalid'); git(repo, 'config', 'commit.gpgsign', 'false');
+  git(repo, 'config', 'core.autocrlf', 'false'); // PC마다 다른 git 기본 줄바꿈 변환(Windows 기본 true)에 결과가 흔들리지 않게
   write(repo, '내용.txt', '기준\n'); git(repo, 'add', '.'); git(repo, 'commit', '-m', '기준'); git(repo, 'remote', 'add', 'origin', remote);
   const ops = new GitOps({}, { hasGh: () => false, ...deps });
   const s = { id: 's-test-' + ++serial, cwd: repo, title: '새 기능 시험' }; ops.initialize(s, true);

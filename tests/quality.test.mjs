@@ -159,7 +159,9 @@ test('작업자 지시문: 이어 쓰는 대화는 [이어서] 안내와 노트�
   assert.doesNotMatch(buildWorkerPrompt({ job, task, depResults: [], siblings: [task], hubDir: 'C:/hub', memoryCtx: '' }), /\[이어서\]/);
 });
 
-test('메모리 다이어트: 작업자 지시문에 전역 메모리 목록이 없고 단계별 한도 안', () => {
+// 공유 메모리 선택기(~/.ai-shared/sync/memory-context.cjs)가 없는 PC에서는 건너뛴다.
+const sharedContext = path.join(os.homedir(), '.ai-shared', 'sync', 'memory-context.cjs');
+test('메모리 다이어트: 작업자 지시문에 전역 메모리 목록이 없고 단계별 한도 안', { skip: !fs.existsSync(sharedContext) && `${sharedContext} 가 없어 건너뜀` }, () => {
   const cfg = config();
   const mem = path.join(cfg.hubDir, 'memory');
   fs.mkdirSync(path.join(mem, 'global'), { recursive: true });
