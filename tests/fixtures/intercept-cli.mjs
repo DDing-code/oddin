@@ -53,6 +53,12 @@ function complete() {
     }, 350);
   }
   else if (tool === 'claude') emit({ type: 'result', result: text, session_id: sid, is_error: false });
+  // CAPACITY_ONCE: 첫 턴만 모델 서버 혼잡으로 실패한다(같은 스레드의 다음 턴은 정상) — 실행 도중 혼잡 오류 재시도 시험
+  else if (original.includes('CAPACITY_ONCE') && serial === 1) {
+    const error = { message: 'Selected model is at capacity. Please try a different model.' };
+    emit({ method: 'error', params: { threadId: sid, error } });
+    emit({ method: 'turn/completed', params: { threadId: sid, turn: { id: tid, status: 'failed', error } } });
+  }
   else { if (original.includes('REASONING')) emit({ method: 'item/completed', params: { threadId: sid, turnId: tid, item: { type: 'reasoning', id: 'rs1', summary: ['**Inspecting files**', '**Planning edits**'], content: [] } } });
     emit({ method: 'item/completed', params: { threadId: sid, turnId: tid, item: { type: 'agentMessage', text } } }); emit({ method: 'turn/completed', params: { threadId: sid, turn: { id: tid, status: 'completed' } } }); }
 }
