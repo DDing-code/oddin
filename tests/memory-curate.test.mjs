@@ -153,3 +153,19 @@ test('정리 지시문: 노트 번호·고칠 수 있는 메모리·메모판·�
     notes: [{ text: '다크 테마' }], board: [{ taskId: 't1', text: '원본 svg 위치 build/' }], memoryText: '# 인덱스', editable: [{ scope: 'global', name: 'user-profile' }] });
   for (const re of [/1\. 다크 테마/, /- global\/user-profile/, /- \[t1\] 원본 svg 위치 build\//, /엮인 O 적용/, /기억할 것: 원본은 icon\.svg/, /"notes":\{"add"/]) assert.match(p, re);
 });
+
+test('정리 답 형식: Codex 강제용 스키마는 엄격(모든 항목 필수·추가 항목 금지), 한국어 아닌 노트·메모리는 거름', async () => {
+  const { CURATE_SCHEMA } = await import('../lib/memory-curate.mjs');
+  const strict = (s) => {
+    if (s.type === 'object') { assert.equal(s.additionalProperties, false); assert.deepEqual([...s.required].sort(), Object.keys(s.properties).sort()); Object.values(s.properties).forEach(strict); }
+    if (s.type === 'array') strict(s.items);
+  };
+  strict(CURATE_SCHEMA);
+  // 2026-10-04 실제로 나온 깨진 답: 중국어 + 코드 조각
+  assert.throws(() => parseCuration('{"notes":{"add":["用户指出".replace?"":""}]}'), /읽지 못했어요/);
+  const r = applyNoteOps([{ id: 'n00000001', text: '다크 테마' }], { add: ['用户指出背景不足', 'Background props are lacking', '배경 소품을 보강한다'], update: [{ n: 1, text: 'dark theme only' }] });
+  assert.deepEqual(r.notes.map((n) => n.text), ['다크 테마', '배경 소품을 보강한다']);
+  const hubDir = fresh();
+  const m = applyMemoryOps({ hubDir, slug: 'P--x', jobId: 'j', ops: [{ op: 'create', scope: 'project', name: 'bg-props', title: '배경', description: 'Background props', type: 'project', body: 'Add more props' }] });
+  assert.equal(m[0].status, 'skipped'); assert.match(m[0].why, /한국어가 아니라/);
+});

@@ -20,7 +20,7 @@
   function curationHtml(j) {
     const c = j.curation; if (!c) return '';
     if (c.status === 'running') return `<div class="mem-cur run"><span class="spin-xs"></span><span>기억 정리 중… 끝나면 다음 요청이 이 결과를 이어받아요</span></div>`;
-    if (c.status === 'failed') return `<div class="mem-cur err">${IC('alert')}<span>기억 정리 실패: ${E(c.error || '')}</span></div>`;
+    if (c.status === 'failed') return `<div class="mem-cur err">${IC('alert')}<span>기억 정리 실패: ${E(c.error || '')}</span><span class="grow"></span><button class="mem-undo" data-mem-retry="${E(j.id)}" title="이 작업의 결정 노트·장기 기억 정리를 한 번 더">${IC('retry')}다시 정리</button></div>`;
     const n = c.notes || {}, parts = [];
     if (n.added) parts.push(`+${n.added}`); if (n.updated) parts.push(`고침 ${n.updated}`); if (n.removed) parts.push(`뺌 ${n.removed}`);
     const applied = (c.memory || []).filter((m) => m.status === 'applied'), skipped = (c.memory || []).filter((m) => m.status !== 'applied');
@@ -44,6 +44,13 @@
       const bad = (r.undo || []).filter((x) => x.status !== 'restored').length;
       say(bad ? `되돌렸어요. 그 뒤에 다른 곳에서 바뀐 ${bad}개는 그대로 뒀어요` : '이 작업이 저장한 장기 기억을 되돌렸어요');
     } catch (err) { say(err.message, true); b.disabled = false; }
+  });
+
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-mem-retry]'); if (!b) return;
+    b.disabled = true;
+    try { await call(`/api/jobs/${encodeURIComponent(b.dataset.memRetry)}/memory/retry`, { method: 'POST', body: '{}' }); say('기억을 다시 정리하고 있어요'); }
+    catch (err) { say(err.message, true); b.disabled = false; }
   });
 
   /* ---------- 오른쪽 '기억' 탭 ---------- */

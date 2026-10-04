@@ -154,6 +154,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'PUT') return json(res, jobs.setSessionNotes(r[1], (await readBody(req)).notes));
     }
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/memory\/undo$/)) && req.method === 'POST') return json(res, jobs.undoCuration(r[1]));
+    if ((r = m(/^\/api\/jobs\/([\w-]+)\/memory\/retry$/)) && req.method === 'POST') return json(res, jobs.recurate(r[1]));
     if ((r = m(/^\/api\/sessions\/([\w-]+)\/goal\/(stop|resume)$/)) && req.method === 'POST') return json(res, r[2] === 'stop' ? jobs.stopGoal(r[1]) : await jobs.resumeGoal(r[1]));
     // ---- 작업 ----
     if (p === '/api/jobs' && req.method === 'GET') return json(res, jobs.list().map(publicJob));
