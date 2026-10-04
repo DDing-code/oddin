@@ -160,7 +160,8 @@ function main() {
       width: ws.width || 1360, height: ws.height || 880, x: ws.x, y: ws.y,
       minWidth: 720, minHeight: 520, show: false, title: 'ODDIN', icon: ICON,
       backgroundColor: '#141416', autoHideMenuBar: false,
-      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false },
+      // autoplayPolicy: 화면의 알림음(public/sound.js)이 창을 누르기 전에도, 숨겨진 상태에서도 나게
+      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, autoplayPolicy: 'no-user-gesture-required' },
     });
     win.setMenuBarVisibility(false);
     if (ws.maximized) win.maximize();
@@ -315,7 +316,8 @@ function main() {
     if (win && win.isVisible() && win.isFocused()) return;
     const hubId = state.current;
     const sessionId = /^[\w-]{1,80}$/.test(String(n?.sessionId || '')) ? String(n.sessionId) : null;
-    const note = new Notification({ title: String(n?.title || 'ODDIN').slice(0, 120), body: String(n?.body || '').slice(0, 240), icon: ICON });
+    // 소리는 화면의 알림음(public/sound.js)이 내므로 Windows 알림은 조용히 (두 번 울리지 않게)
+    const note = new Notification({ title: String(n?.title || 'ODDIN').slice(0, 120), body: String(n?.body || '').slice(0, 240), icon: ICON, silent: true });
     note.on('click', () => { showWindow(); if (sessionId) switchHub(hubId, sessionId).catch(() => {}); });
     note.show();
     if (win) win.flashFrame(true);

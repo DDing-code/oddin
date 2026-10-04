@@ -42,3 +42,8 @@
 - 원본: `desktop/build/icon.svg`(앱 타일), `desktop/build/tray.svg`(작은 크기용, 선이 굵음). 허브 화면 로고는 투명 바탕 `public/mark.svg`(같은 고리, 엮인 자리는 마스크), 탭 아이콘은 `public/icon.svg`(= tray.svg). 데스크탑 로딩·연결 안 됨 화면은 보안 정책(img-src data:)상 mark.svg 를 HTML 안에 직접 넣었다.
 - 원본을 고친 뒤: `desktop` 폴더에서 `npx electron scripts/make-icons.cjs build/icon.svg build/tray.svg` → `icon-512.png`·`icon.png`(256)·`icon.ico`(16~256)·`tray.png`·`tray@2x.png` 다시 생성. 그다음 버전을 올려 `npm run dist` → 설치.
 - 설치 뒤에도 바탕화면·작업 표시줄에 옛 아이콘이 보이면 Windows 아이콘 캐시 문제다(`ie4uinit.exe -show`, 작업 표시줄 고정 아이콘은 고정을 풀었다 다시 하거나 로그아웃 후 반영).
+
+## 알림음 (2026-10-04, 0.1.4)
+- 소리는 화면(`public/sound.js`)이 낸다: 완료(밝은 두 음)·일부 완료·실패(낮은 두 음)·질문·승인 요청(띵·띵·딩). 직접 중지한 작업은 조용히. 같은 브라우저의 여러 탭이 한꺼번에 울리지 않게 4초 안의 같은 일은 한 번만.
+- 앱 창은 `webPreferences.autoplayPolicy: no-user-gesture-required`라 누르기 전·숨겨진 상태에서도 울린다(일반 브라우저는 한 번 누르거나 입력한 뒤부터). 화면이 요청하는 Windows 알림은 `silent: true`(두 번 울리지 않게). 다른 허브 완료 알림은 Windows 기본 소리.
+- 끄기: 왼쪽 아래 계정 메뉴 "알림음 (작업 끝·질문)".

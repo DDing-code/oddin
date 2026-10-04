@@ -31,6 +31,7 @@
 - 자식 프로세스는 `util.guardChild`로 감싼다(입출력 통로 오류로 서버가 죽지 않게).
 - 모델 규칙: 최상위 모델(Fable·Astra)은 기획·디자인 기획·중요한 글쓰기에만(`router.premiumAllowed`·`capPremium`, 설정 `premiumModels`). 디자인이 섞인 작업은 기획(Fable)·구현(Sol)으로 나눈다(`jobs.enforceDesignRule`, 설정 `designRule`). Fable 전용 주간 사용률이 75% 이상이면 디자인 기획만 Codex·`gpt-6-astra`가 맡는다(`router.designTarget`, 아래 규칙).
 - `desktop/` 데스크탑 프로그램(Electron, 자체 `package.json`·`node_modules` — 허브 본체는 계속 의존성 없음). `main.cjs` 창·트레이·알림·허브 전환·원격 세션 조회, `preload.cjs` 화면 연결 객체 `window.hubDesktop`, `lib/hubs.cjs` 허브 목록·주소 검사(시험 `tests/desktop-hubs.test.mjs`), `pages/` 연결 중·연결 안 됨 화면. 규약 `docs/desktop.md`. 빌드 `npm run desktop:build`
+- `public/sound.js` 알림음(2026-10-04): 작업 끝(완료·일부 완료·실패)·질문·승인 요청 때 Web Audio 합성음, 계정 메뉴 "알림음"으로 켜고 끔(창마다 localStorage). 데스크탑 앱은 autoplayPolicy 로 바로 울리고 Windows 알림은 조용히(`silent`)
 - `public/desktop.js` 프로그램 안에서만 동작(알림·진행 표시·경로 끌어놓기·트레이 명령), `public/hubs.js`·`hubs.css` 사이드바 허브 전환·원격 세션 목록(일반 브라우저에서는 아무것도 바꾸지 않음)
 
 ## 규칙
