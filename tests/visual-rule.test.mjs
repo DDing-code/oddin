@@ -130,7 +130,7 @@ test('눈으로 확인 모델: Astra(한도 80%여도), 사용자가 고른 모�
   const m = manager(SPLIT_CHECK);
   const run = (settings, u = usage()) => { const t = { id: 't1v', title: '눈으로 확인: 썸네일', prompt: '확인', assignee: 'codex', visualCheck: true }; const job = { mode: 'auto', settings, tasks: [t], input: '' }; m.applyChoice(job, t, { reason: '눈으로 확인' }, u); return t; };
   const a = run(AUTO());
-  assert.deepEqual([a.settings.model, a.settings.effort], ['gpt-6-astra', 'xhigh']); assert.match(a.reason, /눈으로 확인 규칙: gpt-6-astra/);
+  assert.deepEqual([a.settings.model, a.settings.effort], ['gpt-6-astra', 'high']); // 눈으로 확인은 강도를 올리지 않음(2026-10-05) assert.match(a.reason, /눈으로 확인 규칙: gpt-6-astra/);
   assert.equal(run(AUTO(), usage(80)).settings.model, 'gpt-6-astra');
   assert.equal(run({ claude: { model: 'auto', effort: 'auto' }, codex: { model: 'gpt-6.1-sol', effort: 'high' } }).settings.model, 'gpt-6.1-sol');
   const text = catalogText(SPLIT_CHECK, {});

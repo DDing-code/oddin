@@ -84,6 +84,15 @@
     },
     "note": "디자인 기획은 Claude Fable(명세만), 구현은 다른 AI(Sol), 눈으로 보는 결과물은 구현 뒤 Codex·gpt-6-astra가 렌더·스크린샷으로 확인하고 어긋난 곳을 고친다(사용자 규칙 2026-10-04 \"디자인은 페이블 / 눈으로 확인은 아스트라\"). Fable 전용 주간 사용률이 switchAt(%) 이상이면 디자인 기획만 fallback 으로 넘김(fallback:false 로 끔). 확인 단계를 끄려면 check:false. 한 작업자가 처음부터 끝까지 하려면 mode:\"whole\". 규칙 전체를 끄려면 enabled:false"
   },
+  "answerPath": {
+    "enabled": true,
+    "maxChars": 300,
+    "note": "물음표로 끝나고 작업 요청 말(만들어·고쳐·추가·조사 등)이 없는 질문은 계획·디자인 분리·눈으로 확인·보고 없이 이 세션을 맡던 AI가 직전 대화를 이어 high 로 바로 답한다(2026-10-05 \"단순 질문에도 10분\"). 끄려면 enabled:false"
+  },
+  "quality": {
+    "maxEffort": "xhigh",
+    "note": "품질 우선일 때 평소 단독 설정 강도까지 올리되 이 값까지만(평소 설정이 max 라도). 질문 답·디자인 기획·눈으로 확인은 올리지 않음"
+  },
   "fastPath": {
     "enabled": false,
     "maxChars": 160,
