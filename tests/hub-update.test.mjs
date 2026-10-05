@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { applyUpdate, checkUpdate, hubCommit } from '../lib/hub-update.mjs';
+import { applyUpdate, checkUpdate, hubCommit, runningCommit } from '../lib/hub-update.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true }).trim();
 const commitFile = (repo, rel, text, msg) => {
@@ -25,12 +25,15 @@ test('업데이트: 최신이면 그대로, 화면만 바뀌면 재시작 없음
     let r = await applyUpdate(hub, { restart: false });
     assert.equal(r.updated, false); assert.equal(r.message, '이미 최신이에요');
 
+    const first = runningCommit(hub).commit;
     commitFile(dev, 'public/app.js', '// 화면', '화면만'); git(dev, 'push', '-q', 'origin', 'HEAD:main');
     assert.equal((await checkUpdate(hub)).behind, 1);
     r = await applyUpdate(hub, { restart: false });
     assert.equal(r.updated, true); assert.equal(r.restart, false); assert.equal(r.files, 1);
     assert.equal(fs.readFileSync(path.join(hub, 'public', 'app.js'), 'utf8'), '// 화면');
     assert.equal(hubCommit(hub).commit, r.to);
+    // 도는 서버의 버전은 재시작 전까지 그대로, 받은 버전은 pending 으로
+    assert.equal(runningCommit(hub).commit, first); assert.equal(runningCommit(hub).pending, r.to);
 
     commitFile(dev, 'lib/jobs.mjs', '// 서버', '서버'); git(dev, 'push', '-q', 'origin', 'HEAD:main');
     r = await applyUpdate(hub, { restart: false });

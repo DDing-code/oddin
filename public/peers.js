@@ -16,7 +16,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     return s < 60 ? '방금' : s < 3600 ? `${Math.floor(s / 60)}분 전` : s < 86400 ? `${Math.floor(s / 3600)}시간 전` : new Date(iso).toLocaleString('ko-KR');
   };
   // ODDIN 버전: 커밋 번호 대신 날짜로 (번호는 마우스를 올리면)
-  const verText = (x) => x?.commitDate ? `${new Date(x.commitDate).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 버전` : x?.commit || '버전 모름';
+  const verText = (x) => (x?.commitDate ? `${new Date(x.commitDate).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 버전` : x?.commit || '버전 모름') + (x?.pendingCommit ? ' · 새 버전 받음, 재시작 대기' : '');
   const countsText = (c) => !c ? '' : [c.pulled && `받음 ${c.pulled}`, c.pushed && `보냄 ${c.pushed}`, c.merged && `목록 합침 ${c.merged}`, c.conflicts && `겹침 ${c.conflicts}`, c.deleted && `지움 ${c.deleted}`].filter(Boolean).join(' · ') || '바뀐 것 없음';
 
   // 화면 파일은 바로 바뀌지만 서버는 진행 중인 작업이 끝나야 재시작된다 — 그 사이엔 서버가 이 기능을 모른다

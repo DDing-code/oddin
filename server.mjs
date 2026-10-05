@@ -26,7 +26,7 @@ import { Peers } from './lib/peers.mjs';
 import { SharedSync, scanShared, readShared, writeShared } from './lib/shared-sync.mjs';
 import { setupStatus, installSharedHooks } from './lib/shared-setup.mjs';
 import { listMemory, moveMemory, createBlock, renameBlock, setBlockRoot, deleteBlock, readBlockMemory } from './lib/memory-blocks.mjs';
-import { hubCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
+import { hubCommit, runningCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
 import { SharedFolders } from './lib/shared-folders.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
@@ -68,7 +68,8 @@ setInterval(async () => {
 }, 15_000).unref();
 
 // 연결된 PC(다른 ODDIN 허브)와 공유 기억(~/.ai-shared) 동기화 — 집·회사 PC 두 대를 한 대시보드로 (docs/peers.md)
-const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {}).version || '', commit: () => hubCommit(ROOT) });
+const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {}).version || '', commit: () => runningCommit(ROOT) });
+runningCommit(ROOT); // 켜질 때의 버전을 기억한다(업데이트 뒤 재시작 전과 구분)
 const sharedCfg = config.sharedSync || {};
 const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false });
 shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
@@ -147,7 +148,7 @@ const server = http.createServer(async (req, res) => {
     if (peerRoute && req.method === 'DELETE') { const r = peers.remove(peerRoute[1]); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     if (peerRoute && req.method === 'POST') { const r = peers.rename(peerRoute[1], (await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     // 업데이트: 이 허브(/api/hub/…)와 연결된 PC(/api/peers/:id/update — 그 PC 허브에 대신 요청)
-    if (p === '/api/hub/version' && req.method === 'GET') return json(res, url.searchParams.get('check') === '1' ? await checkUpdate(ROOT) : hubCommit(ROOT));
+    if (p === '/api/hub/version' && req.method === 'GET') return json(res, url.searchParams.get('check') === '1' ? await checkUpdate(ROOT) : runningCommit(ROOT));
     if (p === '/api/hub/update' && req.method === 'POST') { await readBody(req); const r = await applyUpdate(ROOT); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     const peerUpdate = p.match(/^\/api\/peers\/([\w-]+)\/(update|version)$/);
     if (peerUpdate) {
