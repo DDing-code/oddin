@@ -149,3 +149,40 @@ test('눈으로 확인 모델: Astra(한도 80%여도), 사용자가 고른 모�
   assert.match(text, /\*\*기획만\*\* 담당 claude·모델 fable/);
   assert.equal(designRule({}).check, undefined);
 });
+
+// 사용자 요구 2026-10-05: 고쳐 가는 시안은 디자인 담당이 한 작업으로(직전 대화 이어서), 큰 구현만 기획→구현→확인 (adaptive, 지금 설정)
+const ADAPTIVE = { designRule: { enabled: true, mode: 'split', adaptive: true, tool: 'claude', model: 'fable', switchAt: 75, check: { tool: 'codex', model: 'gpt-6-astra' } } };
+const fable = (p) => ({ claude: { windows: [{ key: 'model_fable', label: 'Fable 주간', scope: 'model', model: 'fable', usedPercent: p }] }, codex: { windows: [{ key: 'w10080', label: '주간', usedPercent: 20 }] } });
+
+test('디자인 진행 방식: 시안(draft)은 디자인 담당이 한 작업으로, 큰 구현(build)만 기획→구현→확인, Fable 한도 넘으면 Astra 가 만들고 스스로 확인', () => {
+  const m = manager(ADAPTIVE);
+  const tasks = () => [
+    { id: 't1', title: '다시 시안 좀 뽑아봐', prompt: '시안 4개', assignee: 'codex', dependsOn: [], designKind: 'draft' },
+    { id: 't2', title: '설정 화면 UI 구현', prompt: 'React 로 설정 화면 구현', assignee: 'codex', dependsOn: [], designKind: 'build' },
+    { id: 't3', title: '로그 정리', prompt: '로그', assignee: 'codex', dependsOn: [], designKind: '' },
+  ];
+  const run = (u) => { const job = { mode: 'auto', notes: [], settings: AUTO(), tasks: tasks() }; m.enforceDesignRule(job, ['claude', 'codex'], name, u); return Object.fromEntries(job.tasks.map((t) => [t.id, t])); };
+  // Fable 사용 가능
+  let by = run(fable(40));
+  assert.equal(by.t1.designMake, true); assert.equal(by.t1.assignee, 'claude'); assert.match(by.t1.prompt, /\[디자인 제작\]/); assert.doesNotMatch(by.t1.prompt, /\[눈으로 확인\]/);
+  assert.deepEqual(by.t1v?.dependsOn, ['t1'], 'Fable 이 만든 시안은 Astra 가 확인');
+  assert.equal(by.t2.designImpl, true); assert.equal(by.t2d.designPlan, true); assert.deepEqual(by.t2v.dependsOn, ['t2', 't2d']);
+  assert.equal(by.t3.design, undefined); assert.equal(by.t3v, undefined);
+  // Fable 84% → Astra 가 만들고 스스로 확인, 확인 작업은 큰 구현에만
+  by = run(fable(84));
+  assert.deepEqual([by.t1.assignee, by.t1.designTarget.model, by.t1.selfChecked], ['codex', 'gpt-6-astra', true]);
+  assert.match(by.t1.prompt, /\[눈으로 확인\] 끝내기 전에/); assert.equal(by.t1v, undefined);
+  assert.equal(by.t2d.designTarget.model, 'gpt-6-astra'); assert.ok(by.t2v);
+  // 플래너 판정이 없는 작업(빠른 경로 등)은 제목으로 판정해 시안으로
+  const j = { mode: 'auto', notes: [], settings: AUTO(), input: '썸네일 시안', tasks: [{ id: 't1', title: '썸네일 시안', prompt: '썸네일', assignee: 'codex', dependsOn: [] }] };
+  m.enforceDesignRule(j, ['claude', 'codex'], name, fable(40));
+  assert.equal(j.tasks[0].designMake, true);
+});
+
+test('디자인 진행 방식 모델·강도: 시안 제작은 디자인 담당 모델(Fable/Astra), 명세대로 구현하는 단계는 강도를 올리지 않음', () => {
+  const m = manager(ADAPTIVE);
+  const pick = (task, u = fable(40)) => { const job = { mode: 'auto', settings: { ...AUTO(), pace: 'quality' }, tasks: [task], input: '' }; m.applyChoice(job, task, { model: task.assignee === 'codex' ? 'gpt-6.1-sol' : 'opus', effort: 'high' }, u); return task.settings; };
+  assert.equal(pick({ id: 't1', title: '시안', prompt: '시안', assignee: 'claude', designMake: true, designTarget: { tool: 'claude', model: 'fable', switched: false } }).model, 'fable');
+  assert.equal(pick({ id: 't1', title: '시안', prompt: '시안', assignee: 'codex', designMake: true, designTarget: { tool: 'codex', model: 'gpt-6-astra', switched: true } }, fable(84)).model, 'gpt-6-astra');
+  assert.equal(pick({ id: 't2', title: '설정 화면 UI 구현', prompt: '구현', assignee: 'codex', designImpl: true }).effort, 'high');
+});

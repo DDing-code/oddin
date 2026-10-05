@@ -71,3 +71,12 @@ test('기억 정리 대기: 기본 20초, 설정으로 바꿈', async () => {
   const t0 = Date.now(); await m.waitCuration('s1');
   assert.ok(Date.now() - t0 < 1000);
 });
+
+test('질문 답 지시문: 작업 보고 형식(①②③④) 대신 바로 답하라고', async () => {
+  const { buildWorkerPrompt } = await import('../lib/planner.mjs');
+  const task = { id: 't1', title: '적용했어?', assignee: 'codex', prompt: '적용했어?' };
+  const ask = buildWorkerPrompt({ job: { id: 'J', cwd: 'C:/p', goal: '적용했어?', summary: '', intercepts: [], answer: true }, task, depResults: [], siblings: [task], hubDir: 'C:/hub', memoryCtx: '' });
+  assert.match(ask, /이 요청은 질문입니다/); assert.doesNotMatch(ask, /① 한 일 ② 바뀐\/만든 파일/);
+  const work = buildWorkerPrompt({ job: { id: 'J', cwd: 'C:/p', goal: '고쳐줘', summary: '', intercepts: [] }, task, depResults: [], siblings: [task], hubDir: 'C:/hub', memoryCtx: '' });
+  assert.match(work, /① 한 일 ② 바뀐\/만든 파일/);
+});

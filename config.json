@@ -71,6 +71,7 @@
   "designRule": {
     "enabled": true,
     "mode": "split",
+    "adaptive": true,
     "tool": "claude",
     "model": "fable",
     "switchAt": 75,
@@ -82,7 +83,7 @@
       "tool": "codex",
       "model": "gpt-6-astra"
     },
-    "note": "디자인 기획은 Claude Fable(명세만), 구현은 다른 AI(Sol), 눈으로 보는 결과물은 구현 뒤 Codex·gpt-6-astra가 렌더·스크린샷으로 확인하고 어긋난 곳을 고친다(사용자 규칙 2026-10-04 \"디자인은 페이블 / 눈으로 확인은 아스트라\"). Fable 전용 주간 사용률이 switchAt(%) 이상이면 디자인 기획만 fallback 으로 넘김(fallback:false 로 끔). 확인 단계를 끄려면 check:false. 한 작업자가 처음부터 끝까지 하려면 mode:\"whole\". 규칙 전체를 끄려면 enabled:false"
+    "note": "디자인 기획은 Claude Fable(명세만), 구현은 다른 AI(Sol), 눈으로 보는 결과물은 구현 뒤 Codex·gpt-6-astra가 렌더·스크린샷으로 확인하고 어긋난 곳을 고친다(사용자 규칙 2026-10-04 \"디자인은 페이블 / 눈으로 확인은 아스트라\"). Fable 전용 주간 사용률이 switchAt(%) 이상이면 디자인 기획만 fallback 으로 넘김(fallback:false 로 끔). 확인 단계를 끄려면 check:false. 한 작업자가 처음부터 끝까지 하려면 mode:\"whole\". 규칙 전체를 끄려면 enabled:false 2026-10-05 adaptive: 고쳐 가는 시안·디자인 결과물(플래너 design:draft)은 디자인 담당(Fable, 한도 넘으면 Astra)이 한 작업으로 직접 만들고 담당이 Astra 면 스스로 눈 확인, 명세가 필요한 큰 구현(design:build)만 기획→구현(high)→눈으로 확인. 끄려면 adaptive:false"
   },
   "answerPath": {
     "enabled": true,
