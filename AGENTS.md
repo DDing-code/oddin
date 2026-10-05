@@ -41,6 +41,7 @@
 - 메모리 선택/경로 해석은 공용 `~/.ai-shared/sync/memory-context.cjs`를 재사용한다. `JobManager.memoryFor`는 계획·배정·각 워커·재시도·보고 직전에 최신 자료를 읽고 실행 폴더의 `memory-context.json`에 출처·해시·생략·오류를 기록한다. CLI 훅도 같은 선택기를 사용한다.
 - 생성 파일(`data/`, `runs/`, `logs/`, `workspace/`)은 커밋하지 않는다.
 - 다른 PC 설치(2026-10-05): 저장소는 **공개** GitHub 저장소 `DDing-code/oddin`에 올려 다른 PC에서 받아 쓴다(절차 README "다른 PC에 설치"). 누구나 보므로 추적되는 파일과 커밋에 비밀값·토큰·개인 이메일·Tailscale 주소 같은 개인 정보를 넣지 않는다(실제 값은 무시되는 `data/`에만). 또 추적되는 파일(`config.json`·스크립트·시험)에 한 PC 전용 절대 경로를 넣지 않는다. `config.json`의 `hubDir`·`defaultCwd`는 `~`(사용자 폴더) 또는 허브 폴더 기준 상대 경로로 쓰고 `server.mjs`가 풀어 쓴다. 사용자 폴더에 있는 것(`~/.ai-shared` 등)에 기대는 시험은 없으면 건너뛴다(`tests/memory.test.mjs`).
+- 커밋하면 항상 바로 `origin main`에 push한다(사용자 요구 2026-10-05 "커밋은 항상 깃허브에도 해줘"). 공개 저장소이므로 push 전에 올릴 차이(`git diff origin/main..HEAD`)에 비밀값·개인 정보·한 PC 전용 경로가 없는지 확인하고, 커밋 작성자는 가상 주소를 쓴다. 남이 만든(실행 중 작업 등) 미커밋 변경은 함께 커밋하지 않는다.
 - 워커에 넘기는 프롬프트 형식은 `lib/planner.mjs`의 `buildWorkerPrompt` 한 곳에서만 바꾼다.
 - 테스트: `npm test`. CLI 상태: `npm run check`.
 - 시험 서버: `HUB_PORT`, `HUB_DATA_DIR`, `HUB_RUNS_DIR`, `HUB_CONFIG_FILE`을 모두 분리하고 `HUB_SKIP_CLI_INSTALL=1`로 CLI 공통 설치·감시를 생략한다. 실제 CLI의 로그인 홈은 바꾸지 않는다. 원본 경로가 누락되거나 완전히 빈 경우 설치기도 기존 설치본 정리를 보류한다.
