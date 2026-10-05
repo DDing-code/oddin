@@ -29,6 +29,7 @@ import { listMemory, moveMemory, createBlock, renameBlock, setBlockRoot, deleteB
 import { hubCommit, runningCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
 import { SharedFolders } from './lib/shared-folders.mjs';
 import { DriveFolders } from './lib/drive-folders.mjs';
+import { DriveHub } from './lib/drive-hub.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -71,14 +72,24 @@ setInterval(async () => {
 // 연결된 PC(다른 ODDIN 허브)와 공유 기억(~/.ai-shared) 동기화 — 집·회사 PC 두 대를 한 대시보드로 (docs/peers.md)
 const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {}).version || '', commit: () => runningCommit(ROOT) });
 runningCommit(ROOT); // 켜질 때의 버전을 기억한다(업데이트 뒤 재시작 전과 구분)
+// 구글 드라이브 ODDIN 폴더(공유 기억 사본·자산): 있으면 공유 기억을 드라이브로 맞추고 공유 폴더를 드라이브 자산으로 올린다 (lib/drive-hub.mjs)
+const driveHub = new DriveHub({ driveRoot: process.env.HUB_DRIVE_ROOT || null });
+// 시험 서버(HUB_SKIP_CLI_INSTALL=1)는 가짜 드라이브 위치(HUB_DRIVE_ROOT)를 주지 않으면 진짜 구글 드라이브를 건드리지 않는다
+const driveHubOff = () => config.driveHub?.enabled === false || (process.env.HUB_SKIP_CLI_INSTALL === '1' && !process.env.HUB_DRIVE_ROOT);
+let hubCache = { at: 0, info: null };
+const hubInfo = (fresh = false) => {
+  if (driveHubOff()) return null;
+  if (fresh || Date.now() - hubCache.at > 10_000) hubCache = { at: Date.now(), info: driveHub.info() };
+  return hubCache.info;
+};
 const sharedCfg = config.sharedSync || {};
-const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false });
+const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false, hub: hubInfo, driveIntervalMs: (sharedCfg.driveIntervalSeconds ?? 20) * 1000 });
 shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
 const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared?.status() || null });
 // 공유 폴더(읽기용 사본): 이 PC가 공유하는 폴더를 연결된 PC가 ~/.ai-shared/peer-files 로 받아 간다 (lib/shared-folders.mjs)
-const folders = new SharedFolders({ hubDir: config.hubDir, peers, intervalMs: (config.sharedFolders?.intervalSeconds ?? 120) * 1000 });
+const folders = new SharedFolders({ hubDir: config.hubDir, peers, intervalMs: (config.sharedFolders?.intervalSeconds ?? 120) * 1000, hub: hubInfo });
 folders.on('status', (s) => broadcast({ type: 'shared-folders', ...s }));
-setTimeout(() => { if (peers.list().length) folders.pullAll().catch(() => {}); }, 8000).unref();
+setTimeout(() => { if (peers.list().length || hubInfo()) folders.pullAll().catch(() => {}); }, 8000).unref();
 // 드라이브 작업 폴더(구글 드라이브로 두 PC가 함께 쓰는 폴더): 다른 PC 경로 찾기·같은 메모리로 잇기·작업 순서 (lib/drive-folders.mjs)
 const drive = new DriveFolders({ hubDir: config.hubDir, self: () => peers.self(), projects: () => projectsList().map((x) => x.path) });
 const LIVE_JOB = new Set(['planning', 'running', 'reporting']);
@@ -145,7 +156,12 @@ async function readRaw(req, limit) {
   for await (const c of req) { n += c.length; if (n > limit) { const e = new Error(`이미지는 ${limit / 1024 / 1024}MB 이하만 가능합니다`); e.status = 413; throw e; } chunks.push(c); }
   return Buffer.concat(chunks);
 }
-function projectsList() { return knownProjects(config, jobs.listSessions()); }
+function projectsList() {
+  const list = knownProjects(config, jobs.listSessions()), h = hubInfo();
+  // 드라이브 ODDIN 자산(두 PC가 함께 쓰는 파일)을 기본 폴더들 바로 뒤에
+  if (h && fs.existsSync(h.assets) && !list.some((x) => x.path.toLowerCase() === h.assets.toLowerCase())) list.splice(Math.min(2, list.length), 0, { path: h.assets, label: '드라이브 · ODDIN 자산', drive: true, memories: 0 });
+  return list;
+}
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -210,7 +226,17 @@ const server = http.createServer(async (req, res) => {
       if (sf && sf[2] === 'file' && req.method === 'GET') return json(res, folders.read(sf[1], url.searchParams.get('rel')));
     }
     if (p.startsWith('/api/shared/') && !shared) return fail(res, '공유 기억 동기화가 꺼져 있어요 (config.sharedSync.enabled)', 503);
-    if (p === '/api/shared/manifest' && req.method === 'GET') return json(res, { machine: peers.self().name, files: scanShared(config.hubDir) });
+    if (p === '/api/shared/manifest' && req.method === 'GET') return json(res, { machine: peers.self().name, driveHub: shared?.driveHubId() || null, files: scanShared(config.hubDir) });
+    // 구글 드라이브 ODDIN 폴더
+    if (p === '/api/drive-hub' && req.method === 'GET') return json(res, driveHubOff() ? { enabled: false, drive: null, hub: null, sync: null, assets: [] } : { drive: driveHub.drive(), hub: hubInfo(true), sync: shared?.status().drive || null, assets: driveHub.assets(), enabled: true });
+    if (p === '/api/drive-hub' && req.method === 'POST') {
+      await readBody(req);
+      if (driveHubOff()) return json(res, { error: '설정에서 드라이브 ODDIN 폴더를 꺼 두었어요(config.driveHub.enabled)' }, 409);
+      const h = driveHub.create(peers.self().id); hubInfo(true);
+      broadcast({ type: 'drive-hub' });
+      (async () => { try { await shared?.syncAll('드라이브 ODDIN 폴더'); await folders.pullAll(); } catch {} broadcast({ type: 'drive-hub' }); })();
+      return json(res, h, h.created ? 201 : 200);
+    }
     if (p === '/api/shared/file' && req.method === 'GET') return json(res, readShared(config.hubDir, url.searchParams.get('rel')));
     if (p === '/api/shared/file' && req.method === 'POST') {
       let from = 'peer'; try { from = decodeURIComponent(String(req.headers['x-oddin-machine'] || 'peer')).slice(0, 30); } catch {}

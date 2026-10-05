@@ -24,7 +24,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   const why = (e) => (/^없는 API$/.test(String(e?.message || '')) ? OLD_SERVER : String(e?.message || e));
   async function load() {
     if (P.loading) return; P.loading = true;
-    try { [P.view, P.setup, P.folders, P.drive] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null), call('/api/drive-folders').catch(() => null)]); P.error = ''; }
+    try { [P.view, P.setup, P.folders, P.drive, P.hub] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null), call('/api/drive-folders').catch(() => null), call('/api/drive-hub').catch(() => null)]); P.error = ''; }
     catch (e) { P.error = why(e); }
     P.loading = false; refresh();
   }
@@ -56,7 +56,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
         const same = st.commit && st.commit === v.self.commit;
         h += `<div class="pc-sync">${IC('bolt')}<span title="${E(st.commit || '')}">ODDIN ${E(verText(st))}${st.commit ? same ? ' · 이 PC와 같은 버전' : ' · 이 PC와 다른 버전' : ''}</span><span class="grow"></span><button class="btn sm" data-pc-update="${E(p.id)}" ${P.busy === `update:${p.id}` ? 'disabled' : ''} title="그 PC의 ODDIN을 GitHub 최신 버전으로 업데이트해요. 서버가 바뀌면 진행 중인 작업이 끝난 뒤 재시작">${P.busy === `update:${p.id}` ? '<span class="spin-xs"></span>업데이트 중' : '업데이트'}</button></div>`;
       }
-      h += `<div class="pc-sync ${sy.ok === false ? 'err' : ''}">${IC('refresh')}<span>공유 기억 ${E(when(sy.lastAt))}${sy.lastAt ? ` · ${E(countsText(sy.counts))}` : ''}${sy.ok === false && sy.error ? ` · ${E(sy.error)}` : ''}</span></div></div>`;
+      h += `<div class="pc-sync ${sy.ok === false ? 'err' : ''}">${IC('refresh')}<span>공유 기억 ${sy.via === 'drive' ? '· 구글 드라이브 ODDIN 폴더로 맞추는 중' : `${E(when(sy.lastAt))}${sy.lastAt ? ` · ${E(countsText(sy.counts))}` : ''}`}${sy.ok === false && sy.error ? ` · ${E(sy.error)}` : ''}</span></div></div>`;
     }
     h += `<form class="pc-add" data-pc-add><input name="u" placeholder="https://회사pc이름.tailnet.ts.net" autocomplete="off" aria-label="연결할 PC 주소"><input name="n" placeholder="이름 (예: 회사)" maxlength="30" autocomplete="off" aria-label="연결할 PC 이름"><button class="btn" type="submit" ${P.busy === 'add' ? 'disabled' : ''}>${IC('plus')}연결</button></form>`;
     h += '<p class="pc-hint">상대 PC의 ODDIN에서 원격 접속이 켜져 있어야 해요(설정 › 원격 접속). 연결하면 두 PC가 지침·메모리·공통 커맨드·에이전트를 1분마다, 바뀔 때마다 맞춰요.</p>';
@@ -64,6 +64,27 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     if (v.peers.length) {
       h += `<div class="ilabel">공유 기억</div><div class="pc-actions"><button class="btn" data-pc-sync ${P.busy === 'sync' || v.sync?.running ? 'disabled' : ''}>${v.sync?.running ? '<span class="spin-xs"></span>맞추는 중' : `${IC('refresh')}지금 맞추기`}</button></div>`;
       h += `<p class="pc-hint">둘 다 고친 파일은 목록(MEMORY.md)이면 줄을 합치고, 아니면 최근에 고친 쪽을 써요. 밀린 판과 지운 파일은 ${E((v.sync?.root || '~/.ai-shared') + '\\backups\\sync')}에 남아요.</p>`;
+    }
+
+    // ODDIN 드라이브 폴더: 구글 드라이브 "내 드라이브/ODDIN" 에 공유 기억 사본과 함께 쓸 자산을 모은다
+    const hb = P.hub;
+    if (hb && hb.enabled !== false) {
+      h += '<div class="ilabel">ODDIN 드라이브 폴더</div>';
+      if (!hb.drive) h += '<div class="mem-empty">이 PC에서 구글 드라이브 앱을 찾지 못했어요. 드라이브 데스크탑 앱을 켜면 쓸 수 있어요.</div>';
+      else if (!hb.hub) {
+        h += `<div class="pc-actions"><button class="btn" data-hub-create ${P.busy === 'hub-create' ? 'disabled' : ''}>${P.busy === 'hub-create' ? '<span class="spin-xs"></span>만드는 중' : `${IC('plus')}드라이브에 ODDIN 폴더 만들기`}</button></div>`;
+        h += `<p class="pc-hint">${E(hb.drive.myDrive)} 안에 ODDIN 폴더를 만들고, 공유 기억(지침·메모리·공통 커맨드·에이전트)과 이 PC가 공유하는 폴더를 올려요. 다른 PC도 같은 구글 계정이면 그 폴더를 알아서 찾아 함께 써요.</p>`;
+      } else {
+        const ds = hb.sync || {};
+        h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>ODDIN</b><span class="pc-url" title="${E(hb.hub.root)}">${E(hb.hub.root)}</span><span class="grow"></span><button class="btn sm" data-dv-open="${E(hb.hub.root)}" title="${E(hb.hub.root)}">열기</button></div>`;
+        const syncText = !ds.lastAt ? '아직 맞추기 전' : !ds.joined ? `처음 맞추는 중 — 다른 PC가 올린 파일을 기다려요${ds.joinUntil ? ` (${E(new Date(ds.joinUntil).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }))}까지)` : ''}` : `${E(when(ds.lastAt))} · ${E(countsText(ds.counts))}`;
+        h += `<div class="pc-sync ${ds.ok === false ? 'err' : ''}">${IC('refresh')}<span>공유 기억 ${syncText}${ds.ok === false && ds.error ? ` · ${E(ds.error)}` : ''}</span></div></div>`;
+        for (const a of hb.assets || []) {
+          const label = a.common ? '자산 · 공용' : `자산 · ${a.pc} · ${a.folder}`;
+          h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(label)}</b><span class="pc-url">파일 ${a.files}개</span><span class="grow"></span><button class="btn sm" data-dv-work="${E(a.path)}" title="이 폴더로 새 세션을 열어요">여기서 작업</button><button class="btn sm" data-dv-open="${E(a.path)}" title="${E(a.path)}">열기</button></div></div>`;
+        }
+        h += '<p class="pc-hint">공유 기억/ = 두 PC가 쓰는 지침·메모리 사본(각 PC의 ODDIN이 20초마다·바뀔 때마다 맞춤). 자산/<PC>/<폴더>/ = 각 PC가 공유하는 폴더를 원본 PC가 올린 것. 자산/공용/ = 함께 쓸 파일을 직접 넣는 곳. 다른 PC도 이 폴더를 쓰면 PC끼리 직접 맞추기는 쉬고 드라이브로만 맞춰요.</p>';
+      }
     }
 
     // 드라이브 작업 폴더: 구글 드라이브로 두 PC가 함께 쓰는 폴더에서 바로 작업
@@ -88,7 +109,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
       const size = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(b / 1024))}KB`;
       h += `<div class="ilabel">이 PC가 공유하는 폴더 ${fo.own.length || ''}</div>`;
       if (!fo.own.length) h += '<div class="mem-empty">없어요. 플러그인 소스처럼 다른 PC의 AI가 코드를 봐야 하는 폴더를 넣어 두세요.</div>';
-      for (const f of fo.own) h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(f.name)}</b><span class="pc-url" title="${E(f.path)}">${E(f.path)}</span><span class="grow"></span><button class="btn sm" data-sf-mode="${E(f.id)}" data-mode="${f.mode === 'all' ? 'code' : 'all'}" title="${f.mode === 'all' ? '코드·문서만 공유하기(그림·PDF 빼기)' : '그림·PDF 등도 함께 공유하기'}">${f.mode === 'all' ? '그림 포함' : '코드·문서만'}</button><button class="icon-btn" data-sf-remove="${E(f.id)}" title="공유 그만두기 (다른 PC의 사본도 지워짐)">${IC('x')}</button></div><div class="pc-sync">${f.exists ? `<span>파일 ${f.files}개 · ${size(f.bytes)}${f.truncated ? ' · 한도(5,000개·100MB)까지만' : ''}</span>` : `<span class="c-err">폴더가 없어요</span>`}</div></div>`;
+      for (const f of fo.own) h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(f.name)}</b><span class="pc-url" title="${E(f.path)}">${E(f.path)}</span><span class="grow"></span><button class="btn sm" data-sf-mode="${E(f.id)}" data-mode="${f.mode === 'all' ? 'code' : 'all'}" title="${f.mode === 'all' ? '코드·문서만 공유하기(그림·PDF 빼기)' : '그림·PDF 등도 함께 공유하기'}">${f.mode === 'all' ? '그림 포함' : '코드·문서만'}</button><button class="icon-btn" data-sf-remove="${E(f.id)}" title="공유 그만두기 (다른 PC의 사본도 지워짐)">${IC('x')}</button></div><div class="pc-sync">${f.exists ? `<span>파일 ${f.files}개 · ${size(f.bytes)}${f.truncated ? ' · 한도(5,000개·100MB)까지만' : ''}${f.published ? (f.published.ok === false ? ` · <span class="c-err">드라이브에 올리지 못함: ${E(f.published.error || '')}</span>` : ` · 드라이브 ODDIN에 올림 ${E(when(f.published.at))}`) : ''}</span>` : `<span class="c-err">폴더가 없어요</span>`}</div></div>`;
       h += `<form class="pc-add" data-sf-add><input name="p" placeholder="공유할 폴더 경로 (예: C:\\…\\플러그인)" autocomplete="off" aria-label="공유할 폴더 경로"><input name="n" placeholder="이름 (예: 프리미어 플러그인)" maxlength="60" autocomplete="off" aria-label="공유할 폴더 이름"><select name="m" aria-label="공유 방식"><option value="code">코드·문서만</option><option value="all">그림 포함</option></select><button class="btn" type="submit" ${P.busy === 'sf-add' ? 'disabled' : ''}>${IC('plus')}공유</button></form>`;
       h += '<p class="pc-hint">연결된 PC가 이 폴더의 읽기용 사본을 2분마다 받아 가요. 기본은 코드·문서만(그림·PDF 빼기), node_modules·.git·빌드 결과·2MB 넘는 파일은 늘 빼요. 사본을 고쳐도 여기 원본은 안 바뀌어요.</p>';
       if (v.peers.length) {
@@ -135,7 +156,8 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     }
   });
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
+    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-hub-create],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
+    if (b.hasAttribute('data-hub-create')) { act('hub-create', () => call('/api/drive-hub', { method: 'POST', body: '{}' }), (r) => r.created ? 'ODDIN 폴더를 만들었어요. 공유 기억과 공유 폴더를 올리는 중이에요' : '이미 있는 ODDIN 폴더를 쓰기 시작했어요'); return; }
     if (b.hasAttribute('data-dv-work')) { if (typeof newSession === 'function') { newSession(b.dataset.dvWork); say('드라이브 작업 폴더에서 새 세션을 시작해요. 요청을 입력하세요'); } return; }
     if (b.hasAttribute('data-dv-open')) { if (typeof window.openPath === 'function') window.openPath(b.dataset.dvOpen); return; }
     if (b.hasAttribute('data-dv-resolve')) { act('dv-resolve', () => call('/api/drive-folders/resolve', { method: 'POST', body: '{}' }), (r) => r.found?.length ? `찾았어요: ${r.found.map((x) => x.name).join(', ')}` : r.missing?.length ? `아직 못 찾은 폴더: ${r.missing.join(', ')}` : '모두 찾아 두었어요'); return; }
@@ -166,7 +188,8 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   window.addEventListener('hub:event', (e) => {
     const ev = e.detail || {};
     if (ev.type === 'peers' && ev.self) { P.view = { self: ev.self, peers: ev.peers, sync: ev.sync }; refresh(); }
-    else if (ev.type === 'shared-sync' && P.view) { P.view.sync = ev.status; if (!ev.status.running) call('/api/shared/setup').then((s) => { P.setup = s; refresh(); }).catch(() => {}); refresh(); }
+    else if (ev.type === 'shared-sync' && P.view) { P.view.sync = ev.status; if (P.hub?.hub && ev.status?.drive) P.hub = { ...P.hub, sync: ev.status.drive }; if (!ev.status.running) call('/api/shared/setup').then((s) => { P.setup = s; refresh(); }).catch(() => {}); refresh(); }
+    else if (ev.type === 'drive-hub') { call('/api/drive-hub').then((d) => { P.hub = d; refresh(); }).catch(() => {}); }
     else if (ev.type === 'drive-folders') { call('/api/drive-folders').then((d) => { P.drive = d; refresh(); }).catch(() => {}); }
     else if (ev.type === 'shared-folders' && ev.own) { P.folders = { ...(P.folders || {}), own: ev.own, mirrors: ev.mirrors }; refresh(); }
     else if (ev.type === 'hello' && P.view) load();

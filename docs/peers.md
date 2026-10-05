@@ -34,6 +34,16 @@
 - `peer-files`는 공유 기억 동기화 범위 밖이라 다시 돌려보내지 않는다. 파일 보기 창에서 열 수 있다(허브 폴더 안).
 - API: `GET /api/shared-folders`(이 PC 공유·받은 사본), `POST /api/shared-folders` `{path,name}`, `DELETE /api/shared-folders/:id`, `GET /api/shared-folders/offer`(상대 PC용 목록), `GET /api/shared-folders/:id/manifest`, `GET /api/shared-folders/:id/file?rel=`, `POST /api/shared-folders/pull`. 시험 `tests/shared-folders.test.mjs`.
 
+## 드라이브 ODDIN 폴더 — 공유 기억 사본·자산 (`lib/drive-hub.mjs`)
+- 2026-10-05 사용자 "'오딘' 공유폴더를 만들고 거기에 정리된 메모리랑 자산들을 넣자". 구글 드라이브 `내 드라이브/ODDIN` 하나에 두 PC가 함께 쓸 것을 모은다(두 PC가 같은 구글 계정이라 같은 폴더가 보임 — 집 D:, 회사 G:). 연결된 PC 탭 "드라이브에 ODDIN 폴더 만들기"(`POST /api/drive-hub`)로 한 번 만들면 다른 PC는 표식 파일 `ODDIN/.oddin.json`(id·만든 PC)을 보고 알아서 쓰기 시작한다.
+- 구성: `README.md`(설명) · `공유 기억/`(`~/.ai-shared` 공유 범위 사본: AGENTS.md·memory·commands·agents·sync, PC마다 따로인 파일 제외) · `자산/<PC 이름>/<폴더>/`(각 PC의 공유 폴더를 원본 PC가 올린 것) · `자산/공용/`(사람이 직접 넣는 함께 쓸 파일).
+- 공유 기억: 로컬 `~/.ai-shared`가 계속 작업본이다(CLI 훅·Claude 메모리 정션이 빠르고 드라이브가 꺼져도 동작). `SharedSync`가 드라이브 `공유 기억/`을 상대 하나(id `drive:<ODDIN id>`)로 같은 3방향 방식으로 맞춘다 — 20초마다(`config.sharedSync.driveIntervalSeconds`)·로컬 파일이 바뀔 때. 밀린 판은 드라이브가 아니라 이 PC `backups/sync/`에. 드라이브가 만드는 `이름 (1).md` 충돌 사본·`desktop.ini`·`.tmp.drive*`는 맞추지 않는다.
+- 합류: 만든 PC는 바로 다 올린다. 다른 PC는 처음 본 뒤 5분(`joinMs`) 동안 같은 파일만 기준으로 삼고 올리지 않는다 — 만든 PC가 올리는 중인 파일을 또 올려 드라이브에 같은 이름 파일이 둘 생기지 않게.
+- PC끼리 쉬기: 각 PC는 드라이브 합류가 끝나고 마지막 맞추기가 성공하면 `GET /api/shared/manifest`에 `driveHub`(ODDIN id)를 싣는다. 상대 manifest의 `driveHub`가 내 것과 같으면 PC끼리 직접 맞추기는 쉬고(연결된 PC 줄 "구글 드라이브 ODDIN 폴더로 맞추는 중") 드라이브로만 맞춘다. 한쪽 드라이브가 멈추면 다시 직접 맞춘다.
+- 자산: `SharedFolders.publish`가 이 PC 공유 폴더를 `자산/<이 PC>/<폴더>/`로 한 방향으로 올린다(원본과 같게, 코드·문서만/그림 포함 방식 그대로, 그만두면 지움). 상대 offer의 `driveHub`가 같으면 `peer-files`로 받지 않고 예전 사본을 지운 뒤 목록(`peer-files/INDEX.md`)에 드라이브 위치를 적는다. `자산/`은 작업 폴더 목록에 "드라이브 · ODDIN 자산"으로 나오고 PC 탭에서 "여기서 작업"으로 연다.
+- 끄기 `config.driveHub.enabled:false`. 시험 서버(`HUB_SKIP_CLI_INSTALL=1`)는 `HUB_DRIVE_ROOT`(가짜 드라이브 위치)를 주지 않으면 진짜 드라이브를 쓰지 않는다.
+- API: `GET /api/drive-hub`(드라이브 위치·ODDIN 폴더·드라이브 맞추기 상태·자산 목록), `POST /api/drive-hub`(만들기, 이미 있으면 그대로). 시험 `tests/drive-hub.test.mjs`.
+
 ## 드라이브 작업 폴더 — 두 PC가 같은 폴더에서 작업 (`lib/drive-folders.mjs`)
 - 2026-10-05 사용자 "PC탭에서 구글 드라이브로 맞춰지는 폴더를 등록하면 거기 안에서 작업". 구글 드라이브 앱이 두 PC에 맞추는 폴더(내 드라이브·"다른 컴퓨터"로 백업한 폴더)를 연결된 PC 탭 "드라이브 작업 폴더"에 경로·이름으로 등록하면, 두 PC의 ODDIN이 각자 자기 경로에서 그 폴더를 작업 폴더로 쓴다. 공유 폴더(읽기용 사본)와 달리 실제 파일을 양쪽에서 고친다(드라이브가 10~20초 안에 맞춤, 2026-10-05 집↔회사 실측).
 - 목록은 공유 기억 `~/.ai-shared/sync/drive-folders.json`(공유 기억 동기화로 두 PC에 같음): 폴더마다 `id`·`name`·`fingerprint`(맨 위 항목 이름 목록, `desktop.ini`·`.tmp.drive*` 등 드라이브 부속 파일 제외)·`paths{PC id: 경로}`.
