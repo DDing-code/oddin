@@ -1,0 +1,16 @@
+/* ---------------- 복사 버튼 (copy.js) ---------------- */
+.cp-box{position:relative}
+.cp-host{position:relative}
+.cp-btn:not(.btn){display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line2);background:var(--panel);color:var(--fg2);border-radius:7px;cursor:pointer;font:inherit;font-size:12px;line-height:1}
+.cp-btn:not(.btn) .ico{width:13px;height:13px}
+.cp-btn:not(.btn):hover{color:var(--fg);background:var(--hover)}
+.cp-btn.done{color:var(--ok)}
+.cp-btn:not(.btn).done{border-color:currentColor}
+.cp-corner{position:absolute;top:6px;right:6px;width:28px;height:28px;padding:0;opacity:0;transition:opacity .12s;z-index:2}
+.cp-box:hover > .cp-corner,.cp-host:hover > .cp-corner,.cp-corner:focus-visible,.cp-corner.done{opacity:1}
+.cp-text{top:-4px;right:-4px}
+.cp-inline{margin-left:8px;padding:2px 7px;border-color:transparent !important;background:none !important;color:var(--faint) !important;opacity:0;transition:opacity .12s}
+.user:hover .cp-inline,.cp-inline:focus-visible,.cp-inline.done{opacity:1}
+.cp-inline:hover{color:var(--fg) !important}
+.cp-inline.done{color:var(--ok) !important}
+@media (hover:none){.cp-corner{opacity:.75}.cp-inline{opacity:1}}
