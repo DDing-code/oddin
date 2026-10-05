@@ -28,7 +28,9 @@
 ## 공유 폴더 — 읽기용 사본 (`lib/shared-folders.mjs`)
 - 2026-10-05 사용자 "따로 개발한 플러그인 같은 건 파일까지 공유해야 어떻게 구현됐는지 알 수 있다". 각 PC가 연결된 PC 탭에서 공유할 폴더(경로·이름)를 정하면, 상대 PC의 ODDIN 이 2분마다(`config.sharedFolders.intervalSeconds`)·PC 연결 때·"지금 받기"로 `~/.ai-shared/peer-files/<원본 PC 이름>/<폴더 이름>/`에 사본을 맞춘다. 목록은 `peer-files/INDEX.md`, 공유 메모리 `reference-peer-files`가 이 위치를 알려 준다.
 - 한 방향(원본 → 사본). 사본을 고쳐도 다음 차례에 원본 내용으로 돌아가고, 원본에서 지운 파일은 사본에서도 지운다. 공유를 그만두면 상대 PC의 사본 폴더를 지운다(원본은 그대로).
-- 빼는 것: node_modules·.git·dist·build·out·캐시·가상환경 폴더, 2MB 넘는 파일, 영상·소리·압축·실행 파일·프로젝트 바이너리(psd·aep·prproj 등). 폴더당 5,000개·100MB까지.
+- 공유 방식: 기본 **코드·문서만**(코드·설정·문서·스크립트 확장자만 — 2026-10-05 회사 YM_Inv 가 그림·PDF 로 100MB 를 채워 코드가 밀려났다), 폴더마다 "그림 포함"으로 바꿀 수 있다(`POST /api/shared-folders/:id` `{mode}`).
+- 늘 빼는 것: node_modules·.git·dist·build·out·캐시·가상환경 폴더, 2MB 넘는 파일, 영상·소리·압축·실행 파일·프로젝트 바이너리(psd·aep·prproj 등). 폴더당 5,000개·100MB까지.
+- 구글 드라이브 등으로 이미 두 PC에 보이는 폴더는 공유 폴더 대신 그 경로를 쓴다(회사 YM_Inv → 집 `D:다른 컴퓨터내 컴퓨터`, 공유 메모리 reference-ym-inv-studio).
 - `peer-files`는 공유 기억 동기화 범위 밖이라 다시 돌려보내지 않는다. 파일 보기 창에서 열 수 있다(허브 폴더 안).
 - API: `GET /api/shared-folders`(이 PC 공유·받은 사본), `POST /api/shared-folders` `{path,name}`, `DELETE /api/shared-folders/:id`, `GET /api/shared-folders/offer`(상대 PC용 목록), `GET /api/shared-folders/:id/manifest`, `GET /api/shared-folders/:id/file?rel=`, `POST /api/shared-folders/pull`. 시험 `tests/shared-folders.test.mjs`.
 

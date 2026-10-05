@@ -16,6 +16,10 @@ test('폴더 훑기: node_modules·.git·빌드 결과·큰 파일·미디어는
       fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), body);
     }
     assert.deepEqual(Object.keys(scanFolder(dir).files).sort(), ['main.js', 'src/x.js']);
+    // 기본은 코드·문서만, 'all' 이면 그림·PDF 도
+    fs.writeFileSync(path.join(dir, 'logo.png'), 'png'); fs.writeFileSync(path.join(dir, 'guide.pdf'), 'pdf'); fs.writeFileSync(path.join(dir, 'README.md'), '설명');
+    assert.deepEqual(Object.keys(scanFolder(dir).files).sort(), ['README.md', 'main.js', 'src/x.js']);
+    assert.deepEqual(Object.keys(scanFolder(dir, 'all').files).sort(), ['README.md', 'guide.pdf', 'logo.png', 'main.js', 'src/x.js']);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

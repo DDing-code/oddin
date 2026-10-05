@@ -72,9 +72,9 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
       const size = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(b / 1024))}KB`;
       h += `<div class="ilabel">이 PC가 공유하는 폴더 ${fo.own.length || ''}</div>`;
       if (!fo.own.length) h += '<div class="mem-empty">없어요. 플러그인 소스처럼 다른 PC의 AI가 코드를 봐야 하는 폴더를 넣어 두세요.</div>';
-      for (const f of fo.own) h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(f.name)}</b><span class="pc-url" title="${E(f.path)}">${E(f.path)}</span><span class="grow"></span><button class="icon-btn" data-sf-remove="${E(f.id)}" title="공유 그만두기 (다른 PC의 사본도 지워짐)">${IC('x')}</button></div><div class="pc-sync">${f.exists ? `<span>파일 ${f.files}개 · ${size(f.bytes)}${f.truncated ? ' · 한도(5,000개·100MB)까지만' : ''}</span>` : `<span class="c-err">폴더가 없어요</span>`}</div></div>`;
-      h += `<form class="pc-add" data-sf-add><input name="p" placeholder="공유할 폴더 경로 (예: C:\\…\\플러그인)" autocomplete="off" aria-label="공유할 폴더 경로"><input name="n" placeholder="이름 (예: 프리미어 플러그인)" maxlength="60" autocomplete="off" aria-label="공유할 폴더 이름"><button class="btn" type="submit" ${P.busy === 'sf-add' ? 'disabled' : ''}>${IC('plus')}공유</button></form>`;
-      h += '<p class="pc-hint">연결된 PC가 이 폴더의 읽기용 사본을 2분마다 받아 가요(코드 위주 — node_modules·.git·빌드 결과·큰 미디어는 빼요). 사본을 고쳐도 여기 원본은 안 바뀌어요.</p>';
+      for (const f of fo.own) h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(f.name)}</b><span class="pc-url" title="${E(f.path)}">${E(f.path)}</span><span class="grow"></span><button class="btn sm" data-sf-mode="${E(f.id)}" data-mode="${f.mode === 'all' ? 'code' : 'all'}" title="${f.mode === 'all' ? '코드·문서만 공유하기(그림·PDF 빼기)' : '그림·PDF 등도 함께 공유하기'}">${f.mode === 'all' ? '그림 포함' : '코드·문서만'}</button><button class="icon-btn" data-sf-remove="${E(f.id)}" title="공유 그만두기 (다른 PC의 사본도 지워짐)">${IC('x')}</button></div><div class="pc-sync">${f.exists ? `<span>파일 ${f.files}개 · ${size(f.bytes)}${f.truncated ? ' · 한도(5,000개·100MB)까지만' : ''}</span>` : `<span class="c-err">폴더가 없어요</span>`}</div></div>`;
+      h += `<form class="pc-add" data-sf-add><input name="p" placeholder="공유할 폴더 경로 (예: C:\\…\\플러그인)" autocomplete="off" aria-label="공유할 폴더 경로"><input name="n" placeholder="이름 (예: 프리미어 플러그인)" maxlength="60" autocomplete="off" aria-label="공유할 폴더 이름"><select name="m" aria-label="공유 방식"><option value="code">코드·문서만</option><option value="all">그림 포함</option></select><button class="btn" type="submit" ${P.busy === 'sf-add' ? 'disabled' : ''}>${IC('plus')}공유</button></form>`;
+      h += '<p class="pc-hint">연결된 PC가 이 폴더의 읽기용 사본을 2분마다 받아 가요. 기본은 코드·문서만(그림·PDF 빼기), node_modules·.git·빌드 결과·2MB 넘는 파일은 늘 빼요. 사본을 고쳐도 여기 원본은 안 바뀌어요.</p>';
       if (v.peers.length) {
         h += `<div class="ilabel">다른 PC에서 받은 폴더 ${fo.mirrors.length || ''}</div>`;
         if (!fo.mirrors.length) h += '<div class="mem-empty">아직 없어요. 상대 PC에서 폴더를 공유하면 여기로 받아 와요.</div>';
@@ -98,8 +98,8 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     const add = e.target.closest('[data-pc-add]'), self = e.target.closest('[data-pc-self]'), sf = e.target.closest('[data-sf-add]');
     if (sf) {
       e.preventDefault();
-      const p = sf.p.value.trim(), name = sf.n.value.trim(); if (!p) return;
-      act('sf-add', () => call('/api/shared-folders', { method: 'POST', body: JSON.stringify({ path: p, name }) }), (f) => `"${f.name}" 공유를 시작했어요 (파일 ${f.files}개)`);
+      const p = sf.p.value.trim(), name = sf.n.value.trim(), mode = sf.m?.value || 'code'; if (!p) return;
+      act('sf-add', () => call('/api/shared-folders', { method: 'POST', body: JSON.stringify({ path: p, name, mode }) }), (f) => `"${f.name}" 공유를 시작했어요 (파일 ${f.files}개)`);
       return;
     }
     if (!add && !self) return;
@@ -113,7 +113,8 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     }
   });
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open]'); if (!b) return;
+    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode]'); if (!b) return;
+    if (b.hasAttribute('data-sf-mode')) { act('sf-mode', () => call(`/api/shared-folders/${encodeURIComponent(b.dataset.sfMode)}`, { method: 'POST', body: JSON.stringify({ mode: b.dataset.mode }) }), (f) => `${f.name}: ${f.mode === 'all' ? '그림 포함' : '코드·문서만'}으로 바꿨어요 (파일 ${f.files}개)`); return; }
     if (b.hasAttribute('data-sf-open')) { if (typeof window.openPath === 'function') window.openPath(b.dataset.sfOpen); return; }
     if (b.hasAttribute('data-sf-pull')) { act('sf-pull', () => call('/api/shared-folders/pull', { method: 'POST', body: '{}' }), (r) => (r.results || []).every((x) => x.ok) ? '다른 PC의 공유 폴더를 받았어요' : `일부 못 받았어요: ${(r.results || []).find((x) => !x.ok)?.error || ''}`); return; }
     if (b.hasAttribute('data-sf-remove')) {

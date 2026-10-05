@@ -163,6 +163,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/shared-folders' && req.method === 'POST') { const f = folders.add(await readBody(req)); broadcast({ type: 'shared-folders', own: folders.own(), mirrors: folders.mirrors() }); return json(res, f, 201); }
     {
       const sf = p.match(/^\/api\/shared-folders\/([\w-]+)(?:\/(manifest|file))?$/);
+      if (sf && !sf[2] && req.method === 'POST') { const r = folders.setMode(sf[1], (await readBody(req)).mode); broadcast({ type: 'shared-folders', own: folders.own(), mirrors: folders.mirrors() }); return json(res, r); }
       if (sf && !sf[2] && req.method === 'DELETE') { const r = folders.remove(sf[1]); broadcast({ type: 'shared-folders', own: folders.own(), mirrors: folders.mirrors() }); return json(res, r); }
       if (sf && sf[2] === 'manifest' && req.method === 'GET') return json(res, folders.manifest(sf[1]));
       if (sf && sf[2] === 'file' && req.method === 'GET') return json(res, folders.read(sf[1], url.searchParams.get('rel')));
