@@ -1,0 +1,24 @@
+/* ---------------- 세션 묶음 · 작업 폴더 고르기 (side.js · folders-ui.js) ---------------- */
+.sgroup > .ghead .g-ic{color:var(--run)}
+#tree .drop-on{outline:1px dashed var(--run);outline-offset:-2px;border-radius:10px;background:rgba(164,139,242,.08)}
+#tree .sec-b.drop-on{outline-offset:2px}
+
+/* 폴더 찾아보기 창 */
+.fp{display:flex;flex-direction:column;gap:10px;min-height:min(62vh,560px)}
+.fp-skel{color:var(--muted);padding:20px 4px}
+.fp-bar{display:flex;align-items:center;gap:6px}
+.fp-bar input{flex:1;min-width:0;height:34px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--bg);color:var(--fg);font:13px var(--mono, monospace)}
+.fp-bar .icon-btn:disabled{opacity:.35}
+.fp-quick{display:flex;flex-wrap:wrap;gap:6px}
+.fp-quick .chip{display:inline-flex;align-items:center;gap:5px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-quick .chip .ico{width:13px;height:13px;flex:none}
+.fp-list{flex:1;min-height:200px;max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px;background:var(--bg)}
+.fp-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:0;border-radius:7px;background:none;color:var(--fg2);font-size:13.5px;text-align:left;cursor:pointer}
+.fp-item:hover,.fp-item:focus-visible{background:var(--hover);color:var(--fg)}
+.fp-item .ico{width:15px;height:15px;color:var(--muted);flex:none}
+.fp-item span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-foot{display:flex;align-items:center;gap:8px}
+.fp-foot .grow{flex:1}
+.fp-cur{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12.5px}
+.fp .btn.primary{background:var(--fg);color:#141416;border-color:transparent;font-weight:600}
+.fp .btn.primary:disabled{opacity:.4}

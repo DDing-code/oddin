@@ -19,16 +19,28 @@ function renderTree() {
     if (S.current) markSeen(S.current);
     const all = [...S.sessions.values()].filter((s) => !s.archived).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); // 보관한 세션은 보관함(sessions-ui.js)에서만
     const pinned = all.filter((s) => s.pinned).sort((a, b) => a.pinned.localeCompare(b.pinned));
-    const rest = all.filter((s) => !s.pinned);
+    const gids = new Set((S.groups || []).map((g) => g.id));
+    const inGroup = (s) => !!(s.group && gids.has(s.group));
+    const rest = all.filter((s) => !s.pinned && !inGroup(s));
     const view = S.prefs.sideView || 'folder';
     let h = '';
     if (!S.current) h += `<div class="sess on draft" title="${esc(currentCwd())}"><span class="s-ic">${icon('newchat')}</span><span class="t">새 세션</span><span class="meta">${esc(shortPath(currentCwd(), 1))}</span></div>`;
     if (pinned.length) h += section('pinned', '고정됨', pinned.map((s) => rowHtml(s, true)).join(''));
-    const viewBtn = `<button class="sec-btn" data-view title="보기 방식 바꾸기">${view === 'folder' ? '폴더별' : '날짜별'}${icon('down')}</button>`;
+    const viewBtn = `<button class="sec-btn" data-newgroup title="새 묶음 만들기 — 세션을 끌어다 넣어요">${icon('plus')}묶음</button><button class="sec-btn" data-view title="보기 방식 바꾸기">${view === 'folder' ? '폴더별' : '날짜별'}${icon('down')}</button>`;
     let body = '';
+    // 묶음(사용자가 이름 붙인 세션 모음, lib/session-groups.mjs): 세션을 끌어다 놓거나 ⋯ 메뉴로 넣는다
+    for (const g of S.groups || []) {
+      const list = all.filter((x) => !x.pinned && x.group === g.id);
+      const closed = S.collapsedFolders.has(`grp:${g.id}`), live = list.some((x) => x.status === 'running');
+      body += `<div class="group sgroup" data-gid="${esc(g.id)}"><div class="ghead ${closed ? 'closed' : ''}" data-group="${esc(g.id)}" title="${esc(g.name)} · 세션을 끌어다 놓으면 이 묶음에 들어가요" role="treeitem" aria-expanded="${!closed}">
+          <span class="chev">${icon('right')}</span><span class="g-ic">${icon('layers')}</span><span class="gname">${esc(g.name)}</span>${live ? '<span class="spin-xs"></span>' : `<span class="gcount">${list.length || ''}</span>`}
+          <span class="gacts"><button class="mini" data-newgrp="${esc(g.id)}" title="이 묶음에 새 세션">${icon('plus')}</button><button class="mini" data-gmenu="${esc(g.id)}" title="묶음 메뉴">${icon('more')}</button></span></div>`;
+      if (!closed) body += `<div class="gbody">${list.map((x) => rowHtml(x, false, true)).join('') || '<div class="empty-row">세션을 끌어다 놓으세요</div>'}</div>`;
+      body += '</div>';
+    }
     if (view === 'folder') {
       const groups = new Map();
-      for (const s of rest) { const home = s.git?.isolated && s.git.repo ? s.git.repo : s.cwd; const k = home.toLowerCase(); if (!groups.has(k)) groups.set(k, { cwd: home, list: [] }); groups.get(k).list.push(s); } // 격리(worktree) 세션은 원본 저장소 폴더 아래에 묶는다
+      for (const s of rest) { const home = s.git?.isolated && s.git.repo ? s.git.repo : (s.workdir || s.cwd); const k = home.toLowerCase(); if (!groups.has(k)) groups.set(k, { cwd: home, list: [] }); groups.get(k).list.push(s); } // 격리(worktree) 세션은 원본 저장소 폴더 아래에 묶는다
       const cur = currentCwd().toLowerCase();
       if (!S.current && cur && !groups.has(cur)) groups.set(cur, { cwd: currentCwd(), list: [] });
       for (const [k, g] of groups) {
@@ -73,6 +85,10 @@ function rowHtml(s, pinnedRow = false, showFolder = false) {
 
 $('#tree').addEventListener('click', (e) => {
   const v = e.target.closest('[data-view]'); if (v) return openViewMenu(v);
+  if (e.target.closest('[data-newgroup]')) return createGroup();
+  const ng = e.target.closest('[data-newgrp]'); if (ng) { e.stopPropagation(); newSession(currentCwd(), ng.dataset.newgrp); return toast(`새 세션을 "${groupName(ng.dataset.newgrp)}" 묶음에 만들어요. 요청을 입력하세요`); }
+  const gm = e.target.closest('[data-gmenu]'); if (gm) { e.stopPropagation(); return openGroupMenu(gm.dataset.gmenu, gm); }
+  const gh = e.target.closest('[data-group]'); if (gh) { toggleKey(`grp:${gh.dataset.group}`); return renderTree(); }
   const sec = e.target.closest('[data-sec]'); if (sec) { toggleKey(`sec:${sec.dataset.sec}`); return renderTree(); }
   const add = e.target.closest('[data-newin]'); if (add) { e.stopPropagation(); return newSession(add.dataset.newin); }
   const fm = e.target.closest('[data-fmenu]'); if (fm) { e.stopPropagation(); return openFolderMenu(fm.dataset.fmenu, fm); }
@@ -121,7 +137,9 @@ function openSessionMenu(id, anchor) {
     { label: '열기', icon: 'open', run: () => { closePop(); openSession(id); } },
     { label: s.pinned ? '고정 해제' : '고정', icon: s.pinned ? 'pinoff' : 'pin', run: () => { closePop(); setPinned(id, !s.pinned); } },
     { label: '이름 바꾸기', icon: 'pencil', kbd: 'F2', run: () => { closePop(); renameInline(id, row?.querySelector('.t')); } },
-    { label: '폴더 열기', icon: 'folder', run: () => { closePop(); openPath(s.cwd); } },
+    { label: s.group && (S.groups || []).some((g) => g.id === s.group) ? '다른 묶음으로 옮기기…' : '묶음에 넣기…', icon: 'layers', run: () => { closePop(); openGroupPicker(id, anchor); } },
+    { label: '작업 폴더 바꾸기…', icon: 'folder', run: async () => { closePop(); if (live) return toast('진행 중인 작업이 끝난 뒤에 바꿀 수 있어요', true); const p = await window.hubPickFolder?.({ title: `"${s.title}" 작업 폴더 바꾸기`, start: s.workdir || s.cwd, confirm: '이 폴더로 바꾸기' }); if (p) window.hubChangeCwd?.(id, p); } },
+    { label: '폴더 열기', icon: 'folder', run: () => { closePop(); openPath(s.workdir || s.cwd); } },
     { label: '폴더 경로 복사', icon: 'copy', run: () => { closePop(); copyText(s.cwd, '폴더 경로를 복사했어요'); } },
     { label: '이 폴더에서 새 세션', icon: 'plus', run: () => { closePop(); newSession(s.cwd); } },
     ...(live ? [{ label: '실행 중인 작업 중지', icon: 'stop', run: () => { closePop(); for (const j of sessionJobs(id)) if (LIVE.has(j.status)) api(`/api/jobs/${j.id}/cancel`, { method: 'POST' }); } }] : []),
@@ -130,6 +148,68 @@ function openSessionMenu(id, anchor) {
     { label: '삭제', icon: 'trash', danger: true, kbd: 'Del', run: () => { closePop(); deleteSession(id); } },
   ], { below: true, onClose: () => row?.classList.remove('menu-open') });
 }
+/* ---------- 세션 묶음 ---------- */
+const groupName = (gid) => (S.groups || []).find((g) => g.id === gid)?.name || '묶음';
+async function createGroup(thenAdd = null) {
+  const name = prompt('새 묶음 이름', ''); if (!name || !name.trim()) return null;
+  try {
+    const g = await api('/api/session-groups', { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
+    S.groups = [...(S.groups || []).filter((x) => x.id !== g.id), g];
+    if (thenAdd) await setGroup(thenAdd, g.id); else renderTree();
+    return g;
+  } catch (e) { toast(`만들지 못했어요: ${e.message}`, true); return null; }
+}
+async function setGroup(sid, gid) {
+  try {
+    const s = await api(`/api/sessions/${encodeURIComponent(sid)}`, { method: 'PATCH', body: JSON.stringify({ group: gid }) });
+    if (s?.id) S.sessions.set(s.id, { ...S.sessions.get(s.id), ...s });
+    renderTree(); toast(gid ? `"${groupName(gid)}" 묶음에 넣었어요` : '묶음에서 뺐어요');
+  } catch (e) { toast(`옮기지 못했어요: ${e.message}`, true); }
+}
+function openGroupPicker(sid, anchor) {
+  const s = S.sessions.get(sid); const items = [{ header: '묶음 고르기' }];
+  for (const g of S.groups || []) items.push({ label: g.name, icon: 'layers', checked: s?.group === g.id, run: () => { closePop(); if (s?.group !== g.id) setGroup(sid, g.id); } });
+  items.push({ sep: true }, { label: '새 묶음 만들어 넣기…', icon: 'plus', run: () => { closePop(); createGroup(sid); } });
+  if (s?.group) items.push({ label: '묶음에서 빼기', icon: 'x', run: () => { closePop(); setGroup(sid, null); } });
+  openPop(anchor, items, { below: true });
+}
+function openGroupMenu(gid, anchor) {
+  openPop(anchor, [
+    { label: '이 묶음에 새 세션', icon: 'plus', run: () => { closePop(); newSession(currentCwd(), gid); } },
+    { label: '이름 바꾸기', icon: 'pencil', run: async () => { closePop(); const name = prompt('묶음 이름', groupName(gid)); if (!name || !name.trim()) return; try { const g = await api(`/api/session-groups/${gid}`, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) }); S.groups = (S.groups || []).map((x) => (x.id === gid ? g : x)); renderTree(); } catch (e) { toast(e.message, true); } } },
+    { sep: true },
+    { label: '묶음 지우기', desc: '세션은 지우지 않고 묶음에서만 빼요', icon: 'trash', danger: true, run: async () => { closePop(); if (!confirm(`"${groupName(gid)}" 묶음을 지울까요? 안의 세션은 그대로 남아요.`)) return; try { await api(`/api/session-groups/${gid}`, { method: 'DELETE' }); S.groups = (S.groups || []).filter((x) => x.id !== gid); for (const x of S.sessions.values()) if (x.group === gid) x.group = null; renderTree(); } catch (e) { toast(e.message, true); } } },
+  ], { below: true });
+}
+// 세션을 끌어다 묶음에 놓으면 그 묶음에, 묶음 밖 목록에 놓으면 묶음에서 빼기 (끌기 시작은 split.js)
+const isSessDrag = (e) => [...(e.dataTransfer?.types || [])].includes('text/x-oddin-session');
+$('#tree').addEventListener('dragover', (e) => {
+  if (!isSessDrag(e)) return;
+  const g = e.target.closest('.sgroup'), out = !g && e.target.closest('.sec-b');
+  if (!g && !out) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('#tree .drop-on').forEach((x) => x !== (g || out) && x.classList.remove('drop-on'));
+  (g || out).classList.add('drop-on');
+});
+$('#tree').addEventListener('dragleave', (e) => { const el = e.target.closest('.sgroup, .sec-b'); if (el && !el.contains(e.relatedTarget)) el.classList.remove('drop-on'); });
+$('#tree').addEventListener('drop', (e) => {
+  if (!isSessDrag(e)) return;
+  const sid = e.dataTransfer.getData('text/x-oddin-session');
+  const g = e.target.closest('.sgroup'), out = !g && e.target.closest('.sec-b');
+  document.querySelectorAll('#tree .drop-on').forEach((x) => x.classList.remove('drop-on'));
+  if (!sid || (!g && !out)) return;
+  e.preventDefault();
+  const s = S.sessions.get(sid);
+  if (g && s?.group !== g.dataset.gid) setGroup(sid, g.dataset.gid);
+  else if (out && s?.group) setGroup(sid, null);
+});
+document.addEventListener('dragend', () => document.querySelectorAll('#tree .drop-on').forEach((x) => x.classList.remove('drop-on')));
+window.addEventListener('hub:event', (e) => {
+  const ev = e.detail || {};
+  if (ev.type === 'hello' && Array.isArray(ev.groups)) { S.groups = ev.groups; renderTree(); }
+  else if (ev.type === 'session-groups') { S.groups = ev.groups || []; renderTree(); }
+});
+
 function openFolderMenu(cwd, anchor) {
   const k = cwd.toLowerCase();
   openPop(anchor, [

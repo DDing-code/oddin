@@ -155,6 +155,8 @@
     else if (z.dataset.z === 'side') openSplit(sid);
     else { if (SP.panes.includes(sid)) closePane(sid); openSession(sid); }
   });
+  // 창 안 어디든(사이드바 묶음 등) 놓았으면 새 창을 열지 않는다
+  document.addEventListener('drop', (e) => { if (drag && isSessionDrag(e)) drag.dropped = true; }, true);
   document.addEventListener('dragend', (e) => {
     if (!drag) return;
     document.getElementById('app').classList.remove('sp-dragging');

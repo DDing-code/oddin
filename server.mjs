@@ -35,6 +35,7 @@ import { Federation } from './lib/federation.mjs';
 import { FileAccess, fileRoots } from './lib/file-access.mjs';
 import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
+import { SessionGroups, listDirs } from './lib/session-groups.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
@@ -58,6 +59,10 @@ const fileAccess = new FileAccess({ file: path.join(DATA_DIR, 'file-access.json'
 const adobe = new AdobeBridge({ emit: (ev) => broadcast(ev), installed: installedHost });
 // 계정 칸 이름·사진(lib/profile.mjs)
 const profile = new Profile({ dir: DATA_DIR });
+// 세션 묶음(사이드바에서 이름 붙인 묶음, lib/session-groups.mjs)
+const groups = new SessionGroups({ file: path.join(DATA_DIR, 'session-groups.json') });
+jobs.groups = groups;
+const groupsChanged = () => broadcast({ type: 'session-groups', groups: groups.list() });
 const openRoots = () => fileRoots([config.defaultCwd, ROOT, config.hubDir, ...jobs.workFolders(), ...projectsList().map((p) => p.path), hubInfo()?.root], fileAccess.read());
 const tools = new HubTools({ config, getSession: (id) => jobs.listSessions().find((s) => s.id === id), getRoots: openRoots, emit: broadcast });
 
@@ -284,7 +289,7 @@ const server = http.createServer(async (req, res) => {
     // ---- 실시간 이벤트 ----
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS });
-      res.write(`data: ${JSON.stringify({ type: 'hello', sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'hello', sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])], groups: groups.list() })}\n\n`);
       clients.set(res, req); res.on('close', () => clients.delete(res)); return;
     }
     // ---- 상태·선택지·사용량 ----
@@ -294,6 +299,15 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/ui-version') return json(res, { v: uiVersion() });
     if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username, profile: profile.read() } });
     if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 }, fileAccess: fileAccess.read() });
+    // 세션 묶음: 목록·만들기·이름 바꾸기·순서·지우기(세션은 그대로, 묶음에서만 빠짐)
+    if (p === '/api/session-groups' && req.method === 'GET') return json(res, groups.list());
+    if (p === '/api/session-groups' && req.method === 'POST') { const g = groups.create((await readBody(req)).name); groupsChanged(); return json(res, g, 201); }
+    if (p === '/api/session-groups/order' && req.method === 'POST') { const v = groups.reorder((await readBody(req)).ids); groupsChanged(); return json(res, v); }
+    { const gm = p.match(/^\/api\/session-groups\/(g-[a-f0-9]+)$/);
+      if (gm && req.method === 'PATCH') { const g = groups.rename(gm[1], (await readBody(req)).name); groupsChanged(); return json(res, g); }
+      if (gm && req.method === 'DELETE') { groups.remove(gm[1]); for (const x of jobs.listSessions({ archived: false }).concat(jobs.listSessions({ archived: true }))) if (x.group === gm[1]) jobs.updateSession(x.id, { group: null }); groupsChanged(); return json(res, { removed: true }); } }
+    // 작업 폴더 고르기 창: 하위 폴더 이름만 (빈 경로면 드라이브 목록)
+    if (p === '/api/dirs' && req.method === 'GET') return json(res, listDirs(url.searchParams.get('path') || ''));
     // 프로필: 이름 { name } · 사진(본문이 그림 그대로, Content-Type 으로 종류)
     if (p === '/api/profile' && req.method === 'GET') return json(res, profile.read());
     if (p === '/api/profile' && req.method === 'POST') { const v = profile.setName((await readBody(req)).name); broadcast({ type: 'profile', profile: v }); return json(res, v); }

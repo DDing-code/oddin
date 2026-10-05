@@ -119,7 +119,8 @@ function prefLabel(tool, s) { return s.model === 'auto' && s.effort === 'auto' ?
 function codexEfforts(model) { const o = S.options?.codex; if (!o) return []; const m = o.models.find((x) => x.id === (model || o.cliDefault.model)); return m?.efforts?.length ? m.efforts : o.efforts; }
 
 /* ================= 상단 ================= */
-function currentCwd() { const s = S.sessions.get(S.current); return s ? s.cwd : (S.draftCwd || S.prefs.cwd || S.projects[0]?.path || ''); }
+// 세션의 실제 작업 폴더: 플래너가 프로젝트 폴더로 옮겨 간 세션은 그 폴더(workdir)
+function currentCwd() { const s = S.sessions.get(S.current); return s ? (s.workdir || s.cwd) : (S.draftCwd || S.prefs.cwd || S.projects[0]?.path || ''); }
 function sessionJobs(sid) { return [...S.jobs.values()].filter((j) => j.sessionId === sid).sort((a, b) => a.createdAt.localeCompare(b.createdAt)); }
 // 진행 중 = 실행 상태이거나, 목표 판정·라운드 전환처럼 서버가 수정 지시를 받는 구간(canIntercept)
 const isActive = (j) => LIVE.has(j.status) || j.canIntercept === true;
@@ -128,13 +129,13 @@ function renderTop() {
   const s = S.sessions.get(S.current);
   $('#title').textContent = s ? s.title : '새 세션';
   $('#folderText').textContent = shortPath(currentCwd(), 3);
-  $('#folderChip').title = `${currentCwd()}\n${s ? '눌러서 탐색기로 열기 · 오른쪽 클릭으로 경로 복사' : '눌러서 폴더 바꾸기'}`;
+  $('#folderChip').title = `${currentCwd()}\n${s ? '눌러서 작업 폴더 메뉴(열기·바꾸기) · 오른쪽 클릭으로 경로 복사' : '눌러서 폴더 고르기'}`;
   // 확장: 기능 파일이 window.hubTopExtras.push((session|null) => html)로 상단 바에 칩을 더한다 (세션이 없으면 null)
   $('#topActions').innerHTML = (window.hubTopExtras || []).map((f) => { try { return f(s || null) || ''; } catch { return ''; } }).join('') + (s ? `${s.pinned ? `<span class="pin-flag" title="고정된 세션">${icon('pin')}</span>` : ''}<button class="icon-btn" id="btnSessMenu" title="세션 메뉴">${icon('more')}</button>` : '');
   renderSend();
 }
 $('#topActions').addEventListener('click', (e) => { const b = e.target.closest('#btnSessMenu'); if (b && S.current) openSessionMenu(S.current, b); });
-$('#folderChip').addEventListener('click', (e) => { if (S.current) openPath(currentCwd()); else openFolderPicker(e.currentTarget); });
+$('#folderChip').addEventListener('click', (e) => { if (window.hubFolderChip) return window.hubFolderChip(e.currentTarget); if (S.current) openPath(currentCwd()); else openFolderPicker(e.currentTarget); });
 $('#folderChip').addEventListener('contextmenu', (e) => { e.preventDefault(); navigator.clipboard?.writeText(currentCwd()); toast('폴더 경로를 복사했어요'); });
 
 /* ================= 대화 영역 ================= */
@@ -429,7 +430,7 @@ function openModelPicker(tool, anchor) {
 function openFolderPicker(anchor) {
   const items = [{ header: '폴더를 고르면 그 폴더에서 새 세션을 시작해요' }];
   for (const p of S.projects) items.push({ label: shortPath(p.path, 3), desc: [p.label, p.memories ? `공유 메모리 ${p.memories}개` : '', p.path].filter(Boolean).join(' · '), checked: p.path.toLowerCase() === currentCwd().toLowerCase(), run: () => { closePop(); newSession(p.path); } });
-  items.push({ sep: true }, { label: '다른 폴더 경로 입력…', desc: '', run: async () => { closePop(); const v = prompt('폴더 경로', currentCwd()); if (!v) return; const r = await api(`/api/dir?path=${encodeURIComponent(v)}`); if (!r.exists) return toast(`폴더가 없습니다: ${r.path}`, true); newSession(r.path); } });
+  items.push({ sep: true }, { label: '폴더 찾아보기…', desc: '드라이브부터 둘러보며 고르기', icon: 'folder', run: async () => { closePop(); const p = await window.hubPickFolder?.({ title: '새 세션의 작업 폴더', start: currentCwd() }); if (p) newSession(p, S.draftGroup); } }, { label: '다른 폴더 경로 입력…', desc: '', run: async () => { closePop(); const v = prompt('폴더 경로', currentCwd()); if (!v) return; const r = await api(`/api/dir?path=${encodeURIComponent(v)}`); if (!r.exists) return toast(`폴더가 없습니다: ${r.path}`, true); newSession(r.path); } });
   openPop(anchor, items, { kind: 'folder' });
 }
 
@@ -464,7 +465,7 @@ async function submit() {
   if (live) return icSubmit(live); // 진행 중이면 새 요청이 아니라 현재 작업에 수정 지시
   if (S.submitting) return; // 앞선 보내기가 아직 응답을 기다리는 중 (중복 Enter·클릭)
   const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission, pace: S.prefs.pace === 'speed' ? 'speed' : 'quality' }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
-  if (S.current) body.sessionId = S.current; else body.cwd = currentCwd();
+  if (S.current) body.sessionId = S.current; else { body.cwd = currentCwd(); if (S.draftGroup) body.group = S.draftGroup; }
   // 실행 PC(machines.js): 새 세션을 다른 PC에서 시작하면 그 PC가 작업한다(다른 PC 세션은 sessionId 로 그 PC에 이어 감)
   const machine = !S.current && typeof window.hubMachine === 'function' ? window.hubMachine() : null;
   if (machine) body.machine = machine;
@@ -483,8 +484,8 @@ async function submit() {
 }
 
 /* ================= 세션 ================= */
-function newSession(cwd) {
-  S.current = null; S.draftCwd = cwd; S.prefs.cwd = cwd; savePrefs();
+function newSession(cwd, group = null) {
+  S.current = null; S.draftCwd = cwd; S.draftGroup = group; S.prefs.cwd = cwd; savePrefs();
   history.replaceState(null, '', location.pathname);
   renderTree(); renderThread(); input.focus();
 }
@@ -492,7 +493,7 @@ async function openSession(id) {
   if (!S.sessions.has(id)) { try { for (const x of await api('/api/sessions?all=1')) S.sessions.set(x.id, x); } catch {} }
   if (!S.sessions.has(id)) return newSession(currentCwd());
   if (!sessionJobs(id).length) { try { for (const j of await api(`/api/sessions/${id}/jobs`)) S.jobs.set(j.id, j); } catch {} }
-  S.current = id; S.draftCwd = null; S.prefs.cwd = S.sessions.get(id).cwd; savePrefs();
+  S.current = id; S.draftCwd = null; S.draftGroup = null; S.prefs.cwd = S.sessions.get(id).cwd; savePrefs();
   history.replaceState(null, '', `#s=${id}`);
   renderTree(); renderThread(); input.focus();
   loadPreviews();
