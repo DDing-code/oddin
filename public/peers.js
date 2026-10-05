@@ -24,7 +24,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   const why = (e) => (/^없는 API$/.test(String(e?.message || '')) ? OLD_SERVER : String(e?.message || e));
   async function load() {
     if (P.loading) return; P.loading = true;
-    try { [P.view, P.setup] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null)]); P.error = ''; }
+    try { [P.view, P.setup, P.folders] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null)]); P.error = ''; }
     catch (e) { P.error = why(e); }
     P.loading = false; refresh();
   }
@@ -66,6 +66,23 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
       h += `<p class="pc-hint">둘 다 고친 파일은 목록(MEMORY.md)이면 줄을 합치고, 아니면 최근에 고친 쪽을 써요. 밀린 판과 지운 파일은 ${E((v.sync?.root || '~/.ai-shared') + '\\backups\\sync')}에 남아요.</p>`;
     }
 
+    // 공유 폴더(읽기용 사본): 플러그인 소스처럼 파일까지 다른 PC가 봐야 하는 것
+    const fo = P.folders;
+    if (fo) {
+      const size = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(b / 1024))}KB`;
+      h += `<div class="ilabel">이 PC가 공유하는 폴더 ${fo.own.length || ''}</div>`;
+      if (!fo.own.length) h += '<div class="mem-empty">없어요. 플러그인 소스처럼 다른 PC의 AI가 코드를 봐야 하는 폴더를 넣어 두세요.</div>';
+      for (const f of fo.own) h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(f.name)}</b><span class="pc-url" title="${E(f.path)}">${E(f.path)}</span><span class="grow"></span><button class="icon-btn" data-sf-remove="${E(f.id)}" title="공유 그만두기 (다른 PC의 사본도 지워짐)">${IC('x')}</button></div><div class="pc-sync">${f.exists ? `<span>파일 ${f.files}개 · ${size(f.bytes)}${f.truncated ? ' · 한도(5,000개·100MB)까지만' : ''}</span>` : `<span class="c-err">폴더가 없어요</span>`}</div></div>`;
+      h += `<form class="pc-add" data-sf-add><input name="p" placeholder="공유할 폴더 경로 (예: C:\\…\\플러그인)" autocomplete="off" aria-label="공유할 폴더 경로"><input name="n" placeholder="이름 (예: 프리미어 플러그인)" maxlength="60" autocomplete="off" aria-label="공유할 폴더 이름"><button class="btn" type="submit" ${P.busy === 'sf-add' ? 'disabled' : ''}>${IC('plus')}공유</button></form>`;
+      h += '<p class="pc-hint">연결된 PC가 이 폴더의 읽기용 사본을 2분마다 받아 가요(코드 위주 — node_modules·.git·빌드 결과·큰 미디어는 빼요). 사본을 고쳐도 여기 원본은 안 바뀌어요.</p>';
+      if (v.peers.length) {
+        h += `<div class="ilabel">다른 PC에서 받은 폴더 ${fo.mirrors.length || ''}</div>`;
+        if (!fo.mirrors.length) h += '<div class="mem-empty">아직 없어요. 상대 PC에서 폴더를 공유하면 여기로 받아 와요.</div>';
+        for (const m of fo.mirrors) h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(m.peer)} · ${E(m.name)}</b><span class="grow"></span><button class="btn sm" data-sf-open="${E(m.dir)}" title="${E(m.dir)}">열기</button></div><div class="pc-sync ${m.ok === false ? 'err' : ''}">${IC('refresh')}<span>파일 ${m.files ?? '-'}개 · ${E(when(m.at))}${m.ok === false ? ` · ${E(m.error)}` : ''}</span></div></div>`;
+        h += `<div class="pc-actions"><button class="btn" data-sf-pull ${P.busy === 'sf-pull' ? 'disabled' : ''}>${P.busy === 'sf-pull' ? '<span class="spin-xs"></span>받는 중' : `${IC('refresh')}지금 받기`}</button></div><p class="pc-hint">사본 위치: ${E(fo.root)} — 각 PC의 AI는 목록 ${E(fo.root)}\\INDEX.md 를 보고 찾아가요. 고칠 때는 원본 PC에서.</p>`;
+      }
+    }
+
     const su = P.setup;
     if (su) {
       const item = (ok, label) => `<li class="${ok ? 'ok' : 'no'}">${IC(ok ? 'check' : 'minus')}<span>${label}</span></li>`;
@@ -78,7 +95,13 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   window.hubTabs.push({ key: 'peers', label: '연결된 PC', icon: 'monitor', render });
 
   document.addEventListener('submit', (e) => {
-    const add = e.target.closest('[data-pc-add]'), self = e.target.closest('[data-pc-self]');
+    const add = e.target.closest('[data-pc-add]'), self = e.target.closest('[data-pc-self]'), sf = e.target.closest('[data-sf-add]');
+    if (sf) {
+      e.preventDefault();
+      const p = sf.p.value.trim(), name = sf.n.value.trim(); if (!p) return;
+      act('sf-add', () => call('/api/shared-folders', { method: 'POST', body: JSON.stringify({ path: p, name }) }), (f) => `"${f.name}" 공유를 시작했어요 (파일 ${f.files}개)`);
+      return;
+    }
     if (!add && !self) return;
     e.preventDefault();
     if (add) {
@@ -90,7 +113,14 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     }
   });
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update]'); if (!b) return;
+    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open]'); if (!b) return;
+    if (b.hasAttribute('data-sf-open')) { if (typeof window.openPath === 'function') window.openPath(b.dataset.sfOpen); return; }
+    if (b.hasAttribute('data-sf-pull')) { act('sf-pull', () => call('/api/shared-folders/pull', { method: 'POST', body: '{}' }), (r) => (r.results || []).every((x) => x.ok) ? '다른 PC의 공유 폴더를 받았어요' : `일부 못 받았어요: ${(r.results || []).find((x) => !x.ok)?.error || ''}`); return; }
+    if (b.hasAttribute('data-sf-remove')) {
+      const f = P.folders?.own.find((x) => x.id === b.dataset.sfRemove);
+      if (f && confirm(`"${f.name}" 공유를 그만둘까요? 원본은 그대로이고, 다른 PC의 사본만 지워져요.`)) act('sf-remove', () => call(`/api/shared-folders/${encodeURIComponent(f.id)}`, { method: 'DELETE' }), '공유를 그만뒀어요');
+      return;
+    }
     if (b.hasAttribute('data-pc-update')) {
       const id = b.dataset.pcUpdate, name = id === 'self' ? '이 PC' : P.view?.peers.find((x) => x.id === id)?.name || '그 PC';
       act(`update:${id}`, () => call(id === 'self' ? '/api/hub/update' : `/api/peers/${encodeURIComponent(id)}/update`, { method: 'POST', body: '{}' }), (r) => `${name}: ${r.message}${r.updated ? ` (${r.from} → ${r.to}, 파일 ${r.files}개)` : ''}`);
@@ -109,6 +139,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     const ev = e.detail || {};
     if (ev.type === 'peers' && ev.self) { P.view = { self: ev.self, peers: ev.peers, sync: ev.sync }; refresh(); }
     else if (ev.type === 'shared-sync' && P.view) { P.view.sync = ev.status; if (!ev.status.running) call('/api/shared/setup').then((s) => { P.setup = s; refresh(); }).catch(() => {}); refresh(); }
+    else if (ev.type === 'shared-folders' && ev.own) { P.folders = { ...(P.folders || {}), own: ev.own, mirrors: ev.mirrors }; refresh(); }
     else if (ev.type === 'hello' && P.view) load();
   });
 })();

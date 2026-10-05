@@ -27,6 +27,7 @@ import { SharedSync, scanShared, readShared, writeShared } from './lib/shared-sy
 import { setupStatus, installSharedHooks } from './lib/shared-setup.mjs';
 import { listMemory, moveMemory, createBlock, renameBlock, setBlockRoot, deleteBlock, readBlockMemory } from './lib/memory-blocks.mjs';
 import { hubCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
+import { SharedFolders } from './lib/shared-folders.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -72,6 +73,10 @@ const sharedCfg = config.sharedSync || {};
 const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false });
 shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
 const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared?.status() || null });
+// 공유 폴더(읽기용 사본): 이 PC가 공유하는 폴더를 연결된 PC가 ~/.ai-shared/peer-files 로 받아 간다 (lib/shared-folders.mjs)
+const folders = new SharedFolders({ hubDir: config.hubDir, peers, intervalMs: (config.sharedFolders?.intervalSeconds ?? 120) * 1000 });
+folders.on('status', (s) => broadcast({ type: 'shared-folders', ...s }));
+setTimeout(() => { if (peers.list().length) folders.pullAll().catch(() => {}); }, 8000).unref();
 const checkPeers = async () => {
   if (!peers.list().length) return;
   await Promise.all(peers.list().map((x) => peers.check(x)));
@@ -134,7 +139,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/peers' && req.method === 'GET') return json(res, peersView());
     if (p === '/api/peers' && req.method === 'POST') {
       const peer = await peers.add(await readBody(req));
-      shared?.syncAll('연결').catch(() => {}); broadcast({ type: 'peers', ...peersView() });
+      shared?.syncAll('연결').catch(() => {}); folders.pullAll().catch(() => {}); broadcast({ type: 'peers', ...peersView() });
       return json(res, peer, 201);
     }
     if (p === '/api/peers/self' && req.method === 'POST') { const self = peers.setSelfName((await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, self); }
@@ -149,6 +154,17 @@ const server = http.createServer(async (req, res) => {
       const peer = peers.get(peerUpdate[1]); if (!peer) return fail(res, '연결된 PC를 찾지 못했어요', 404);
       if (peerUpdate[2] === 'version' && req.method === 'GET') return json(res, await peers.call(peer, '/api/hub/version?check=1', { timeoutMs: 90_000 }));
       if (peerUpdate[2] === 'update' && req.method === 'POST') { await readBody(req); const r = await peers.call(peer, '/api/hub/update', { method: 'POST', body: {}, timeoutMs: 180_000 }); peers.check(peer).then(() => broadcast({ type: 'peers', ...peersView() })); return json(res, r); }
+    }
+    // 공유 폴더(읽기용 사본)
+    if (p === '/api/shared-folders' && req.method === 'GET') return json(res, { own: folders.own(), mirrors: folders.mirrors(), root: folders.mirrorRoot });
+    if (p === '/api/shared-folders/offer' && req.method === 'GET') return json(res, folders.offer());
+    if (p === '/api/shared-folders/pull' && req.method === 'POST') { await readBody(req); return json(res, { results: await folders.pullAll() }); }
+    if (p === '/api/shared-folders' && req.method === 'POST') { const f = folders.add(await readBody(req)); broadcast({ type: 'shared-folders', own: folders.own(), mirrors: folders.mirrors() }); return json(res, f, 201); }
+    {
+      const sf = p.match(/^\/api\/shared-folders\/([\w-]+)(?:\/(manifest|file))?$/);
+      if (sf && !sf[2] && req.method === 'DELETE') { const r = folders.remove(sf[1]); broadcast({ type: 'shared-folders', own: folders.own(), mirrors: folders.mirrors() }); return json(res, r); }
+      if (sf && sf[2] === 'manifest' && req.method === 'GET') return json(res, folders.manifest(sf[1]));
+      if (sf && sf[2] === 'file' && req.method === 'GET') return json(res, folders.read(sf[1], url.searchParams.get('rel')));
     }
     if (p.startsWith('/api/shared/') && !shared) return fail(res, '공유 기억 동기화가 꺼져 있어요 (config.sharedSync.enabled)', 503);
     if (p === '/api/shared/manifest' && req.method === 'GET') return json(res, { machine: peers.self().name, files: scanShared(config.hubDir) });

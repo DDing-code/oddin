@@ -25,6 +25,13 @@
 - 집 PC와 같은 훅(세션 시작 `sync.mjs`, 매 메시지 `memory-check.mjs`, 끝 `sync.mjs --quiet`)과 `~/.claude/CLAUDE.md` 의 `@~/.ai-shared/AGENTS.md`·`@~/.ai-shared/memory/global/MEMORY.md` 줄 중 빠진 것만 더하고, 원본은 `.bak-oddin-<시각>` 으로 남긴 뒤 `sync.mjs` 를 한 번 돌린다.
 - Codex 는 새 훅을 처음 쓸 때 한 번 신뢰할지 묻는다. ODDIN 작업은 훅이 없어도 공유 기억을 바로 읽는다(`jobs.memoryFor`).
 
+## 공유 폴더 — 읽기용 사본 (`lib/shared-folders.mjs`)
+- 2026-10-05 사용자 "따로 개발한 플러그인 같은 건 파일까지 공유해야 어떻게 구현됐는지 알 수 있다". 각 PC가 연결된 PC 탭에서 공유할 폴더(경로·이름)를 정하면, 상대 PC의 ODDIN 이 2분마다(`config.sharedFolders.intervalSeconds`)·PC 연결 때·"지금 받기"로 `~/.ai-shared/peer-files/<원본 PC 이름>/<폴더 이름>/`에 사본을 맞춘다. 목록은 `peer-files/INDEX.md`, 공유 메모리 `reference-peer-files`가 이 위치를 알려 준다.
+- 한 방향(원본 → 사본). 사본을 고쳐도 다음 차례에 원본 내용으로 돌아가고, 원본에서 지운 파일은 사본에서도 지운다. 공유를 그만두면 상대 PC의 사본 폴더를 지운다(원본은 그대로).
+- 빼는 것: node_modules·.git·dist·build·out·캐시·가상환경 폴더, 2MB 넘는 파일, 영상·소리·압축·실행 파일·프로젝트 바이너리(psd·aep·prproj 등). 폴더당 5,000개·100MB까지.
+- `peer-files`는 공유 기억 동기화 범위 밖이라 다시 돌려보내지 않는다. 파일 보기 창에서 열 수 있다(허브 폴더 안).
+- API: `GET /api/shared-folders`(이 PC 공유·받은 사본), `POST /api/shared-folders` `{path,name}`, `DELETE /api/shared-folders/:id`, `GET /api/shared-folders/offer`(상대 PC용 목록), `GET /api/shared-folders/:id/manifest`, `GET /api/shared-folders/:id/file?rel=`, `POST /api/shared-folders/pull`. 시험 `tests/shared-folders.test.mjs`.
+
 ## 업데이트 (`lib/hub-update.mjs`)
 - 두 PC의 ODDIN을 같은 버전으로: 연결된 PC 탭의 PC 줄 "업데이트"(그 PC 허브에 대신 요청), 이 PC 줄 "이 PC 업데이트". 각 줄에 지금 버전(커밋 날짜, 마우스를 올리면 커밋 번호)과 이 PC와 같은지 표시.
 - 허브 폴더에서 `git fetch` → fast-forward `pull`. 커밋 안 한 추적 파일 변경이나 이 PC에만 있는 커밋이 있으면 받지 않는다(409).
