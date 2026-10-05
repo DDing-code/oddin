@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { URL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { ROOT, readJson, readText } from './lib/util.mjs';
+import { ROOT, DATA_DIR, readJson, readText } from './lib/util.mjs';
 import { JobManager, publicJob } from './lib/jobs.mjs';
 import { INTERCEPT_CAPABILITIES } from './lib/intercepts.mjs';
 import { sessionToolsRoute, SESSION_CAPABILITIES } from './lib/session-tools.mjs';
@@ -31,6 +31,7 @@ import { SharedFolders } from './lib/shared-folders.mjs';
 import { DriveFolders } from './lib/drive-folders.mjs';
 import { DriveHub } from './lib/drive-hub.mjs';
 import { Federation } from './lib/federation.mjs';
+import { FileAccess, fileRoots } from './lib/file-access.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -46,7 +47,11 @@ const jobs = new JobManager(config);
 const remote = new RemoteAccess({ port: config.port });
 const clients = new Map(); // SSE도 설정 변경·계정 취소 때 다시 검증한다.
 jobs.on('event', (ev) => broadcast(ev));
-const tools = new HubTools({ config, getSession: (id) => jobs.listSessions().find((s) => s.id === id), getRoots: () => [config.defaultCwd, ROOT, config.hubDir, ...jobs.listSessions().map((s) => s.cwd), ...projectsList().map((p) => p.path)], emit: broadcast });
+// 파일 열기·보기 범위(lib/file-access.mjs): 허브가 아는 폴더 + 작업이 실제로 실행된 폴더 전부 + 드라이브 ODDIN 폴더.
+// 입력창 아래 "권한" 메뉴에서 "모든 폴더"를 켜면 이 PC의 모든 드라이브. 열기·허브 안 보기·/view/·폴더 목록이 함께 쓴다
+const fileAccess = new FileAccess({ file: path.join(DATA_DIR, 'file-access.json') });
+const openRoots = () => fileRoots([config.defaultCwd, ROOT, config.hubDir, ...jobs.workFolders(), ...projectsList().map((p) => p.path), hubInfo()?.root], fileAccess.read());
+const tools = new HubTools({ config, getSession: (id) => jobs.listSessions().find((s) => s.id === id), getRoots: openRoots, emit: broadcast });
 
 function checkClient(res, req) {
   if (res.destroyed || remote.check(req, { log: false })) {
@@ -177,7 +182,7 @@ const server = http.createServer(async (req, res) => {
     const denial = remote.check(req);
     if (denial) return sendRemoteBlocked(res, denial, p, send);
     // 다른 PC 세션·작업(rm-<PC>- id)에 대한 요청은 그 PC로 넘긴다
-    if (fed && p.startsWith('/api/') && /rm-[A-Za-z0-9]+-/.test(p + url.search)) { const raw = ['GET', 'HEAD'].includes(req.method) ? null : await readRaw(req, 8_000_000); return await fed.proxy(req, res, { pathname: p, search: url.search, raw }); }
+    if (fed && p.startsWith('/api/') && fed.remoteOf(p + url.search)) { const raw = ['GET', 'HEAD'].includes(req.method) ? null : await readRaw(req, 8_000_000); return await fed.proxy(req, res, { pathname: p, search: url.search, raw }); }
     const checkpoint = await checkpointRoute({ pathname: p, method: req.method, query: url.searchParams, readBody: () => readBody(req), manager: jobs });
     if (checkpoint) return json(res, checkpoint.body);
     if (await tools.handle(req, res, url, { json, readBody })) return;
@@ -269,7 +274,10 @@ const server = http.createServer(async (req, res) => {
     if (promptAnswer && req.method === 'POST') return json(res, jobs.prompts.answer(promptAnswer[1], await readBody(req), req.hubViewer));
     if (p === '/api/ui-version') return json(res, { v: uiVersion() });
     if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
-    if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 } });
+    if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 }, fileAccess: fileAccess.read() });
+    // 파일 열기·보기 범위: 허브가 아는 폴더만(기본) / 모든 폴더
+    if (p === '/api/file-access' && req.method === 'GET') return json(res, fileAccess.read());
+    if (p === '/api/file-access' && req.method === 'POST') { const v = fileAccess.save({ allowAll: (await readBody(req)).allowAll === true }); broadcast({ type: 'file-access', ...v }); return json(res, v); }
     if (p === '/api/usage') return json(res, await usageStatus(config, { force: url.searchParams.has('force') }));
     if (p === '/api/projects') return json(res, projectsList());
     if (p === '/api/catalog') { const c = catalog(config.hubDir); return json(res, { commands: c.commands.map(({ body, file, ...x }) => x), agents: c.agents.map(({ body, file, ...x }) => x), skills: c.skills.map(({ file, ...x }) => x) }); }
@@ -277,7 +285,7 @@ const server = http.createServer(async (req, res) => {
       // 허브 PC 앞에서 볼 때만: 탐색기로 폴더 열기 / 안전한 파일은 기본 프로그램 / 나머지는 위치만 표시
       if (req.hubViewer?.remote) return fail(res, '원격 접속에서는 허브 PC의 폴더를 열 수 없어요', 403);
       const body = await readBody(req);
-      const roots = [config.defaultCwd, ROOT, config.hubDir, ...jobs.listSessions().map((x) => x.cwd), ...projectsList().map((x) => x.path)];
+      const roots = openRoots();
       const target = resolveRelative(body, roots);
       if (body.mode === 'resolve') { // 열지 않고 실제 위치만 알려 준다 (상대 경로 복사용)
         const t = normalizeLocalPath(target);

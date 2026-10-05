@@ -61,7 +61,8 @@
     const k = curPerm();
     pill.innerHTML = `${icon('shield')}<span class="v"><span class="nm">권한 · </span>${esc(PERMS[k].label)}</span>${icon('down')}`;
     pill.classList.toggle('perm-on', k !== 'auto');
-    pill.setAttribute('aria-label', `권한 방식: ${PERMS[k].label}`);
+    pill.setAttribute('aria-label', `권한 방식: ${PERMS[k].label}${allFolders() ? ' · 모든 폴더 열기 허용' : ''}`);
+    pill.title = allFolders() ? '이번 요청의 권한 방식 · 파일은 모든 폴더에서 열고 볼 수 있어요' : '이번 요청의 권한 방식';
     pill.hidden = !!(S.caps && Object.keys(S.caps).length && !S.caps.prompts); // 승인 기능이 없는 옛 서버에서는 숨긴다
   }
   pill.addEventListener('click', () => {
@@ -71,8 +72,27 @@
       const minutes = Number(sp?.autoAnswerMinutes); const desc = k === 'auto' && Number.isFinite(minutes) && minutes > 0 ? `전부 자동으로 진행 · 질문만 전달하고 ${minutes}분 안에 답이 없으면 알아서 진행` : PERMS[k].desc;
       items.push({ label: PERMS[k].label + (sp?.default === k ? ' (기본)' : ''), desc, checked: curPerm() === k, run: () => { S.prefs.permission = k; savePrefs(); renderPermPill(); closePop(); } });
     }
+    // 파일 열기·보기 범위(서버 /api/file-access, 이 PC 설정): 결과 경로 열기·허브 안 보기·결과 미리보기가 함께 쓴다
+    if (S.options?.fileAccess) {
+      const all = allFolders();
+      items.push({ sep: true }, { header: '파일 열기·보기 범위 · 이 PC 설정, 모든 요청에 적용' },
+        { label: '허브가 아는 폴더만', desc: '세션·작업이 실행된 폴더·프로젝트·드라이브 폴더', checked: !all, run: () => setFileAccess(false) },
+        { label: '모든 폴더', desc: '이 PC의 모든 드라이브에서 결과 그림·영상·파일을 열고 볼 수 있어요', checked: all, run: () => setFileAccess(true) });
+    }
     openPop(pill, items, { sel: Math.max(0, values.indexOf(curPerm())), kind: 'perm' });
   });
+  const allFolders = () => S.options?.fileAccess?.allowAll === true;
+  async function setFileAccess(allowAll) {
+    closePop();
+    try {
+      const v = await api('/api/file-access', { method: 'POST', body: JSON.stringify({ allowAll }) });
+      if (S.options) S.options.fileAccess = v;
+      renderPermPill();
+      toast(v.allowAll ? '이제 모든 폴더의 파일을 열고 볼 수 있어요' : '허브가 아는 폴더의 파일만 열어요');
+    } catch (e) { toast(`범위를 바꾸지 못했어요: ${e.message}`, true); }
+  }
+  // 다른 창·다른 기기에서 바꾼 것도 반영
+  window.addEventListener('hub:event', (e) => { const ev = e.detail; if (ev?.type === 'file-access' && S.options) { S.options.fileAccess = { allowAll: ev.allowAll === true, updatedAt: ev.updatedAt || null }; renderPermPill(); } });
   renderPermPill();
   // app.js 가 선택지(/api/options)·상태를 받은 뒤 버튼 줄을 다시 그릴 때 함께 갱신한다
   const baseRenderBarPills = window.renderBarPills;

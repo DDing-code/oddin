@@ -27,7 +27,7 @@
 - `lib/prompts.mjs` 실행 중 승인·질문·계획 승인 요청 관리(권한 방식 auto·edits·ask·plan, 자동 응답 시간). 두 CLI 프로토콜 연결은 `workers.mjs`·`native-workers.mjs`. 규약 `docs/approvals.md`, 화면 `public/prompts.js`
 - `lib/checkpoints.mjs` 작업별 그림자 git 스냅샷·변경 비교·되돌리기(사용자 `.git`은 건드리지 않음). 시작 스냅샷은 계획 중에 찍고 작업자 실행 직전에만 기다린다. 규약 `docs/checkpoints.md`, 화면 `public/changes.js`
 - `lib/gitops.mjs`·`lib/session-tools.mjs` 세션 격리(worktree)·커밋·병합·push·PR·CI, 보관·갈래·내보내기. 규약 `docs/git-sessions.md`, 화면 `public/sessions-ui.js`
-- `lib/terminal.mjs`·`lib/files.mjs`·`lib/preview.mjs` 파이프 터미널·파일 보기·미리보기 프록시. 결과 페이지 보기 `/view/<경로>`(`files.serveView`, CSP sandbox) — 원격에서도 결과 HTML 을 페이지로 바로 열므로 따로 게시하지 않는다. 규약 `docs/tools.md`, 화면 `public/tools-ui.js`
+- `lib/terminal.mjs`·`lib/files.mjs`·`lib/preview.mjs` 파이프 터미널·파일 보기·미리보기 프록시. 열기·보기 범위는 `lib/file-access.mjs`(아는 폴더 + 작업이 실행된 폴더 전부, 권한 메뉴 "모든 폴더"면 모든 드라이브), 결과 그림·영상 바로 보기는 `public/media.js`(작업 카드 끝 썸네일·재생기, 확대창 `window.hubOpenViewer`, 다시 그릴 때 `window.hubMounts`). 결과 페이지 보기 `/view/<경로>`(`files.serveView`, CSP sandbox) — 원격에서도 결과 HTML 을 페이지로 바로 열므로 따로 게시하지 않는다. 규약 `docs/tools.md`, 화면 `public/tools-ui.js`
 - 화면 확장 연결 지점: `window.hubTabs`(오른쪽 패널 탭), `window.hubJobExtras`(작업 카드 끝), `hub:event`(모든 실시간 이벤트). 기능 화면은 새 파일에 두고 공용 파일은 최소로 고친다.
 - 자식 프로세스는 `util.guardChild`로 감싼다(입출력 통로 오류로 서버가 죽지 않게).
 - 내가 띄운 자식을 강제로 끌 때는 `util.killChildTree`만 쓴다. 이미 끝난 자식의 번호로 `taskkill /T`를 하지 않는다 — Windows가 끝난 번호를 곧 다른 프로세스에 다시 줘서 상관없는 프로세스와 그 자식들이 죽는다(2026-10-05 사용량 조회의 1.5초 뒤 강제 종료·예전 방식 실행기의 끝난 뒤 중지가 실제로 매 시험마다 끝난 번호를 겨눴고, 병렬 시험의 CLI·셸이 가끔 죽었다). 시험 `tests/kill-child.test.mjs`.

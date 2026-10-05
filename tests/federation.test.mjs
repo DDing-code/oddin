@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import { Writable } from 'node:stream';
 import { Federation, mapIds, toLocal, toRemote } from '../lib/federation.mjs';
 
 const peer0 = { id: 'pc1', name: '회사', remoteId: 'office' };
@@ -38,11 +39,13 @@ function fakePeer() {
     if (u.pathname === '/api/jobs/j1/cancel' && req.method === 'POST') return json({ id: 'j1', sessionId: 's1', status: 'cancelled', tasks: [] });
     if (u.pathname === '/api/uploads') { seen.uploads++; return json({ id: 'u-remote' }, 201); }
     if (u.pathname === '/api/drive-hub') return json({ hub: { root: 'G:\\내 드라이브\\ODDIN' } });
+    if (u.pathname === '/api/file') { seen.file = { job: u.searchParams.get('job'), range: req.headers.range || '' }; res.writeHead(206, { 'Content-Type': 'video/mp4', 'Content-Range': 'bytes 2-4/10', 'Content-Length': '3', 'Accept-Ranges': 'bytes' }); return res.end('234'); }
     json({ error: '없는 API' }, 404);
   });
   return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok({ server, seen, url: `http://127.0.0.1:${server.address().port}`, push: (ev) => sse?.write(`data: ${JSON.stringify(ev)}\n\n`) })));
 }
 const until = async (fn, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return true; await new Promise((r) => setTimeout(r, 20)); } return false; };
+function streamRes() { const chunks = []; const w = new Writable({ write(c, _e, cb) { chunks.push(c); cb(); } }); w.r = { status: 0, headers: {} }; w.writeHead = (st, h) => { w.r.status = st; w.r.headers = h; }; w.done = new Promise((ok) => w.on('finish', () => ok(Buffer.concat(chunks).toString()))); return w; }
 function fakeRes() { const r = { status: 0, headers: {}, body: '' }; return { r, writeHead(s, h) { r.status = s; r.headers = h; }, end(b) { r.body = String(b ?? ''); } }; }
 
 test('다른 PC 세션 비추기·요청 넘기기·작업 만들기', async () => {
@@ -76,6 +79,14 @@ test('다른 PC 세션 비추기·요청 넘기기·작업 만들기', async () 
     assert.equal(res1.r.status, 200); assert.equal(JSON.parse(res1.r.body)[0].id, 'rm-pc1-j1');
     const res2 = fakeRes(); await fed.proxy({ method: 'POST', headers: { 'content-type': 'application/json' } }, res2, { pathname: '/api/jobs/rm-pc1-j1/cancel', search: '', raw: Buffer.from('{}') });
     assert.equal(JSON.parse(res2.r.body).status, 'cancelled');
+    // 다른 PC 작업의 결과 파일(영상): 넘겨 보기(Range)와 크기 머리를 그대로 전하고 받는 대로 흘려보낸다
+    const res3 = streamRes(); await fed.proxy({ method: 'GET', headers: { range: 'bytes=2-4' } }, res3, { pathname: '/api/file', search: '?path=E%3A%2Fa.mp4&job=rm-pc1-j1', raw: null });
+    assert.equal(await res3.done, '234'); assert.equal(res3.r.status, 206);
+    assert.equal(res3.r.headers['content-range'], 'bytes 2-4/10'); assert.equal(res3.r.headers['accept-ranges'], 'bytes');
+    assert.deepEqual(fp.seen.file, { job: 'j1', range: 'bytes=2-4' });
+    // 파일 이름에 우연히 rm-xx- 가 들어 있어도(transform-3d-) 다른 PC 요청으로 보지 않는다
+    assert.equal(fed.remoteOf('/api/file?path=E%3A%2Ftransform-3d-a.png'), null);
+    assert.equal(fed.remoteOf('/api/file?path=E%3A%2Ftransform-3d-a.png&job=rm-pc1-j1')?.id, 'pc1');
     // 다른 PC에 작업 만들기: 드라이브 작업 폴더는 그 PC 경로로, 첨부는 그 PC로 올림
     const job = await fed.createJob({ goal: '편집해 줘', machine: 'pc1', cwd: path.join(driveHere, '편집'), attachments: [{ id: 'u1', name: 'a.png' }] });
     assert.equal(job.id, 'rm-pc1-j2'); assert.equal(job.sessionId, 'rm-pc1-s2'); assert.equal(job.note, null);

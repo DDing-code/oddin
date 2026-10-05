@@ -643,6 +643,8 @@ function mountPreviews(root) {
     // 다시 그리면서 초점이 빠졌으면 보던 썸네일로 돌려놓는다
     if (PV.focused && node.contains(PV.focused) && (document.activeElement === document.body || !document.activeElement)) PV.focused.focus({ preventScroll: true });
   });
+  // 확장: window.hubMounts.push((root) => …) 로 다시 그린 작업 카드에 보관해 둔 DOM(재생 중인 영상 등)을 끼운다
+  for (const f of window.hubMounts || []) { try { f(root); } catch {} }
 }
 document.addEventListener('mousedown', (e) => { if (!e.target.closest?.('.pv')) PV.focused = null; });
 
@@ -657,37 +659,62 @@ function openViewer(previewId, key, trigger) {
   renderViewer();
   $('#vwClose').focus();
 }
+// 확장: window.hubOpenViewer({ title, items:[{ key, label, alt, url, width?, height?, mime?, size?, video?, path? }], idx, trigger })
+window.hubOpenViewer = ({ title, items, idx = 0, trigger = null }) => {
+  if (!items?.length) return;
+  PV.view = { p: { id: '', title: title || '결과' }, items, idx: Math.max(0, Math.min(idx, items.length - 1)), trigger, jobId: trigger?.closest?.('.turn')?.id || '' };
+  $('#viewer').hidden = false; $('#app').inert = true;
+  if (S.pop) closePop();
+  renderViewer();
+  $('#vwClose').focus();
+};
 function renderViewer() {
   const vw = PV.view; if (!vw) return;
   const it = vw.items[vw.idx]; const n = vw.items.length;
+  const vid = $('#vwVid'), isVid = !!it.video, img = $('#vwImg');
+  img.hidden = isVid; vid.hidden = !isVid;
+  $('#vwOpen').hidden = !it.path || (typeof isRemoteView === 'function' && isRemoteView());
+  if (!isVid && vid.getAttribute('src')) { vid.pause(); vid.removeAttribute('src'); vid.load(); }
   $('#vwTitle').textContent = `${vw.p.title} — ${it.label}`;
   $('#vwCount').textContent = n > 1 ? `${vw.idx + 1} / ${n}` : '';
   $('#vwPrev').hidden = $('#vwNext').hidden = n < 2;
   $('#vwRaw').href = it.url;
-  const fig = $('#vwFig'); const img = $('#vwImg');
+  const fig = $('#vwFig');
+  const dims = (w, h) => (w > 1 && h > 1 ? `${w}×${h}` : '');
+  const meta = (w, h) => [it.alt && it.alt !== it.label ? it.alt : '', dims(w, h), it.mime ? it.mime.replace(/^(image|video)\//, '').toUpperCase() : '', it.size ? pvKb(it.size) : ''].filter(Boolean).join(' · ');
+  $('#vwThumbs').innerHTML = n > 1 ? vw.items.map((x, i) => `<button type="button" class="vw-th ${i === vw.idx ? 'on' : ''}" data-vw-i="${i}" aria-label="${esc(x.label)}" aria-current="${i === vw.idx ? 'true' : 'false'}" title="${esc(x.label)}">${x.video ? `<span class="vw-th-vid">${icon('play')}</span>` : `<img src="${esc(x.url)}" alt=""${x.width > 1 ? ` width="${x.width}" height="${x.height}"` : ''} loading="lazy">`}<span>${esc(x.label)}</span></button>`).join('') : '';
+  if (isVid) {
+    fig.className = 'is-ok'; img.removeAttribute('src');
+    vid.onloadedmetadata = () => { $('#vwMeta').textContent = meta(vid.videoWidth, vid.videoHeight); };
+    vid.onerror = () => { fig.className = 'is-err'; };
+    if (vid.getAttribute('src') !== it.url) vid.src = it.url;
+    $('#vwMeta').textContent = meta(0, 0);
+    return;
+  }
   fig.className = 'is-loading';
-  img.onload = () => { fig.className = img.naturalWidth ? 'is-ok' : 'is-err'; };
+  img.onload = () => { fig.className = img.naturalWidth ? 'is-ok' : 'is-err'; if (!(it.width > 1)) $('#vwMeta').textContent = meta(img.naturalWidth, img.naturalHeight); };
   img.onerror = () => { fig.className = 'is-err'; };
-  img.alt = it.alt; img.width = it.width; img.height = it.height; img.src = it.url;
+  img.alt = it.alt || it.label || ''; if (it.width > 1) { img.width = it.width; img.height = it.height; } else { img.removeAttribute('width'); img.removeAttribute('height'); } img.src = it.url;
   if (img.complete && img.naturalWidth && img.src.endsWith(it.url)) fig.className = 'is-ok';
-  $('#vwMeta').textContent = [it.alt, `${it.width}×${it.height}`, it.mime ? it.mime.replace('image/', '').toUpperCase() : '', it.size ? pvKb(it.size) : ''].filter(Boolean).join(' · ');
-  $('#vwThumbs').innerHTML = n > 1 ? vw.items.map((x, i) => `<button type="button" class="vw-th ${i === vw.idx ? 'on' : ''}" data-vw-i="${i}" aria-label="${esc(x.label)}" aria-current="${i === vw.idx ? 'true' : 'false'}" title="${esc(x.label)}"><img src="${esc(x.url)}" alt="" width="${x.width}" height="${x.height}"><span>${esc(x.label)}</span></button>`).join('') : '';
+  $('#vwMeta').textContent = meta(it.width, it.height);
 }
 function stepViewer(d) { const vw = PV.view; if (!vw || vw.items.length < 2) return; vw.idx = (vw.idx + d + vw.items.length) % vw.items.length; renderViewer(); }
 function closeViewer() {
   const vw = PV.view; if (!vw) return;
   PV.view = null; $('#viewer').hidden = true; $('#app').inert = false;
   $('#vwImg').removeAttribute('src');
+  const vid = $('#vwVid'); if (vid.getAttribute('src')) { vid.pause(); vid.removeAttribute('src'); vid.load(); }
   let t = vw.trigger;
-  if (!t?.isConnected) t = document.querySelector(`#${CSS.escape(vw.jobId || 'x')} [data-pv-open="${CSS.escape(vw.p.id)}"][data-pv-key="${CSS.escape(vw.items[0].key)}"]`);
+  if (!t?.isConnected && vw.p.id) t = document.querySelector(`#${CSS.escape(vw.jobId || 'x')} [data-pv-open="${CSS.escape(vw.p.id)}"][data-pv-key="${CSS.escape(vw.items[0].key)}"]`);
   (t?.isConnected ? t : input).focus({ preventScroll: true });
 }
 $('#viewer').addEventListener('click', (e) => {
   const th = e.target.closest('[data-vw-i]'); if (th) { PV.view.idx = Number(th.dataset.vwI); renderViewer(); return $(`#vwThumbs [data-vw-i="${th.dataset.vwI}"]`)?.focus(); }
   if (e.target.closest('#vwClose')) return closeViewer();
+  if (e.target.closest('#vwOpen')) { const it = PV.view?.items[PV.view.idx]; if (it?.path) openPath(it.path, 'auto', it.rel || '', it.base || ''); return; }
   if (e.target.closest('#vwPrev')) return stepViewer(-1);
   if (e.target.closest('#vwNext')) return stepViewer(1);
-  if (e.target.closest('#vwRetry')) { const img = $('#vwImg'); $('#vwFig').className = 'is-loading'; img.src = `${PV.view.items[PV.view.idx].url}?retry=${Date.now()}`; return; }
+  if (e.target.closest('#vwRetry')) { const img = $('#vwImg'); $('#vwFig').className = 'is-loading'; const u = PV.view.items[PV.view.idx].url; img.src = `${u}${u.includes('?') ? '&' : '?'}retry=${Date.now()}`; return; }
   // 창 바깥 어두운 배경이나 이미지 둘레 빈 곳을 누르면 닫기
   if (e.target.id === 'viewer' || e.target.classList.contains('vw-stage')) closeViewer();
 });
@@ -826,7 +853,7 @@ setInterval(() => renderTree(), 60_000);
 /* 고정 버튼 아이콘 */
 $('#btnCollapse').innerHTML = icon('panel'); $('#btnSide').innerHTML = icon('panel'); $('#btnInsp').innerHTML = icon('panelR'); $('#btnInspClose').innerHTML = icon('x');
 $('#btnAttach').innerHTML = icon('clip'); $('#modalClose').innerHTML = icon('x');
-$('#vwClose').innerHTML = icon('x'); $('#vwRaw').innerHTML = icon('open'); $('#vwPrev').innerHTML = icon('left'); $('#vwNext').innerHTML = icon('right');
+$('#vwClose').innerHTML = icon('x'); $('#vwRaw').innerHTML = icon('open'); $('#vwOpen').innerHTML = icon('folder'); $('#vwPrev').innerHTML = icon('left'); $('#vwNext').innerHTML = icon('right');
 
 /* ================= 시작 ================= */
 async function init() {

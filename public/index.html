@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="memory.css">
 <link rel="stylesheet" href="peers.css">
 <link rel="stylesheet" href="memory-blocks.css">
+<link rel="stylesheet" href="media.css">
 </head>
 <body>
 <div id="app">
@@ -110,10 +111,10 @@
 </div>
 <div id="viewer" hidden>
   <div class="vw-win" role="dialog" aria-modal="true" aria-labelledby="vwTitle" aria-describedby="vwMeta" tabindex="-1">
-    <div class="vw-head"><span class="ico" data-i="image"></span><b id="vwTitle"></b><span class="vw-count" id="vwCount"></span><span class="grow"></span><a class="icon-btn" id="vwRaw" target="_blank" rel="noopener" title="원본을 새 탭에서 열기" aria-label="원본을 새 탭에서 열기"></a><button type="button" class="icon-btn" id="vwClose" title="닫기 (Esc)" aria-label="닫기"></button></div>
+    <div class="vw-head"><span class="ico" data-i="image"></span><b id="vwTitle"></b><span class="vw-count" id="vwCount"></span><span class="grow"></span><button type="button" class="icon-btn" id="vwOpen" hidden title="이 PC의 기본 프로그램으로 열기" aria-label="이 PC의 기본 프로그램으로 열기"></button><a class="icon-btn" id="vwRaw" target="_blank" rel="noopener" title="원본을 새 탭에서 열기" aria-label="원본을 새 탭에서 열기"></a><button type="button" class="icon-btn" id="vwClose" title="닫기 (Esc)" aria-label="닫기"></button></div>
     <div class="vw-stage">
       <button type="button" class="vw-nav prev" id="vwPrev" title="이전 (←)" aria-label="이전 이미지"></button>
-      <figure id="vwFig"><img id="vwImg" alt=""><div class="vw-fail" role="status">이미지를 불러오지 못했어요<button type="button" class="btn" id="vwRetry">다시 시도</button></div></figure>
+      <figure id="vwFig"><img id="vwImg" alt=""><video id="vwVid" controls playsinline preload="metadata" hidden></video><div class="vw-fail" role="status">불러오지 못했어요<button type="button" class="btn" id="vwRetry">다시 시도</button></div></figure>
       <button type="button" class="vw-nav next" id="vwNext" title="다음 (→)" aria-label="다음 이미지"></button>
     </div>
     <div class="vw-foot"><div class="vw-thumbs" id="vwThumbs"></div><div class="vw-meta" id="vwMeta"></div></div>
@@ -138,6 +139,7 @@
 <script src="memory-ui.js"></script>
 <script src="peers.js"></script>
 <script src="machines.js"></script>
+<script src="media.js"></script>
 <script src="memory-blocks.js"></script>
 <script src="ui-refresh.js"></script>
 </body>
