@@ -33,6 +33,7 @@ import { DriveHub } from './lib/drive-hub.mjs';
 import { Federation } from './lib/federation.mjs';
 import { FileAccess, fileRoots } from './lib/file-access.mjs';
 import { AdobeBridge } from './lib/adobe-bridge.mjs';
+import { Profile } from './lib/profile.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins } from './lib/adobe-install.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
@@ -54,6 +55,8 @@ jobs.on('event', (ev) => broadcast(ev));
 const fileAccess = new FileAccess({ file: path.join(DATA_DIR, 'file-access.json') });
 // 프리미어·애프터이펙트 안 ODDIN 플러그인과의 연결(lib/adobe-bridge.mjs, 플러그인 소스 adobe/)
 const adobe = new AdobeBridge({ emit: (ev) => broadcast(ev) });
+// 계정 칸 이름·사진(lib/profile.mjs)
+const profile = new Profile({ dir: DATA_DIR });
 const openRoots = () => fileRoots([config.defaultCwd, ROOT, config.hubDir, ...jobs.workFolders(), ...projectsList().map((p) => p.path), hubInfo()?.root], fileAccess.read());
 const tools = new HubTools({ config, getSession: (id) => jobs.listSessions().find((s) => s.id === id), getRoots: openRoots, emit: broadcast });
 
@@ -277,8 +280,14 @@ const server = http.createServer(async (req, res) => {
     const promptAnswer = p.match(/^\/api\/prompts\/([^/]+)\/answer$/);
     if (promptAnswer && req.method === 'POST') return json(res, jobs.prompts.answer(promptAnswer[1], await readBody(req), req.hubViewer));
     if (p === '/api/ui-version') return json(res, { v: uiVersion() });
-    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
+    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username, profile: profile.read() } });
     if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 }, fileAccess: fileAccess.read() });
+    // 프로필: 이름 { name } · 사진(본문이 그림 그대로, Content-Type 으로 종류)
+    if (p === '/api/profile' && req.method === 'GET') return json(res, profile.read());
+    if (p === '/api/profile' && req.method === 'POST') { const v = profile.setName((await readBody(req)).name); broadcast({ type: 'profile', profile: v }); return json(res, v); }
+    if (p === '/api/profile/avatar' && req.method === 'GET') return profile.serveAvatar(res);
+    if (p === '/api/profile/avatar' && req.method === 'POST') { const v = profile.setAvatar(await readRaw(req, 3 * 1024 * 1024), req.headers['content-type']); broadcast({ type: 'profile', profile: v }); return json(res, v); }
+    if (p === '/api/profile/avatar' && req.method === 'DELETE') { const v = profile.clearAvatar(); broadcast({ type: 'profile', profile: v }); return json(res, v); }
     // 어도비 플러그인 연결: 플러그인이 붙어 명령을 기다리고(hello·next·result), 작업자는 run 으로 ExtendScript 실행
     if (p === '/api/adobe/status' && req.method === 'GET') return json(res, { ...adobe.status(), install: adobeInstallStatus(ROOT) });
     if (p === '/api/adobe/hello' && req.method === 'POST') return json(res, adobe.hello(await readBody(req)));

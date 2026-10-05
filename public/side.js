@@ -227,16 +227,20 @@ setInterval(() => { if (S.usage) renderUsage(); }, 60_000);
 $('#usage').addEventListener('click', () => showUsage());
 
 function renderAccount() {
-  const t = S.tools; const user = S.cfg?.user || '로컬';
+  const t = S.tools; const pf = S.cfg?.profile || {}; const user = pf.name || S.cfg?.user || '로컬';
   const ok = t ? ['claude', 'codex'].filter((n) => t[n]?.ok).length : 0;
   const live = [...S.sessions.values()].filter((s) => s.status === 'running').length;
   const crit = S.usage && ['claude', 'codex'].some((n) => (S.usage[n]?.windows || []).some((w) => w.usedPercent >= 95));
   $('#btnAccount').classList.toggle('crit', !!crit);
-  $('#btnAccount').innerHTML = `<span class="avatar-u">${esc(user.slice(0, 1).toUpperCase())}</span><span class="acc-t"><b>${esc(user)}</b><small>${t ? `AI ${ok}/2 연결${live ? ` · ${live}개 작업 중` : ''}` : '연결 확인 중…'}</small></span><span class="acc-dots">${t ? ['claude', 'codex'].map((n) => `<i class="${t[n]?.ok ? 'on' : 'off'}" style="--c:var(--${n})" title="${n} ${t[n]?.ok ? '연결됨' : '사용 불가'}"></i>`).join('') : ''}</span>${icon('updown')}`;
+  $('#btnAccount').innerHTML = `${pf.avatar ? `<img class="avatar-u avatar-img" src="${esc(pf.avatar)}" alt="">` : `<span class="avatar-u">${esc(user.slice(0, 1).toUpperCase())}</span>`}<span class="acc-t"><b>${esc(user)}</b><small>${t ? `AI ${ok}/2 연결${live ? ` · ${live}개 작업 중` : ''}` : '연결 확인 중…'}</small></span><span class="acc-dots">${t ? ['claude', 'codex'].map((n) => `<i class="${t[n]?.ok ? 'on' : 'off'}" style="--c:var(--${n})" title="${n} ${t[n]?.ok ? '연결됨' : '사용 불가'}"></i>`).join('') : ''}</span>${icon('updown')}`;
 }
 $('#btnAccount').addEventListener('click', (e) => {
   openPop(e.currentTarget, [
-    { header: `${S.cfg?.user ? `${S.cfg.user} · ` : ''}${typeof isRemoteView === 'function' && isRemoteView() ? `원격 · ${location.host}` : `로컬 허브 :${S.cfg?.port || location.port}`}` },
+    { header: `${S.cfg?.profile?.name || S.cfg?.user ? `${S.cfg?.profile?.name || S.cfg.user} · ` : ''}${typeof isRemoteView === 'function' && isRemoteView() ? `원격 · ${location.host}` : `로컬 허브 :${S.cfg?.port || location.port}`}` },
+    { label: '이름 바꾸기', icon: 'pencil', run: () => { closePop(); editProfileName(); } },
+    { label: '프로필 사진 바꾸기', desc: 'PNG·JPG·WEBP·SVG, 3MB까지', icon: 'image', run: () => { closePop(); pickAvatar(); } },
+    ...(S.cfg?.profile?.avatar ? [{ label: '프로필 사진 지우기', icon: 'x', run: () => { closePop(); setProfile(() => api('/api/profile/avatar', { method: 'DELETE' }), '프로필 사진을 지웠어요'); } }] : []),
+    { sep: true },
     { label: '설정 및 상태', icon: 'gear', run: () => { closePop(); openSettings(); } },
     { label: '원격 접속', icon: 'globe', run: () => { closePop(); openSettings('remoteSec'); } },
     { label: '키보드 단축키', icon: 'keyboard', run: () => { closePop(); openSettings('keys'); } },
@@ -247,6 +251,23 @@ $('#btnAccount').addEventListener('click', (e) => {
     { label: '공유 메모리', icon: 'book', run: () => { closePop(); openMemory(); } },
   ]);
 });
+
+/* 프로필(이름·사진): 서버 lib/profile.mjs, PC마다 저장 */
+async function setProfile(fn, msg) {
+  try { const v = await fn(); if (S.cfg) S.cfg.profile = v; renderAccount(); toast(msg); } catch (e) { toast(`바꾸지 못했어요: ${e.message}`, true); }
+}
+function editProfileName() {
+  const cur = S.cfg?.profile?.name || S.cfg?.user || '';
+  const name = prompt('왼쪽 아래에 보일 이름 (비우면 PC 사용자 이름)', cur);
+  if (name === null) return;
+  setProfile(() => api('/api/profile', { method: 'POST', body: JSON.stringify({ name }) }), name.trim() ? `이름을 ${name.trim()}(으)로 바꿨어요` : 'PC 사용자 이름으로 되돌렸어요');
+}
+function pickAvatar() {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
+  inp.onchange = () => { const f = inp.files?.[0]; if (!f) return; setProfile(async () => { const r = await fetch('/api/profile/avatar', { method: 'POST', headers: { 'Content-Type': f.type || 'application/octet-stream' }, body: f }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`); return j; }, '프로필 사진을 바꿨어요'); };
+  inp.click();
+}
+window.addEventListener('hub:event', (e) => { if (e.detail?.type === 'profile' && S.cfg) { S.cfg.profile = e.detail.profile; renderAccount(); } });
 
 /* ================= 오른쪽 패널 ================= */
 const TABS = [['tasks', '작업', 'list'], ['usage', '사용량', 'gauge'], ['info', '정보', 'info']]; // '파일' 탭은 changes.js 의 '변경' 탭에 합쳤다 (filesPane 은 그 탭의 대체 목록으로 쓴다)
