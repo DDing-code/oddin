@@ -19,23 +19,26 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   const verText = (x) => x?.commitDate ? `${new Date(x.commitDate).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 버전` : x?.commit || '버전 모름';
   const countsText = (c) => !c ? '' : [c.pulled && `받음 ${c.pulled}`, c.pushed && `보냄 ${c.pushed}`, c.merged && `목록 합침 ${c.merged}`, c.conflicts && `겹침 ${c.conflicts}`, c.deleted && `지움 ${c.deleted}`].filter(Boolean).join(' · ') || '바뀐 것 없음';
 
+  // 화면 파일은 바로 바뀌지만 서버는 진행 중인 작업이 끝나야 재시작된다 — 그 사이엔 서버가 이 기능을 모른다
+  const OLD_SERVER = '이 PC의 ODDIN 서버가 아직 재시작 전(예전 버전)이에요. 진행 중인 작업이 끝나면 자동으로 재시작되고, 그 뒤에 쓸 수 있어요';
+  const why = (e) => (/^없는 API$/.test(String(e?.message || '')) ? OLD_SERVER : String(e?.message || e));
   async function load() {
     if (P.loading) return; P.loading = true;
     try { [P.view, P.setup] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null)]); P.error = ''; }
-    catch (e) { P.error = e.message; }
+    catch (e) { P.error = why(e); }
     P.loading = false; refresh();
   }
   function refresh() { if (typeof S !== 'undefined' && S.insp?.tab === 'peers' && typeof renderInspector === 'function') renderInspector(); }
   async function act(key, fn, ok) {
     P.busy = key; refresh();
     try { const r = await fn(); if (ok) say(typeof ok === 'function' ? ok(r) : ok); await load(); }
-    catch (e) { say(e.message, true); }
+    catch (e) { say(why(e), true); }
     P.busy = ''; refresh();
   }
 
   function render(body) {
     if (!P.view && !P.error) { load(); body.innerHTML = '<div class="pc-pane"><div class="ch-skel" aria-busy="true"><i></i><i></i><i></i></div></div>'; return; }
-    if (!P.view) { body.innerHTML = `<div class="pc-pane"><div class="mem-cur err">${IC('alert')}<span>불러오지 못했어요: ${E(P.error)}</span></div></div>`; return; }
+    if (!P.view) { body.innerHTML = `<div class="pc-pane"><div class="mem-cur err">${IC('alert')}<span>${P.error === OLD_SERVER ? '' : '불러오지 못했어요: '}${E(P.error)}</span></div></div>`; return; }
     const v = P.view, sync = new Map((v.sync?.peers || []).map((x) => [x.id, x]));
     let h = '<div class="pc-pane">';
     h += `<div class="ilabel">이 PC</div><form class="pc-self" data-pc-self><input name="n" maxlength="30" value="${E(v.self.name)}" aria-label="이 PC 이름" title="다른 PC에서 이 이름으로 보여요"><button class="btn" type="submit" ${P.busy === 'self' ? 'disabled' : ''}>저장</button></form>`;
