@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ODDIN</title>
+<style>
+  :root { --bg: #232323; --fg: #e8e8e8; --sub: #9a9a9a; --ok: #3ecf8e; --wait: #e8b04a; --off: #ef6b67; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 "Segoe UI", "Malgun Gothic", sans-serif; overflow: hidden; user-select: none; }
+  main { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 12px; box-sizing: border-box; }
+  .logo { width: 46vmin; max-width: 140px; height: auto; transition: opacity .3s, filter .3s; }
+  .off .logo { opacity: .45; filter: grayscale(.7); }
+  .state { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--wait); box-shadow: 0 0 0 3px rgba(232,176,74,.25); }
+  .ok .dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(62,207,142,.25); }
+  .off .dot { background: var(--off); box-shadow: 0 0 0 3px rgba(239,107,103,.25); }
+  .busy .dot { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.35); } }
+  .sub { color: var(--sub); font-size: 12px; text-align: center; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<main id="main" class="wait" aria-live="polite">
+  <img class="logo" src="logo.svg" alt="ODDIN">
+  <div class="state"><span class="dot"></span><span id="text">연결 중</span></div>
+  <div class="sub" id="sub"></div>
+</main>
+<script src="bridge.js"></script>
+<script src="panel.js"></script>
+</body>
+</html>

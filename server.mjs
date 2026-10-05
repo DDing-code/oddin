@@ -32,6 +32,8 @@ import { DriveFolders } from './lib/drive-folders.mjs';
 import { DriveHub } from './lib/drive-hub.mjs';
 import { Federation } from './lib/federation.mjs';
 import { FileAccess, fileRoots } from './lib/file-access.mjs';
+import { AdobeBridge } from './lib/adobe-bridge.mjs';
+import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins } from './lib/adobe-install.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -50,6 +52,8 @@ jobs.on('event', (ev) => broadcast(ev));
 // 파일 열기·보기 범위(lib/file-access.mjs): 허브가 아는 폴더 + 작업이 실제로 실행된 폴더 전부 + 드라이브 ODDIN 폴더.
 // 입력창 아래 "권한" 메뉴에서 "모든 폴더"를 켜면 이 PC의 모든 드라이브. 열기·허브 안 보기·/view/·폴더 목록이 함께 쓴다
 const fileAccess = new FileAccess({ file: path.join(DATA_DIR, 'file-access.json') });
+// 프리미어·애프터이펙트 안 ODDIN 플러그인과의 연결(lib/adobe-bridge.mjs, 플러그인 소스 adobe/)
+const adobe = new AdobeBridge({ emit: (ev) => broadcast(ev) });
 const openRoots = () => fileRoots([config.defaultCwd, ROOT, config.hubDir, ...jobs.workFolders(), ...projectsList().map((p) => p.path), hubInfo()?.root], fileAccess.read());
 const tools = new HubTools({ config, getSession: (id) => jobs.listSessions().find((s) => s.id === id), getRoots: openRoots, emit: broadcast });
 
@@ -275,6 +279,15 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/ui-version') return json(res, { v: uiVersion() });
     if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username } });
     if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 }, fileAccess: fileAccess.read() });
+    // 어도비 플러그인 연결: 플러그인이 붙어 명령을 기다리고(hello·next·result), 작업자는 run 으로 ExtendScript 실행
+    if (p === '/api/adobe/status' && req.method === 'GET') return json(res, { ...adobe.status(), install: adobeInstallStatus(ROOT) });
+    if (p === '/api/adobe/hello' && req.method === 'POST') return json(res, adobe.hello(await readBody(req)));
+    if (p === '/api/adobe/next' && req.method === 'GET') return adobe.next(Object.fromEntries(url.searchParams), res, json);
+    if (p === '/api/adobe/result' && req.method === 'POST') return json(res, adobe.result(await readBody(req)));
+    // 앱 안 스크립트는 PC 명령까지 실행할 수 있어 이 PC에서 온 요청만 받는다(원격 접속 거절). 설치는 다른 PC에서 대신 눌러도 된다
+    if (p === '/api/adobe/run' && req.hubViewer?.remote) return fail(res, '어도비 명령은 그 PC에서만 보낼 수 있어요', 403);
+    if (p === '/api/adobe/run' && req.method === 'POST') return json(res, await adobe.run(await readBody(req)));
+    if (p === '/api/adobe/install' && req.method === 'POST') { await readBody(req); const r = installAdobePlugins(ROOT, { port: config.port }); broadcast({ type: 'adobe', ...adobe.status(), install: adobeInstallStatus(ROOT) }); return json(res, r); }
     // 파일 열기·보기 범위: 허브가 아는 폴더만(기본) / 모든 폴더
     if (p === '/api/file-access' && req.method === 'GET') return json(res, fileAccess.read());
     if (p === '/api/file-access' && req.method === 'POST') { const v = fileAccess.save({ allowAll: (await readBody(req)).allowAll === true }); broadcast({ type: 'file-access', ...v }); return json(res, v); }
@@ -392,6 +405,8 @@ server.listen(config.port, config.host || '127.0.0.1', () => {
   const settings = remote.readConfig();
   console.log(settings.enabled ? `원격 접속: ${settings.url} (허용 계정 ${settings.logins.length}개)` : '원격 접속: 꺼짐');
   if (!LOOPBACK.has(config.host || '127.0.0.1')) console.warn('허브는 127.0.0.1에만 바인딩해야 합니다. 비루프백 요청은 원격 게이트에서 차단합니다');
+  // 어도비 플러그인을 이미 설치한 PC면 ODDIN 업데이트와 함께 플러그인도 새 판으로 (시험 서버는 건너뜀)
+  if (process.env.HUB_SKIP_CLI_INSTALL !== '1') { try { const r = refreshAdobePlugins(ROOT, { port: config.port }); if (r) console.log(`어도비 플러그인 갱신: ${r.apps.map((a) => `${a.app} ${a.ok ? r.version : '실패 ' + a.error}`).join(', ')}`); } catch (e) { console.warn('어도비 플러그인 갱신 실패:', e.message); } }
 });
 server.on('error', (e) => { console.error(e.code === 'EADDRINUSE' ? `포트 ${config.port} 가 이미 사용 중입니다 (이미 실행 중인지 확인)` : e); process.exit(1); });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { try { await tools.terminals.closeAll(); } finally { process.exit(0); } });

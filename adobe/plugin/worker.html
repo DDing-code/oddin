@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ODDIN worker</title>
+</head>
+<body>
+<!-- 보이지 않는 창: 프리미어·애프터이펙트가 켜질 때 함께 떠서 ODDIN 명령을 받는다 (manifest StartOn) -->
+<script src="bridge.js"></script>
+<script>window.ODDINBridge && window.ODDINBridge.start('worker');</script>
+</body>
+</html>

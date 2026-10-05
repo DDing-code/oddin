@@ -24,7 +24,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   const why = (e) => (/^없는 API$/.test(String(e?.message || '')) ? OLD_SERVER : String(e?.message || e));
   async function load() {
     if (P.loading) return; P.loading = true; P.tried = true;
-    try { [P.view, P.setup, P.folders, P.drive, P.hub] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null), call('/api/drive-folders').catch(() => null), call('/api/drive-hub').catch(() => null)]); P.error = ''; }
+    try { [P.view, P.setup, P.folders, P.drive, P.hub] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null), call('/api/drive-folders').catch(() => null), call('/api/drive-hub').catch(() => null)]); P.adobe = await call('/api/adobe/status').catch(() => null); P.error = ''; }
     catch (e) { P.error = why(e); }
     P.loading = false; refresh();
   }
@@ -85,6 +85,21 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
         if ((as.recent || []).length) h += `<ul class="pc-assets">${as.recent.map((it) => `<li title="${E(it.rest)}"><b>${E(it.name)}</b><span>${E(it.rel)}</span></li>`).join('')}</ul>`;
         h += '</div><p class="pc-hint">공유를 허용한 세션(기억 탭 "새 기억 저장: 공유")이 끝나면 ODDIN이 정리해서 장기 기억은 공유 기억에, 다시 쓸 결과물은 자산/&lt;분류&gt;/에 자동으로 넣고 목록을 기억에 남겨요. 두 PC의 것이 PC 구분 없이 합쳐지고, 각 PC가 공유하는 폴더도 자산/소스/로 올라가요.</p>';
       }
+    }
+
+    // 어도비 플러그인(lib/adobe-bridge.mjs·adobe/): 프리미어·애프터이펙트 안 ODDIN 패널, AI 명령을 받아 실행
+    const ad = P.adobe;
+    if (ad?.install) {
+      const NAME = { premiere: '프리미어', aftereffects: '애프터이펙트' };
+      h += '<div class="ilabel">어도비 플러그인</div><div class="pc-peer">';
+      for (const a of ad.install.apps) {
+        const live = (ad.apps || []).filter((x) => x.app === a.app && x.online);
+        const conn = live.length ? `<span class="c-ok">연결됨</span>${live[0].project ? ` · ${E(live[0].project.split(/[\\/]/).pop())}` : ''}` : a.installed ? '꺼짐 (앱을 켜면 붙어요)' : '';
+        h += `<div class="pc-sync">${IC(live.length ? 'check' : 'minus')}<span><b>${NAME[a.app]}</b> · ${a.installed ? `설치됨 ${E(a.installed)}${a.upToDate ? '' : ` → 새 판 ${E(ad.install.version)}`}` : '설치 안 됨'}${conn ? ` · ${conn}` : ''}</span></div>`;
+      }
+      const debugOff = ad.install.debugMode && !Object.values(ad.install.debugMode).some((x) => x === '1');
+      h += `</div><div class="pc-actions"><button class="btn" data-adobe-install ${P.busy === 'adobe' ? 'disabled' : ''}>${P.busy === 'adobe' ? '<span class="spin-xs"></span>설치 중' : `${IC('bolt')}${ad.install.apps.some((a) => a.installed) ? '다시 설치' : '두 앱에 설치'}`}</button></div>`;
+      h += `<p class="pc-hint">설치한 뒤 프리미어·애프터이펙트를 다시 켜면 창 › 확장 › ODDIN 에 로고와 연결 상태만 있는 패널이 생겨요. 명령은 보이지 않는 워커가 앱이 켜질 때 함께 받아요.${debugOff ? ' 이 PC는 어도비 개발 모드가 꺼져 있어 앱이 플러그인을 안 읽을 수 있어요.' : ''}</p>`;
     }
 
     // 드라이브 작업 폴더: 구글 드라이브로 두 PC가 함께 쓰는 폴더에서 바로 작업
@@ -165,8 +180,9 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     }
   });
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-pc-local-save],[data-hub-create],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
+    const b = e.target.closest('[data-adobe-install],[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-pc-local-save],[data-hub-create],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
     if (b.hasAttribute('data-pc-local-save')) { const t = document.querySelector('[data-pc-local]'); const content = t ? t.value : (P.localDraft ?? ''); act('local', () => call('/api/shared/local', { method: 'POST', body: JSON.stringify({ content }) }), (r) => { P.localDraft = undefined; return r.sync && r.sync.ok === false ? '저장했지만 Codex 지침 반영에 실패했어요' : '이 PC 전용 지침을 저장했어요'; }); return; }
+    if (b.hasAttribute('data-adobe-install')) { act('adobe', () => call('/api/adobe/install', { method: 'POST', body: '{}' }), (r) => r.ok ? `프리미어·애프터이펙트용 ODDIN 플러그인 ${r.version}을 설치했어요. ${r.note}` : `일부 설치하지 못했어요: ${(r.apps || []).filter((x) => !x.ok).map((x) => x.error).join(' / ')}`); return; }
     if (b.hasAttribute('data-hub-create')) { act('hub-create', () => call('/api/drive-hub', { method: 'POST', body: '{}' }), (r) => r.created ? 'ODDIN 폴더를 만들었어요. 공유 기억과 공유 폴더를 올리는 중이에요' : '이미 있는 ODDIN 폴더를 쓰기 시작했어요'); return; }
     if (b.hasAttribute('data-dv-work')) { if (typeof newSession === 'function') { newSession(b.dataset.dvWork); say('드라이브 작업 폴더에서 새 세션을 시작해요. 요청을 입력하세요'); } return; }
     if (b.hasAttribute('data-dv-open')) { if (typeof window.openPath === 'function') window.openPath(b.dataset.dvOpen); return; }
@@ -203,6 +219,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     else if (ev.type === 'drive-folders') { call('/api/drive-folders').then((d) => { P.drive = d; refresh(); }).catch(() => {}); }
     else if (ev.type === 'shared-folders' && ev.own) { P.folders = { ...(P.folders || {}), own: ev.own, mirrors: ev.mirrors }; refresh(); }
     else if (ev.type === 'hello' && P.view) load();
+    else if (ev.type === 'adobe') { P.adobe = { ...(P.adobe || {}), ...ev }; refresh(); }
   });
   document.addEventListener('input', (e) => { if (e.target.matches?.('[data-pc-local]')) P.localDraft = e.target.value; });
   document.addEventListener('focusout', (e) => { if (e.target.matches?.('[data-pc-local]') && P.later) { P.later = false; setTimeout(refresh, 0); } });
