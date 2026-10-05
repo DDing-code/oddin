@@ -25,3 +25,16 @@ test('이 PC 전용 지침 읽기·쓰기와 CLAUDE.md 불러오기 줄', () => 
     assert.deepEqual(st.claudeMd.missing, []); assert.equal(st.local.chars, '# 회사 지침\n- 둘\n'.length);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('불러오기 줄이 이미 있으면 그 아래에 빠진 줄만 넣는다', async () => {
+  const { installSharedHooks } = await import('../lib/shared-setup.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-local2-'));
+  try {
+    const hub = path.join(dir, 'shared'), home = path.join(dir, 'home');
+    fs.mkdirSync(path.join(hub, 'sync'), { recursive: true }); fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(hub, 'sync', 'sync.mjs'), ''); fs.writeFileSync(path.join(hub, 'sync', 'memory-check.mjs'), '');
+    fs.writeFileSync(path.join(home, '.claude', 'CLAUDE.md'), '# 내 지침\n\n# 공용\n@~/.ai-shared/AGENTS.md\n@~/.ai-shared/memory/global/MEMORY.md\n\n# 기타\n- 하나\n');
+    installSharedHooks(hub, { home, runSync: false });
+    assert.equal(fs.readFileSync(path.join(home, '.claude', 'CLAUDE.md'), 'utf8'), '# 내 지침\n\n# 공용\n@~/.ai-shared/AGENTS.md\n@~/.ai-shared/memory/global/MEMORY.md\n@~/.ai-shared/AGENTS.local.md\n\n# 기타\n- 하나\n');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
