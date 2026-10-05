@@ -195,3 +195,53 @@ test('두 PC 공유 스킬: ~/.ai-shared/skills 를 Claude·Codex 스킬 폴더�
     assert.ok(!fs.existsSync(path.join(home, '.claude', 'skills', 'chart-reels')));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('모든 스킬을 공유 폴더로: 두 도구가 만든 스킬을 옮기고 양쪽에 연결, 같은 이름은 파일 단위로 합치고 백업, 만드는 중인 스킬은 미룸', async () => {
+  const { syncSkillFolders } = await import('../lib/catalog.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-adopt-skills-'));
+  try {
+    const hub = path.join(dir, 'shared'), home = path.join(dir, 'home'), codexHome = path.join(home, '.codex');
+    const C = path.join(home, '.claude', 'skills'), A = path.join(home, '.agents', 'skills'), X = path.join(codexHome, 'skills'), S = path.join(hub, 'skills');
+    const old = new Date(Date.now() - 3600_000), older = new Date(Date.now() - 7200_000);
+    const skill = (root, n, body, extra = {}, t = old) => {
+      const d = path.join(root, n); fs.mkdirSync(d, { recursive: true });
+      for (const [f, v] of Object.entries({ 'SKILL.md': `---\nname: ${n}\ndescription: ${body}\n---\n${body}`, ...extra })) { fs.writeFileSync(path.join(d, f), v); fs.utimesSync(path.join(d, f), t, t); }
+    };
+    skill(S, 'shared-one', '이미 공유');
+    skill(C, 'claude-made', 'Claude 가 만듦'); skill(X, 'codex-made', 'Codex 가 만듦', { 'ref.txt': '참고' }); skill(A, 'agents-made', '설치 도구가 넣음');
+    skill(A, 'source-command-x', 'Claude 커맨드를 가져옴');
+    skill(path.join(C, 'synced', 'bucket'), 'account-skill', '계정 스킬'); // Claude 앱이 관리 — SKILL.md 가 바로 안에 없음
+    skill(path.join(X, '.system'), 'builtin', '내장');
+    fs.symlinkSync(path.join(X, 'codex-made'), path.join(C, 'codex-made'), 'junction'); // sync.mjs 가 만든 옛 연결
+    fs.symlinkSync(path.join(C, 'claude-made'), path.join(A, 'claude-made'), 'junction');
+    // 같은 이름이 두 곳에: 공유판(오래됨, a.txt) · 이 PC판(최근, b.txt)
+    skill(S, 'both', '공유판', { 'a.txt': 'A' }, older);
+    skill(X, 'both', '이 PC판', { 'b.txt': 'B' });
+
+    const r = syncSkillFolders(hub, { home, codexHome, settleMs: 0 });
+    assert.ok(r.changed);
+    assert.deepEqual(r.adopt.failed, []);
+    for (const n of ['claude-made', 'codex-made', 'agents-made', 'source-command-x', 'both', 'shared-one']) assert.ok(fs.existsSync(path.join(S, n, 'SKILL.md')), `${n} 공유 폴더에`);
+    const linked = (d, n) => fs.lstatSync(path.join(d, n)).isSymbolicLink() && fs.realpathSync(path.join(d, n)).toLowerCase() === fs.realpathSync(path.join(S, n)).toLowerCase();
+    for (const n of ['claude-made', 'codex-made', 'agents-made', 'both', 'shared-one']) { assert.ok(linked(C, n), `Claude ${n}`); assert.ok(linked(A, n), `Codex ${n}`); }
+    assert.ok(linked(A, 'source-command-x')); assert.ok(!fs.existsSync(path.join(C, 'source-command-x')), 'Claude 커맨드 사본은 Codex 쪽에만');
+    assert.deepEqual(fs.readdirSync(X).sort(), ['.system'], 'Codex 폴더에는 내장 스킬만 남음(같은 스킬이 두 번 보이지 않게)');
+    assert.ok(fs.existsSync(path.join(C, 'synced', 'bucket', 'account-skill', 'SKILL.md')) && !fs.lstatSync(path.join(C, 'synced')).isSymbolicLink(), 'Claude 앱 계정 스킬은 그대로');
+    assert.equal(fs.readFileSync(path.join(S, 'codex-made', 'ref.txt'), 'utf8'), '참고');
+    // 합치기: 최근 판의 SKILL.md, 양쪽 파일 모두, 밀린 판·원래 폴더는 백업
+    assert.match(fs.readFileSync(path.join(S, 'both', 'SKILL.md'), 'utf8'), /이 PC판/);
+    assert.equal(fs.readFileSync(path.join(S, 'both', 'a.txt'), 'utf8'), 'A');
+    assert.equal(fs.readFileSync(path.join(S, 'both', 'b.txt'), 'utf8'), 'B');
+    const [stamp] = fs.readdirSync(path.join(hub, 'backups', 'skills'));
+    assert.match(fs.readFileSync(path.join(hub, 'backups', 'skills', stamp, 'both.shared', 'SKILL.md'), 'utf8'), /공유판/);
+    assert.ok(fs.existsSync(path.join(hub, 'backups', 'skills', stamp, 'both.codex', 'b.txt')));
+    assert.equal(syncSkillFolders(hub, { home, codexHome, settleMs: 0 }).changed, false, '다시 해도 그대로');
+
+    // 방금 만들고 있는 스킬은 미뤘다가, 시간이 지나면 옮긴다
+    skill(C, 'fresh', '만드는 중', {}, new Date());
+    const w = syncSkillFolders(hub, { home, codexHome, settleMs: 60_000 });
+    assert.deepEqual(w.adopt.waiting, ['fresh']); assert.ok(!fs.lstatSync(path.join(C, 'fresh')).isSymbolicLink());
+    const later = syncSkillFolders(hub, { home, codexHome, settleMs: 60_000, now: Date.now() + 120_000 });
+    assert.deepEqual(later.adopt.moved, ['fresh (claude)']); assert.ok(linked(C, 'fresh') && linked(A, 'fresh'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
