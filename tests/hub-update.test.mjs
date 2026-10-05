@@ -1,4 +1,4 @@
-// ODDIN 새 판 받기: 임시 git 저장소(원본·허브 사본·다른 사본)로 받기·재시작 판단·거절 조건을 본다
+// ODDIN 업데이트: 임시 git 저장소(원본·허브 사본·다른 사본)로 받기·재시작 판단·거절 조건을 본다
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,7 +13,7 @@ const commitFile = (repo, rel, text, msg) => {
   git(repo, 'add', '-A'); git(repo, '-c', 'user.name=시험', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', msg);
 };
 
-test('새 판 받기: 최신이면 그대로, 화면만 바뀌면 재시작 없음, 서버가 바뀌면 재시작 필요, 고치던 것·앞선 커밋이 있으면 거절', async () => {
+test('업데이트: 최신이면 그대로, 화면만 바뀌면 재시작 없음, 서버가 바뀌면 재시작 필요, 고치던 것·앞선 커밋이 있으면 거절', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-update-'));
   try {
     const origin = path.join(dir, 'origin.git'), hub = path.join(dir, 'hub'), dev = path.join(dir, 'dev');

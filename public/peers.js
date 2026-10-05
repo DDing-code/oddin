@@ -15,6 +15,8 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
     return s < 60 ? '방금' : s < 3600 ? `${Math.floor(s / 60)}분 전` : s < 86400 ? `${Math.floor(s / 3600)}시간 전` : new Date(iso).toLocaleString('ko-KR');
   };
+  // ODDIN 버전: 커밋 번호 대신 날짜로 (번호는 마우스를 올리면)
+  const verText = (x) => x?.commitDate ? `${new Date(x.commitDate).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 버전` : x?.commit || '버전 모름';
   const countsText = (c) => !c ? '' : [c.pulled && `받음 ${c.pulled}`, c.pushed && `보냄 ${c.pushed}`, c.merged && `목록 합침 ${c.merged}`, c.conflicts && `겹침 ${c.conflicts}`, c.deleted && `지움 ${c.deleted}`].filter(Boolean).join(' · ') || '바뀐 것 없음';
 
   async function load() {
@@ -37,7 +39,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     const v = P.view, sync = new Map((v.sync?.peers || []).map((x) => [x.id, x]));
     let h = '<div class="pc-pane">';
     h += `<div class="ilabel">이 PC</div><form class="pc-self" data-pc-self><input name="n" maxlength="30" value="${E(v.self.name)}" aria-label="이 PC 이름" title="다른 PC에서 이 이름으로 보여요"><button class="btn" type="submit" ${P.busy === 'self' ? 'disabled' : ''}>저장</button></form>`;
-    h += `<p class="pc-hint">${E(v.self.hostname)} · ODDIN ${E(v.self.commit || '판 모름')} · 다른 PC에서 이 이름(예: 집, 회사)으로 보여요. <button class="linkish" data-pc-update="self" ${P.busy === 'update:self' ? 'disabled' : ''}>${P.busy === 'update:self' ? '받는 중…' : '이 PC 새 판 받기'}</button></p>`;
+    h += `<p class="pc-hint">${E(v.self.hostname)} · <span title="${E(v.self.commit || '')}">ODDIN ${E(verText(v.self))}</span> · 다른 PC에서 이 이름(예: 집, 회사)으로 보여요. <button class="linkish" data-pc-update="self" ${P.busy === 'update:self' ? 'disabled' : ''}>${P.busy === 'update:self' ? '업데이트 중…' : '이 PC 업데이트'}</button></p>`;
 
     h += `<div class="ilabel">연결된 PC ${v.peers.length || ''}</div>`;
     if (!v.peers.length) h += '<div class="mem-empty">아직 없어요. 다른 PC의 ODDIN 주소(Tailscale)를 아래에 넣으면 기억을 함께 써요.</div>';
@@ -49,7 +51,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
       if (st && !st.online) h += `<div class="pc-err">${IC('alert')}<span>${E(st.error || '연결 안 됨')}</span></div>`;
       if (st?.online) {
         const same = st.commit && st.commit === v.self.commit;
-        h += `<div class="pc-sync">${IC('bolt')}<span>ODDIN ${E(st.commit || '판 모름')}${st.commit ? same ? ' · 이 PC와 같은 판' : ' · 이 PC와 다른 판' : ''}</span><span class="grow"></span><button class="btn sm" data-pc-update="${E(p.id)}" ${P.busy === `update:${p.id}` ? 'disabled' : ''} title="그 PC의 ODDIN이 GitHub에서 새 판을 받아요. 서버가 바뀌면 작업이 끝난 뒤 재시작">${P.busy === `update:${p.id}` ? '<span class="spin-xs"></span>받는 중' : '새 판 받기'}</button></div>`;
+        h += `<div class="pc-sync">${IC('bolt')}<span title="${E(st.commit || '')}">ODDIN ${E(verText(st))}${st.commit ? same ? ' · 이 PC와 같은 버전' : ' · 이 PC와 다른 버전' : ''}</span><span class="grow"></span><button class="btn sm" data-pc-update="${E(p.id)}" ${P.busy === `update:${p.id}` ? 'disabled' : ''} title="그 PC의 ODDIN을 GitHub 최신 버전으로 업데이트해요. 서버가 바뀌면 진행 중인 작업이 끝난 뒤 재시작">${P.busy === `update:${p.id}` ? '<span class="spin-xs"></span>업데이트 중' : '업데이트'}</button></div>`;
       }
       h += `<div class="pc-sync ${sy.ok === false ? 'err' : ''}">${IC('refresh')}<span>공유 기억 ${E(when(sy.lastAt))}${sy.lastAt ? ` · ${E(countsText(sy.counts))}` : ''}${sy.ok === false && sy.error ? ` · ${E(sy.error)}` : ''}</span></div></div>`;
     }

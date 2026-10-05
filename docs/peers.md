@@ -25,8 +25,8 @@
 - 집 PC와 같은 훅(세션 시작 `sync.mjs`, 매 메시지 `memory-check.mjs`, 끝 `sync.mjs --quiet`)과 `~/.claude/CLAUDE.md` 의 `@~/.ai-shared/AGENTS.md`·`@~/.ai-shared/memory/global/MEMORY.md` 줄 중 빠진 것만 더하고, 원본은 `.bak-oddin-<시각>` 으로 남긴 뒤 `sync.mjs` 를 한 번 돌린다.
 - Codex 는 새 훅을 처음 쓸 때 한 번 신뢰할지 묻는다. ODDIN 작업은 훅이 없어도 공유 기억을 바로 읽는다(`jobs.memoryFor`).
 
-## 새 판 받기 (`lib/hub-update.mjs`)
-- 두 PC의 ODDIN을 같은 판으로: PC 탭의 연결된 PC 줄 "새 판 받기"(그 PC 허브에 대신 요청), 이 PC 줄 "이 PC 새 판 받기". 각 줄에 지금 판(짧은 커밋)과 이 PC와 같은지 표시.
+## 업데이트 (`lib/hub-update.mjs`)
+- 두 PC의 ODDIN을 같은 버전으로: 연결된 PC 탭의 PC 줄 "업데이트"(그 PC 허브에 대신 요청), 이 PC 줄 "이 PC 업데이트". 각 줄에 지금 버전(커밋 날짜, 마우스를 올리면 커밋 번호)과 이 PC와 같은지 표시.
 - 허브 폴더에서 `git fetch` → fast-forward `pull`. 커밋 안 한 추적 파일 변경이나 이 PC에만 있는 커밋이 있으면 받지 않는다(409).
 - 받은 파일 중 서버 쪽(`public/`·`docs/`·`tests/`·`desktop/`·`*.md` 밖)이 바뀌었으면 `scripts/restart-hub.mjs --detach` 로 진행 중인 작업이 끝난 뒤 그 허브만 재시작. 화면 파일만 바뀌면 열린 화면이 알아서 새로 읽는다.
 
@@ -42,7 +42,7 @@
 | `GET /api/shared/file?rel=` · `POST /api/shared/file` | 파일 읽기(base64) · 쓰기/지우기(`ifSha`, `backup`) |
 | `POST /api/shared/sync` · `GET /api/shared/status` | 지금 맞추기 · 상태 |
 | `GET/POST /api/shared/setup` | 훅 상태 · 빠진 것 설치 |
-| `GET /api/hub/version[?check=1]` · `POST /api/hub/update` | 이 허브 판(확인하면 뒤처진 수) · 새 판 받기 |
-| `GET /api/peers/:id/version` · `POST /api/peers/:id/update` | 연결된 PC 판 확인 · 새 판 받기(대신 요청) |
+| `GET /api/hub/version[?check=1]` · `POST /api/hub/update` | 이 허브 버전(확인하면 뒤처진 수) · 업데이트 |
+| `GET /api/peers/:id/version` · `POST /api/peers/:id/update` | 연결된 PC 버전 확인 · 업데이트(대신 요청) |
 
 시험: `tests/hub-update.test.mjs`(임시 git 저장소로 받기·재시작 판단·거절), `tests/shared-sync.test.mjs`(허브 두 개 7716·7717, 처음 맞추기·한쪽 변경·목록 합치기·충돌·지우기·쓰기 검사·새 PC 훅 설치).

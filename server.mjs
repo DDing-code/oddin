@@ -83,7 +83,7 @@ if (process.env.HUB_SKIP_CLI_INSTALL !== '1') {
   watchCatalog(config.hubDir, (r) => broadcast({ type: 'catalog', install: r }));
 }
 
-// 화면 파일(html·js·css) 판 표시. 열린 화면이 예전 파일을 쥐고 있는지 비교하는 데 쓴다(public/ui-refresh.js)
+// 화면 파일(html·js·css) 버전 표시. 열린 화면이 예전 파일을 쥐고 있는지 비교하는 데 쓴다(public/ui-refresh.js)
 let uiVer = { at: 0, v: '' };
 function uiVersion() {
   if (Date.now() - uiVer.at < 2000) return uiVer.v;
@@ -138,7 +138,7 @@ const server = http.createServer(async (req, res) => {
     const peerRoute = p.match(/^\/api\/peers\/([\w-]+)$/);
     if (peerRoute && req.method === 'DELETE') { const r = peers.remove(peerRoute[1]); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     if (peerRoute && req.method === 'POST') { const r = peers.rename(peerRoute[1], (await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
-    // 새 판 받기: 이 허브(/api/hub/…)와 연결된 PC(/api/peers/:id/update — 그 PC 허브에 대신 요청)
+    // 업데이트: 이 허브(/api/hub/…)와 연결된 PC(/api/peers/:id/update — 그 PC 허브에 대신 요청)
     if (p === '/api/hub/version' && req.method === 'GET') return json(res, url.searchParams.get('check') === '1' ? await checkUpdate(ROOT) : hubCommit(ROOT));
     if (p === '/api/hub/update' && req.method === 'POST') { await readBody(req); const r = await applyUpdate(ROOT); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     const peerUpdate = p.match(/^\/api\/peers\/([\w-]+)\/(update|version)$/);
