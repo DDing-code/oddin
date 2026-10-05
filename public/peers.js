@@ -68,24 +68,22 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
       h += `<p class="pc-hint">둘 다 고친 파일은 목록(MEMORY.md)이면 줄을 합치고, 아니면 최근에 고친 쪽을 써요. 밀린 판과 지운 파일은 ${E((v.sync?.root || '~/.ai-shared') + '\\backups\\sync')}에 남아요.</p>`;
     }
 
-    // ODDIN 드라이브 폴더: 구글 드라이브 "내 드라이브/ODDIN" 에 공유 기억 사본과 함께 쓸 자산을 모은다
+    // ODDIN 드라이브 폴더: 두 PC의 기억과 자산을 PC 구분 없이 합치는 곳(공유를 허용한 세션의 정리 결과가 자동으로 들어감)
     const hb = P.hub;
     if (hb && hb.enabled !== false) {
       h += '<div class="ilabel">ODDIN 드라이브 폴더</div>';
       if (!hb.drive) h += '<div class="mem-empty">이 PC에서 구글 드라이브 앱을 찾지 못했어요. 드라이브 데스크탑 앱을 켜면 쓸 수 있어요.</div>';
       else if (!hb.hub) {
         h += `<div class="pc-actions"><button class="btn" data-hub-create ${P.busy === 'hub-create' ? 'disabled' : ''}>${P.busy === 'hub-create' ? '<span class="spin-xs"></span>만드는 중' : `${IC('plus')}드라이브에 ODDIN 폴더 만들기`}</button></div>`;
-        h += `<p class="pc-hint">${E(hb.drive.myDrive)} 안에 ODDIN 폴더를 만들고, 공유 기억(지침·메모리·공통 커맨드·에이전트)과 이 PC가 공유하는 폴더를 올려요. 다른 PC도 같은 구글 계정이면 그 폴더를 알아서 찾아 함께 써요.</p>`;
+        h += `<p class="pc-hint">${E(hb.drive.myDrive)} 안에 ODDIN 폴더를 만들어 두 PC의 기억과 자산을 합쳐요. 다른 PC도 같은 구글 계정이면 그 폴더를 알아서 찾아 함께 써요.</p>`;
       } else {
-        const ds = hb.sync || {};
+        const ds = hb.sync || {}, as = hb.assets || {};
         h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>ODDIN</b><span class="pc-url" title="${E(hb.hub.root)}">${E(hb.hub.root)}</span><span class="grow"></span><button class="btn sm" data-dv-open="${E(hb.hub.root)}" title="${E(hb.hub.root)}">열기</button></div>`;
         const syncText = !ds.lastAt ? '아직 맞추기 전' : !ds.joined ? `처음 맞추는 중 — 다른 PC가 올린 파일을 기다려요${ds.joinUntil ? ` (${E(new Date(ds.joinUntil).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }))}까지)` : ''}` : `${E(when(ds.lastAt))} · ${E(countsText(ds.counts))}`;
-        h += `<div class="pc-sync ${ds.ok === false ? 'err' : ''}">${IC('refresh')}<span>공유 기억 ${syncText}${ds.ok === false && ds.error ? ` · ${E(ds.error)}` : ''}</span></div></div>`;
-        for (const a of hb.assets || []) {
-          const label = a.common ? '자산 · 공용' : `자산 · ${a.pc} · ${a.folder}`;
-          h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(label)}</b><span class="pc-url">파일 ${a.files}개</span><span class="grow"></span><button class="btn sm" data-dv-work="${E(a.path)}" title="이 폴더로 새 세션을 열어요">여기서 작업</button><button class="btn sm" data-dv-open="${E(a.path)}" title="${E(a.path)}">열기</button></div></div>`;
-        }
-        h += '<p class="pc-hint">공유 기억/ = 두 PC가 쓰는 지침·메모리 사본(각 PC의 ODDIN이 20초마다·바뀔 때마다 맞춤). 자산/&lt;PC&gt;/&lt;폴더&gt;/ = 각 PC가 공유하는 폴더를 원본 PC가 올린 것. 자산/공용/ = 함께 쓸 파일을 직접 넣는 곳. 다른 PC도 이 폴더를 쓰면 PC끼리 직접 맞추기는 쉬고 드라이브로만 맞춰요.</p>';
+        h += `<div class="pc-sync ${ds.ok === false ? 'err' : ''}">${IC('book')}<span>기억 ${syncText}${ds.ok === false && ds.error ? ` · ${E(ds.error)}` : ''}</span></div>`;
+        h += `<div class="pc-sync">${IC('folder')}<span>자산 ${as.total || 0}개${(as.categories || []).length ? ` · ${(as.categories || []).map((c) => `${E(c.name)} ${c.items}`).join(' · ')}` : ''}</span><span class="grow"></span>${as.catalog ? `<button class="btn sm" data-dv-open="${E(as.catalog)}" title="자산 목록(자동)">목록</button>` : ''}<button class="btn sm" data-dv-work="${E(hb.hub.assets)}" title="자산 폴더로 새 세션을 열어요">여기서 작업</button></div>`;
+        if ((as.recent || []).length) h += `<ul class="pc-assets">${as.recent.map((it) => `<li title="${E(it.rest)}"><b>${E(it.name)}</b><span>${E(it.rel)}</span></li>`).join('')}</ul>`;
+        h += '</div><p class="pc-hint">공유를 허용한 세션(기억 탭 "새 기억 저장: 공유")이 끝나면 ODDIN이 정리해서 장기 기억은 공유 기억에, 다시 쓸 결과물은 자산/&lt;분류&gt;/에 자동으로 넣고 목록을 기억에 남겨요. 두 PC의 것이 PC 구분 없이 합쳐지고, 각 PC가 공유하는 폴더도 자산/소스/로 올라가요.</p>';
       }
     }
 

@@ -100,6 +100,9 @@ const peerBusy = async () => {
   return out;
 };
 jobs.driveInfo = (job) => drive.folderOf(job.cwd);
+// 기억 정리가 공유를 허용한 세션의 결과물을 드라이브 ODDIN 자산으로 올릴 때 (lib/oddin-assets.mjs)
+jobs.driveHub = () => hubInfo();
+jobs.machineName = () => peers.self().name;
 jobs.driveGuard = async (job, task) => {
   const f = drive.folderOf(job.cwd); if (!f) return;
   const wait = config.driveFolders?.waitMinutes ?? 30, until = Date.now() + wait * 60_000; let told = false;
@@ -228,7 +231,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/shared/') && !shared) return fail(res, '공유 기억 동기화가 꺼져 있어요 (config.sharedSync.enabled)', 503);
     if (p === '/api/shared/manifest' && req.method === 'GET') return json(res, { machine: peers.self().name, driveHub: shared?.driveHubId() || null, files: scanShared(config.hubDir) });
     // 구글 드라이브 ODDIN 폴더
-    if (p === '/api/drive-hub' && req.method === 'GET') return json(res, driveHubOff() ? { enabled: false, drive: null, hub: null, sync: null, assets: [] } : { drive: driveHub.drive(), hub: hubInfo(true), sync: shared?.status().drive || null, assets: driveHub.assets(), enabled: true });
+    if (p === '/api/drive-hub' && req.method === 'GET') return json(res, driveHubOff() ? { enabled: false, drive: null, hub: null, sync: null, assets: { categories: [], total: 0 } } : { drive: driveHub.drive(), hub: hubInfo(true), sync: shared?.status().drive || null, assets: driveHub.assets(), enabled: true });
     if (p === '/api/drive-hub' && req.method === 'POST') {
       await readBody(req);
       if (driveHubOff()) return json(res, { error: '설정에서 드라이브 ODDIN 폴더를 꺼 두었어요(config.driveHub.enabled)' }, 409);

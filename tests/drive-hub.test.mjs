@@ -26,10 +26,16 @@ test('드라이브 ODDIN 폴더 만들기·자산 목록', () => {
     assert.equal(hub.info(), null);
     const h = hub.create('home');
     assert.equal(h.created, true); assert.equal(h.createdBy, 'home');
-    assert.ok(fs.existsSync(path.join(h.root, 'README.md'))); assert.ok(fs.existsSync(h.memory)); assert.ok(fs.existsSync(h.common));
+    assert.ok(fs.existsSync(path.join(h.root, 'README.md'))); assert.ok(fs.existsSync(h.memory)); assert.ok(fs.existsSync(h.assets));
+    assert.ok(!fs.existsSync(path.join(h.assets, '공용')), 'PC·공용 칸 없이 분류만');
     assert.equal(hub.create('office').created, false, '이미 있으면 그대로');
-    put(path.join(h.assets, '집', '플러그인'), { 'a.js': '1', 'b/c.js': '2', 'desktop.ini': 'x' });
-    assert.deepEqual(hub.assets().map((a) => [a.name, a.files]), [['공용', 0], ['집/플러그인', 2]]);
+    put(path.join(h.assets, '이미지'), { 'a.png': '1', 'b.png': '2', 'desktop.ini': 'x' });
+    const as = hub.assets();
+    assert.deepEqual(as.categories.map((c) => [c.name, c.items]), [['이미지', 2]]); assert.equal(as.total, 0);
+    // 예전 판이 만든 빈 자산/공용 과 설명서는 정리한다
+    fs.mkdirSync(path.join(h.assets, '공용')); fs.writeFileSync(path.join(h.root, 'README.md'), '# ODDIN 공유 폴더\n예전');
+    const again = new DriveHub({ driveRoot: hub.driveRoot }); again.info();
+    assert.ok(!fs.existsSync(path.join(h.assets, '공용'))); assert.match(fs.readFileSync(path.join(h.root, 'README.md'), 'utf8'), /PC 구분 없이/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -100,7 +106,7 @@ test('두 PC가 같은 드라이브 폴더를 쓰면 PC끼리 맞추기는 쉰�
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('공유 폴더를 드라이브 자산/<PC>/<폴더>로 올리고, 같은 드라이브를 쓰는 PC는 드라이브 사본을 쓴다', async () => {
+test('공유 폴더를 드라이브 자산/소스/<폴더>로 올리고 목록에 적고, 같은 드라이브를 쓰는 PC는 드라이브 사본을 쓴다', async () => {
   const { dir, hub } = setup();
   try {
     const h = hub.create('home');
@@ -110,7 +116,10 @@ test('공유 폴더를 드라이브 자산/<PC>/<폴더>로 올리고, 같은 �
     const f = sf.add({ path: src, name: '프리미어 플러그인' });
     assert.equal(sf.offer().driveHub, h.id);
     await sf.pullAll();
-    const out = path.join(h.assets, '집', '프리미어 플러그인');
+    const out = path.join(h.assets, '소스', '프리미어 플러그인');
+    assert.ok(fs.readFileSync(path.join(h.assets, '목록.md'), 'utf8').includes('- [프리미어 플러그인](<소스/프리미어 플러그인>) — 집 PC가 공유하는 폴더'));
+    assert.ok(fs.readFileSync(path.join(homeHub, 'memory', 'global', 'reference-oddin-assets.md'), 'utf8').includes('소스/프리미어 플러그인'));
+    assert.equal(sf.offer().folders[0].driveRel, '소스/프리미어 플러그인');
     assert.equal(read(out, 'main.js'), '1'); assert.equal(read(out, 'lib/x.js'), '2');
     assert.equal(read(out, 'shot.png'), null, '기본은 코드·문서만'); assert.ok(!fs.existsSync(path.join(out, 'node_modules')));
     fs.rmSync(path.join(src, 'lib', 'x.js')); put(src, { 'main.js': '3' }); sf.publish();
@@ -119,7 +128,7 @@ test('공유 폴더를 드라이브 자산/<PC>/<폴더>로 올리고, 같은 �
 
     // 회사 쪽: 집 공유 폴더를 peer-files 로 받지 않고 드라이브 위치를 목록에 적는다
     const officeHub = path.join(dir, 'office-shared');
-    const offer = { machine: '집', driveHub: h.id, folders: [{ id: f.id, name: '프리미어 플러그인', files: 1 }] };
+    const offer = { machine: '집', driveHub: h.id, folders: [{ id: f.id, name: '프리미어 플러그인', files: 1, driveRel: '소스/프리미어 플러그인' }] };
     const officeCall = async (_p, route) => { if (route === '/api/shared-folders/offer') return offer; throw new Error('파일을 받으면 안 됨'); };
     const so = new SharedFolders({ hubDir: officeHub, peers: peersOf('office', '회사', [{ id: 'home', name: '집' }], officeCall), intervalMs: 0, hub: () => hub.info(), file: path.join(dir, 'sf-office.json') });
     await so.pullAll();
@@ -130,6 +139,33 @@ test('공유 폴더를 드라이브 자산/<PC>/<폴더>로 올리고, 같은 �
 
     // 공유를 그만두면 드라이브 사본도 지운다
     sf.remove(f.id); sf.publish();
-    assert.ok(!fs.existsSync(out));
+    assert.ok(!fs.existsSync(out)); assert.doesNotMatch(fs.readFileSync(path.join(h.assets, '목록.md'), 'utf8'), /프리미어 플러그인/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('드라이브 폴더가 안 보이거나 파일이 한꺼번에 사라져 보이면 이 PC 기억을 지우지 않는다', async () => {
+  const { dir, A, hub } = setup();
+  try {
+    const h = hub.create('home');
+    const many = {}; for (let i = 0; i < 20; i++) many[`memory/global/m${i}.md`] = `기억 ${i}`;
+    put(A, many);
+    const sa = new SharedSync({ root: A, peers: peersOf('home', '집'), intervalMs: 0, watch: false, driveIntervalMs: 0, hub: () => hub.info(), stateFile: path.join(dir, 'a.json') });
+    await sa.syncAll();
+    assert.equal(read(h.memory, 'memory/global/m5.md'), '기억 5');
+    // 폴더가 안 보임(이름 바뀜·드라이브 준비 전)
+    fs.renameSync(h.memory, `${h.memory}-잠깐`);
+    const [r1] = await sa.syncAll();
+    assert.equal(r1.ok, false); assert.match(r1.error, /안 보여요/); assert.equal(read(A, 'memory/global/m5.md'), '기억 5');
+    fs.renameSync(`${h.memory}-잠깐`, h.memory);
+    // 파일 대부분이 사라져 보임
+    for (let i = 0; i < 15; i++) fs.rmSync(path.join(h.memory, 'memory', 'global', `m${i}.md`));
+    const [r2] = await sa.syncAll();
+    assert.equal(r2.ok, false); assert.match(r2.error, /한꺼번에 사라져/); assert.equal(read(A, 'memory/global/m3.md'), '기억 3');
+    // 몇 개만 지운 것은 정상으로 맞춘다
+    for (let i = 0; i < 15; i++) put(h.memory, { [`memory/global/m${i}.md`]: `기억 ${i}` });
+    await sa.syncAll();
+    fs.rmSync(path.join(h.memory, 'memory', 'global', 'm1.md'));
+    const [r3] = await sa.syncAll();
+    assert.equal(r3.ok, true); assert.equal(read(A, 'memory/global/m1.md'), null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -25,12 +25,18 @@
     if (n.added) parts.push(`+${n.added}`); if (n.updated) parts.push(`고침 ${n.updated}`); if (n.removed) parts.push(`뺌 ${n.removed}`);
     const applied = (c.memory || []).filter((m) => m.status === 'applied'), skipped = (c.memory || []).filter((m) => m.status !== 'applied');
     const memTxt = applied.map((m) => `<span class="mem-item" title="${E(`${m.op === 'delete' ? '지움' : m.op === 'update' ? '고침' : '새로 저장'} · ${scopeKo(m.scope)} · ${m.name}.md${m.reason ? `\n${m.reason}` : ''}`)}">${m.op === 'delete' ? '지움 ' : m.op === 'update' ? '고침 ' : ''}${E(m.title || m.name)}</span>`).join('');
-    const skipTip = skipped.length ? ` title="${E(skipped.map((m) => `${m.title || m.name}: ${m.why || '건너뜀'}`).join('\n'))}"` : '';
-    const undo = applied.length ? (c.undoneAt ? `<span class="mem-undone">되돌림</span>` : `<button class="mem-undo" data-mem-undo="${E(j.id)}" title="이 작업이 저장한 장기 기억을 원래대로">${IC('retry')}되돌리기</button>`) : '';
+    // 공유를 허용한 세션이면 다시 쓸 결과물이 드라이브 ODDIN 자산으로 올라간다
+    const savedA = (c.assets || []).filter((a) => a.status === 'saved' || a.status === 'same'), skippedA = (c.assets || []).filter((a) => a.status === 'skipped');
+    const assetTxt = savedA.map((a) => `<span class="mem-item" title="${E(`ODDIN 자산 · ${a.rel || ''}${a.status === 'same' ? ' (이미 같은 판)' : ''}${a.description ? `\n${a.description}` : ''}`)}">${E(a.name)}</span>`).join('');
+    const skipAll = [...skipped.map((m) => `${m.title || m.name}: ${m.why || '건너뜀'}`), ...skippedA.map((a) => `자산 ${a.name}: ${a.why || '건너뜀'}`)];
+    const skipTip = skipAll.length ? ` title="${E(skipAll.join('\n'))}"` : '';
+    const canUndo = applied.length || savedA.some((a) => a.created && a.status === 'saved');
+    const undo = canUndo ? (c.undoneAt ? `<span class="mem-undone">되돌림</span>` : `<button class="mem-undo" data-mem-undo="${E(j.id)}" title="이 작업이 저장한 장기 기억·새로 올린 자산을 원래대로">${IC('retry')}되돌리기</button>`) : '';
     return `<div class="mem-cur">${IC('book')}<span class="mem-k">기억</span>`
       + `<span class="mem-n" title="세션 결정 노트 ${c.total ?? ''}개 — 다음 요청부터 작업자들이 빠짐없이 받아요">결정 노트 ${parts.length ? parts.join(' · ') : '그대로'}</span>`
       + (applied.length ? `<span class="mem-sep">·</span><span class="mem-l">장기 기억</span>${memTxt}` : '')
-      + (skipped.length ? `<span class="mem-skip"${skipTip}>건너뜀 ${skipped.length}</span>` : '')
+      + (savedA.length ? `<span class="mem-sep">·</span><span class="mem-l">ODDIN 자산</span>${assetTxt}` : '')
+      + (skipAll.length ? `<span class="mem-skip"${skipTip}>건너뜀 ${skipAll.length}</span>` : '')
       + `<span class="grow"></span>${undo}</div>`;
   }
   window.hubJobExtras = window.hubJobExtras || [];

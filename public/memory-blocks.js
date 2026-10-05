@@ -109,7 +109,7 @@
     let h = '<div class="ilabel">이 세션에 넣는 기억</div><p class="mem-hint">자동 = 요청과 관련 있을 때만 · <b>연결</b> = 매 단계 최신 내용을 항상 넣음 · <b>해제</b> = 이 세션엔 넣지 않음</p>';
     h += `<ul class="mbs-list">${list.map(row).join('')}</ul>`;
     h += `<div class="ilabel">이 세션에서 새로 생긴 기억</div><div class="mbs-save"><span class="seg2" role="group" aria-label="새 기억 저장 위치">${[['shared', '공유'], ['local', '이 PC만'], ['none', '저장 안 함']].map(([k, l]) => `<button type="button" class="${save === k ? 'on' : ''}" data-mbs-save="${k}">${l}</button>`).join('')}</span><button type="button" class="linkish" data-mbs-manage>기억 관리</button></div>`;
-    h += '<p class="mem-hint">공유 = 연결된 PC와 함께 씀 · 이 PC만 = 이 PC에만 저장 · 저장 안 함 = 결정 노트만 남김</p>';
+    h += '<p class="mem-hint">공유 = 두 PC가 함께 씀(드라이브 ODDIN 폴더가 있으면 정리된 기억과 다시 쓸 결과물이 거기로 자동으로 합쳐짐) · 이 PC만 = 이 PC에만 저장 · 저장 안 함 = 결정 노트만 남김</p>';
     return `<div class="mbs-pane">${h}</div>`;
   }
   function refreshTab() { if (typeof S !== 'undefined' && S.insp?.tab === 'memory' && typeof renderInspector === 'function') renderInspector(); }

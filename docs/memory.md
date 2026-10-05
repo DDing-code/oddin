@@ -56,3 +56,6 @@
 
 ## 시험
 `tests/memory-curate.test.mjs`. 실제 CLI 확인은 공유 폴더 사본(`hubDir`)을 쓰는 시험 서버로 한다(진짜 메모리를 건드리지 않게).
+
+## ODDIN 자산 (2026-10-05)
+- 공유를 허용한 세션(`session.memory.save` 공유)이고 구글 드라이브 ODDIN 폴더가 있으면 기억 정리가 "③ 자산"도 고른다. 허브가 다시 쓸 결과물을 드라이브 `ODDIN/자산/<분류>/<이름>`에 복사하고 `자산/목록.md`·공유 기억 `global/reference-oddin-assets.md`를 고친다. 규칙·안전장치는 `docs/peers.md` "드라이브 ODDIN 폴더", 코드 `lib/oddin-assets.mjs`.
