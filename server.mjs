@@ -71,11 +71,13 @@ const sharedCfg = config.sharedSync || {};
 const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false });
 shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
 const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared?.status() || null });
-setInterval(async () => {
+const checkPeers = async () => {
   if (!peers.list().length) return;
   await Promise.all(peers.list().map((x) => peers.check(x)));
   broadcast({ type: 'peers', ...peersView() });
-}, 60_000).unref();
+};
+setTimeout(checkPeers, 2000).unref(); // 켜자마자 한 번 (안 그러면 1분 동안 상태 모름)
+setInterval(checkPeers, 60_000).unref();
 
 // 공통 커맨드·서브 에이전트를 Claude Code·Codex 에 설치하고, 원본이 바뀌면 다시 설치
 if (process.env.HUB_SKIP_CLI_INSTALL !== '1') {
