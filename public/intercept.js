@@ -156,7 +156,7 @@ function renderIcComposer(live, has) {
   const err = INT.err && INT.err.sid === S.current ? INT.err : null;
   if (INT.mode !== sup) { INT.mode = sup; if (sup && S.pop?.kind === 'slash') closePop(); renderCmdHint(); } // 커맨드 설명 줄도 모드에 맞춰 다시
   $('#composer').classList.toggle('ic-mode', sup);
-  input.placeholder = sup ? '진행 중인 작업에 수정 지시를 보내세요' : IC_PH;
+  input.placeholder = sup ? '진행 중인 작업에 수정 지시를 보내세요' : (window.hubInputPh ? window.hubInputPh() : IC_PH); // 폰은 짧게(push.js)
   $('#hint').textContent = sup ? 'Enter 수정 지시 · Shift+Enter 줄바꿈' : IC_HINT;
   for (const p of ['#pMode', '#pClaude', '#pCodex']) $(p).classList.toggle('ic-off', sup);
   // 입력이 있으면 전송 버튼이 "수정 지시 보내기"가 되므로 중지는 옆 버튼으로 계속 쓸 수 있게

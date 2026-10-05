@@ -35,6 +35,7 @@ import { Federation } from './lib/federation.mjs';
 import { FileAccess, fileRoots } from './lib/file-access.mjs';
 import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
+import { Push } from './lib/push.mjs';
 import { SessionGroups, listDirs } from './lib/session-groups.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
 
@@ -52,6 +53,9 @@ const jobs = new JobManager(config);
 const remote = new RemoteAccess({ port: config.port });
 const clients = new Map(); // SSE도 설정 변경·계정 취소 때 다시 검증한다.
 jobs.on('event', (ev) => broadcast(ev));
+// 폰 알림(lib/push.mjs): 홈 화면에 추가한 ODDIN 앱이 알림을 켜면, 작업이 끝나거나 질문·승인 요청이 올 때 이 허브가 푸시를 보낸다
+const push = new Push({ log: (m) => console.error(m) });
+const pushTitle = (j) => (j?.sessionId && jobs.sessions.get(j.sessionId)?.title) || '';
 // 파일 열기·보기 범위(lib/file-access.mjs): 허브가 아는 폴더 + 작업이 실제로 실행된 폴더 전부 + 드라이브 ODDIN 폴더.
 // 입력창 아래 "권한" 메뉴에서 "모든 폴더"를 켜면 이 PC의 모든 드라이브. 열기·허브 안 보기·/view/·폴더 목록이 함께 쓴다
 const fileAccess = new FileAccess({ file: path.join(DATA_DIR, 'file-access.json') });
@@ -73,6 +77,7 @@ function checkClient(res, req) {
   return true;
 }
 function broadcast(ev) {
+  try { push.onEvent(ev, { titleOf: pushTitle, jobOf: (id) => jobs.jobs.get(id) || null }); } catch {}
   const data = `data: ${JSON.stringify(ev)}\n\n`;
   for (const [res, req] of clients) { if (checkClient(res, req)) { try { res.write(data); } catch {} } }
 }
@@ -162,7 +167,7 @@ function uiVersion() {
   uiVer = { at: Date.now(), v: createHash('sha1').update(sig).digest('hex').slice(0, 12) };
   return uiVer.v;
 }
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json; charset=utf-8' };
 
 function send(res, code, body, type = 'application/json; charset=utf-8', extra = {}) {
   res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS, ...extra });
@@ -309,6 +314,11 @@ const server = http.createServer(async (req, res) => {
     // 작업 폴더 고르기 창: 하위 폴더 이름만 (빈 경로면 드라이브 목록)
     if (p === '/api/dirs' && req.method === 'GET') return json(res, listDirs(url.searchParams.get('path') || ''));
     // 프로필: 이름 { name } · 사진(본문이 그림 그대로, Content-Type 으로 종류)
+    // ---- 폰 알림 (lib/push.mjs) ----
+    if (p === '/api/push' && req.method === 'GET') return json(res, { key: push.publicKey(), devices: push.list() });
+    if (p === '/api/push/subscribe' && req.method === 'POST') { const b = await readBody(req); return json(res, push.subscribe(b.subscription, b.name), 201); }
+    if (p === '/api/push/unsubscribe' && req.method === 'POST') return json(res, push.unsubscribe(await readBody(req)));
+    if (p === '/api/push/test' && req.method === 'POST') { const b = await readBody(req); return json(res, { results: await push.send({ title: 'ODDIN 알림 시험', body: '이렇게 알려 드려요. 작업이 끝나거나 질문이 오면 여기로 와요', url: './', tag: 'test' }, { only: b.id || null }) }); }
     if (p === '/api/profile' && req.method === 'GET') return json(res, profile.read());
     if (p === '/api/profile' && req.method === 'POST') { const v = profile.setName((await readBody(req)).name); broadcast({ type: 'profile', profile: v }); return json(res, v); }
     if (p === '/api/profile/avatar' && req.method === 'GET') return profile.serveAvatar(res);

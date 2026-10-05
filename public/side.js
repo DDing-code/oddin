@@ -325,6 +325,7 @@ $('#btnAccount').addEventListener('click', (e) => {
     { label: '원격 접속', icon: 'globe', run: () => { closePop(); openSettings('remoteSec'); } },
     { label: '키보드 단축키', icon: 'keyboard', run: () => { closePop(); openSettings('keys'); } },
     { label: '알림음 (작업 끝·질문)', icon: 'bell', checked: window.hubSound?.on !== false, run: () => { const on = window.hubSound?.toggle(); closePop(); toast(on ? '알림음을 켰어요 — 작업이 끝나거나 질문이 오면 소리로 알려요' : '알림음을 껐어요'); } },
+    ...(window.hubPushOpen ? [{ label: '폰 앱 · 알림', desc: '아이폰 홈 화면에 넣기 · 작업 끝·질문 알림', icon: 'bell', run: () => { closePop(); window.hubPushOpen(); } }] : []),
     { label: '사용량 새로고침', icon: 'refresh', run: () => { closePop(); showUsage(); } },
     { sep: true },
     { label: '작업 보드', icon: 'board', run: () => { closePop(); openBoard(); } },

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- ODDIN 앱 아이콘: 둥근 모서리 없이 꽉 채움(아이폰·안드로이드가 모서리를 직접 깎음) -->
+  <defs>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+      <stop offset="0" stop-color="#25262c"/>
+      <stop offset="1" stop-color="#15161a"/>
+    </linearGradient>
+    <linearGradient id="rim" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.11"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+    <linearGradient id="orange" gradientUnits="userSpaceOnUse" x1="0" y1="96" x2="0" y2="416">
+      <stop offset="0" stop-color="#eb8b64"/>
+      <stop offset="1" stop-color="#d06e4d"/>
+    </linearGradient>
+    <linearGradient id="blue" gradientUnits="userSpaceOnUse" x1="0" y1="96" x2="0" y2="416">
+      <stop offset="0" stop-color="#74aaff"/>
+      <stop offset="1" stop-color="#4f8fe8"/>
+    </linearGradient>
+    <radialGradient id="ivory" cx="0.4" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#fff9ee"/>
+      <stop offset="1" stop-color="#e5ddcc"/>
+    </radialGradient>
+    <radialGradient id="glowO" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d97757" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#d97757" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#5b9cf5" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#5b9cf5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#tile)"/>
+  <g fill="none" stroke-linecap="round">
+    <!-- 파랑 호: 우하단 반 (Codex) -->
+    <path d="M326.78 128.31 A146 146 0 1 1 128.31 326.78" stroke="url(#blue)" stroke-width="72"/>
+    <!-- 주황 호가 우상단에서 파랑 위로 지나감 (타일색 후광으로 아래위 구분) -->
+    <path d="M305.93 118.80 A146 146 0 0 1 383.69 185.22" stroke="url(#tile)" stroke-width="96"/>
+    <path d="M383.69 185.22 A146 146 0 1 0 185.22 383.69" stroke="url(#orange)" stroke-width="72"/>
+    <!-- 파랑 호가 좌하단에서 주황 위로 지나감 -->
+    <path d="M218.21 397.03 A146 146 0 0 1 128.31 326.78" stroke="url(#tile)" stroke-width="96"/>
+    <path d="M281.35 399.78 A146 146 0 0 1 128.31 326.78" stroke="url(#blue)" stroke-width="72"/>
+  </g>
+</svg>
