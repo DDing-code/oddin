@@ -169,3 +169,30 @@ test('드라이브 폴더가 안 보이거나 파일이 한꺼번에 사라져 �
     assert.equal(r3.ok, true); assert.equal(read(A, 'memory/global/m1.md'), null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('두 PC가 같은 지침·메모리 파일을 고쳐도 덮어쓰지 않고 줄 단위로 합친다', async () => {
+  const { dir, A, B, hub } = setup();
+  try {
+    const h = hub.create('home');
+    const agents = ['# 공용 지침', '- 규칙 1', '- 규칙 2', '- 규칙 3'].join('\n') + '\n';
+    put(A, { 'AGENTS.md': agents, 'memory/global/note.md': '가\n나\n다\n' }); put(B, { 'AGENTS.md': agents, 'memory/global/note.md': '가\n나\n다\n' });
+    const sa = new SharedSync({ root: A, peers: peersOf('home', '집'), intervalMs: 0, watch: false, driveIntervalMs: 0, hub: () => hub.info(), stateFile: path.join(dir, 'a.json') });
+    const sb = new SharedSync({ root: B, peers: peersOf('office', '회사'), intervalMs: 0, watch: false, driveIntervalMs: 0, hub: () => hub.info(), stateFile: path.join(dir, 'b.json'), joinMs: 0 });
+    await sa.syncAll(); await sb.syncAll();
+    // 다른 곳을 고침 → 둘 다 반영
+    put(A, { 'AGENTS.md': agents.replace('- 규칙 1', '- 규칙 1 (집에서 고침)') });
+    put(B, { 'AGENTS.md': agents + '- 규칙 4 (회사에서 더함)\n' });
+    await sa.syncAll(); const [rb] = await sb.syncAll(); await sa.syncAll();
+    assert.equal(rb.counts.merged, 1);
+    for (const root of [A, B, h.memory]) assert.equal(read(root, 'AGENTS.md'), '# 공용 지침\n- 규칙 1 (집에서 고침)\n- 규칙 2\n- 규칙 3\n- 규칙 4 (회사에서 더함)\n');
+    // 같은 곳을 다르게 고침 → 최근 판 + 다른 판을 표시해 둘 다 남김
+    put(A, { 'memory/global/note.md': '가\n나 (집)\n다\n' });
+    await sa.syncAll();
+    put(B, { 'memory/global/note.md': '가\n나 (회사)\n다\n' });
+    await sb.syncAll(); await sa.syncAll();
+    const note = read(A, 'memory/global/note.md');
+    assert.equal(read(B, 'memory/global/note.md'), note);
+    assert.ok(note.includes('나 (집)') && note.includes('나 (회사)') && note.includes('ODDIN 합치기'), note);
+    assert.ok(fs.existsSync(path.join(B, 'backups', 'sync')), '합치기 전 판은 백업');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

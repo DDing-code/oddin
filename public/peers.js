@@ -28,7 +28,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     catch (e) { P.error = why(e); }
     P.loading = false; refresh();
   }
-  function refresh() { if (typeof S !== 'undefined' && S.insp?.tab === 'peers' && typeof renderInspector === 'function') renderInspector(); }
+  function refresh() { if (document.activeElement?.matches?.('[data-pc-local]')) { P.later = true; return; } if (typeof S !== 'undefined' && S.insp?.tab === 'peers' && typeof renderInspector === 'function') renderInspector(); }
   async function act(key, fn, ok) {
     P.busy = key; refresh();
     try { const r = await fn(); if (ok) say(typeof ok === 'function' ? ok(r) : ok); await load(); }
@@ -125,6 +125,15 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
       const item = (ok, label) => `<li class="${ok ? 'ok' : 'no'}">${IC(ok ? 'check' : 'minus')}<span>${label}</span></li>`;
       h += `<div class="ilabel">이 PC의 Claude·Codex</div><ul class="pc-setup">${item(su.ready, '공유 기억 받음')}${item(su.claude.ok, 'Claude 훅 (세션 시작·끝 동기화, 매 메시지 기억 확인)')}${item(su.codex.ok, 'Codex 훅')}${item(su.claudeMd.ok, 'CLAUDE.md 공유 지침·메모리 불러오기')}</ul>`;
       if (!su.done) h += `<div class="pc-actions"><button class="btn" data-pc-setup ${!su.ready || P.busy === 'setup' ? 'disabled' : ''}>${IC('bolt')}빠진 것 설치</button></div><p class="pc-hint">${su.ready ? '기존 설정은 그대로 두고 빠진 훅·줄만 더해요(원본은 .bak-oddin 으로 보관). Codex는 새 훅을 처음 쓸 때 한 번 신뢰할지 물어요.' : '연결된 PC와 먼저 맞추면 설치할 수 있어요.'} ODDIN 작업은 훅이 없어도 공유 기억을 바로 써요.</p>`;
+      // 이 PC 전용 지침(~/.ai-shared/AGENTS.local.md): 다른 PC와 맞추지 않는 지침. Claude·Codex 둘 다 읽는다
+      const lo = su.local;
+      if (lo) {
+        const stub = /^# 이 PC 전용 지침\s+이 PC에서만 따를 지침을 여기에 쓴다[^\n]*\s*$/.test(lo.content || '');
+        h += `<details class="pc-local" ${P.localOpen ? 'open' : ''}><summary>이 PC 전용 지침 <span class="pc-url">${!lo.exists || stub ? '비어 있음' : `${lo.chars.toLocaleString()}자`}</span></summary>`
+          + `<textarea data-pc-local rows="12" spellcheck="false" aria-label="이 PC 전용 지침">${E(P.localDraft ?? lo.content ?? '')}</textarea>`
+          + `<div class="pc-actions"><button class="btn" data-pc-local-save ${P.busy === 'local' ? 'disabled' : ''}>${P.busy === 'local' ? '<span class="spin-xs"></span>저장 중' : `${IC('check')}저장`}</button></div>`
+          + '<p class="pc-hint">이 PC에서만 따를 지침이에요(다른 PC와 맞추지 않음). 저장하면 Claude·Codex가 다음 대화부터 읽어요. 두 PC 공용 지침은 공유 기억의 AGENTS.md예요.</p></details>';
+      }
     }
     body.innerHTML = h + '</div>';
   }
@@ -156,7 +165,8 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     }
   });
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-hub-create],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
+    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-pc-local-save],[data-hub-create],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
+    if (b.hasAttribute('data-pc-local-save')) { const t = document.querySelector('[data-pc-local]'); const content = t ? t.value : (P.localDraft ?? ''); act('local', () => call('/api/shared/local', { method: 'POST', body: JSON.stringify({ content }) }), (r) => { P.localDraft = undefined; return r.sync && r.sync.ok === false ? '저장했지만 Codex 지침 반영에 실패했어요' : '이 PC 전용 지침을 저장했어요'; }); return; }
     if (b.hasAttribute('data-hub-create')) { act('hub-create', () => call('/api/drive-hub', { method: 'POST', body: '{}' }), (r) => r.created ? 'ODDIN 폴더를 만들었어요. 공유 기억과 공유 폴더를 올리는 중이에요' : '이미 있는 ODDIN 폴더를 쓰기 시작했어요'); return; }
     if (b.hasAttribute('data-dv-work')) { if (typeof newSession === 'function') { newSession(b.dataset.dvWork); say('드라이브 작업 폴더에서 새 세션을 시작해요. 요청을 입력하세요'); } return; }
     if (b.hasAttribute('data-dv-open')) { if (typeof window.openPath === 'function') window.openPath(b.dataset.dvOpen); return; }
@@ -194,4 +204,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     else if (ev.type === 'shared-folders' && ev.own) { P.folders = { ...(P.folders || {}), own: ev.own, mirrors: ev.mirrors }; refresh(); }
     else if (ev.type === 'hello' && P.view) load();
   });
+  document.addEventListener('input', (e) => { if (e.target.matches?.('[data-pc-local]')) P.localDraft = e.target.value; });
+  document.addEventListener('focusout', (e) => { if (e.target.matches?.('[data-pc-local]') && P.later) { P.later = false; setTimeout(refresh, 0); } });
+  document.addEventListener('toggle', (e) => { if (e.target.matches?.('details.pc-local')) P.localOpen = e.target.open; }, true);
 })();

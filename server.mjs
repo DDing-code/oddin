@@ -24,7 +24,7 @@ import { HubTools } from './lib/preview.mjs';
 import { knownProjects } from './lib/projects.mjs';
 import { Peers } from './lib/peers.mjs';
 import { SharedSync, scanShared, readShared, writeShared } from './lib/shared-sync.mjs';
-import { setupStatus, installSharedHooks } from './lib/shared-setup.mjs';
+import { setupStatus, installSharedHooks, readLocalInstructions, writeLocalInstructions } from './lib/shared-setup.mjs';
 import { listMemory, moveMemory, createBlock, renameBlock, setBlockRoot, deleteBlock, readBlockMemory } from './lib/memory-blocks.mjs';
 import { hubCommit, runningCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
 import { SharedFolders } from './lib/shared-folders.mjs';
@@ -249,6 +249,9 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/shared/status' && req.method === 'GET') return json(res, shared.status());
     if (p === '/api/shared/setup' && req.method === 'GET') return json(res, setupStatus(config.hubDir));
     if (p === '/api/shared/setup' && req.method === 'POST') { await readBody(req); return json(res, installSharedHooks(config.hubDir)); }
+    // 이 PC 전용 지침(~/.ai-shared/AGENTS.local.md, 다른 PC와 맞추지 않음)
+    if (p === '/api/shared/local' && req.method === 'GET') return json(res, readLocalInstructions(config.hubDir));
+    if (p === '/api/shared/local' && req.method === 'POST') { const b = await readBody(req, 400_000); return json(res, writeLocalInstructions(config.hubDir, b.content)); }
     // ---- 실시간 이벤트 ----
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS });

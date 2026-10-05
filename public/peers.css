@@ -35,3 +35,6 @@
 .pc-assets li{display:flex;gap:8px;min-width:0;font-size:12px;line-height:1.5;color:var(--muted)}
 .pc-assets b{font-weight:600;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%}
 .pc-assets span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11.5px var(--mono);color:var(--faint)}
+.pc-local{margin-top:8px;border:1px solid var(--line2);border-radius:10px;padding:6px 10px;background:rgba(255,255,255,.015)}
+.pc-local summary{cursor:pointer;font-size:12.5px;color:var(--fg2);display:flex;gap:8px;align-items:center}
+.pc-local textarea{width:100%;box-sizing:border-box;margin-top:8px;min-height:180px;resize:vertical;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font:12px/1.5 var(--mono);padding:8px}

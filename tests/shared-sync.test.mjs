@@ -44,7 +44,7 @@ test('새 PC 훅 설치: 빠진 Claude·Codex 훅과 CLAUDE.md 줄만 더하고 
     assert.equal(s.model, 'opus'); assert.equal(s.hooks.Stop.length, 2, '기존 훅 유지'); assert.match(s.hooks.UserPromptSubmit[0].hooks[0].command, /memory-check\.mjs"$/);
     const c = JSON.parse(fs.readFileSync(path.join(home, '.codex', 'hooks.json'), 'utf8'));
     assert.match(c.hooks.UserPromptSubmit[0].hooks[0].command, /--codex$/); assert.equal(c.hooks.SessionStart[0].matcher, 'startup|resume');
-    assert.match(fs.readFileSync(path.join(home, '.claude', 'CLAUDE.md'), 'utf8'), /^# 내 지침\n\n# 공용 지침[^\n]*\n@~\/\.ai-shared\/AGENTS\.md\n@~\/\.ai-shared\/memory\/global\/MEMORY\.md\n$/);
+    assert.match(fs.readFileSync(path.join(home, '.claude', 'CLAUDE.md'), 'utf8'), /^# 내 지침\n\n# 공용 지침[^\n]*\n@~\/\.ai-shared\/AGENTS\.md\n@~\/\.ai-shared\/memory\/global\/MEMORY\.md\n@~\/\.ai-shared\/AGENTS\.local\.md\n$/);
     assert.ok(fs.readdirSync(path.join(home, '.claude')).some((n) => n.startsWith('settings.json.bak-oddin-')), '원본 보관');
     assert.deepEqual(installSharedHooks(hub, { home, runSync: false }).changed, [], '다시 해도 그대로');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -103,13 +103,17 @@ test('두 허브가 공유 기억을 주고받는다: 처음 맞추기·한쪽 �
   for (const root of [A, B]) { const idx = read(root, 'memory/global/MEMORY.md'); assert.match(idx, /c\.md/); assert.match(idx, /d\.md/); assert.equal((idx.match(/\(a\.md\)/g) || []).length, 1); }
   assert.equal(read(A, 'memory/global/MEMORY.md'), read(B, 'memory/global/MEMORY.md'));
 
-  // 같은 파일을 둘 다 고치면 최근 것을 쓰고 밀린 쪽은 backups/sync 에 남긴다
+  // 같은 파일의 같은 곳을 둘 다 고치면 덮어쓰지 않는다: 최근 판(회사)을 위에, 다른 판(집)을 표시해 아래에 남기고 합치기 전 판은 backups/sync 에
   const now = Date.now();
   put(A, 'memory/global/a.md', '집에서 고침', now - 60_000); put(B, 'memory/global/a.md', '회사에서 고침', now);
-  r = await sync(); assert.equal(r.counts.conflicts, 1, JSON.stringify(r));
-  assert.equal(read(A, 'memory/global/a.md'), '회사에서 고침'); assert.equal(read(B, 'memory/global/a.md'), '회사에서 고침');
+  r = await sync(); assert.equal(r.counts.merged, 1, JSON.stringify(r)); assert.equal(r.counts.conflicts, 1, JSON.stringify(r));
+  const merged = read(A, 'memory/global/a.md');
+  assert.equal(read(B, 'memory/global/a.md'), merged);
+  assert.ok(merged.startsWith('회사에서 고침\n<!-- ODDIN 합치기') && merged.includes('\n집에서 고침\n'), merged);
   const kept = fs.readdirSync(path.join(A, 'backups', 'sync'), { recursive: true }).map(String).find((n) => n.includes('a.md.'));
-  assert.ok(kept, '밀린 판 보관'); assert.match(kept, /밀림-회사/);
+  assert.ok(kept, '합치기 전 판 보관'); assert.match(kept, /합치기전/);
+  put(B, 'memory/global/a.md', '회사에서 고침', Date.now()); r = await sync(); // 사용자가 정리한 판이 그대로 퍼진다
+  assert.equal(read(A, 'memory/global/a.md'), '회사에서 고침');
 
   // 집에서 지우면 회사에서도 지우고 회사 쪽 backups 에 남긴다
   fs.rmSync(path.join(A, 'memory', 'global', 'c.md'));
