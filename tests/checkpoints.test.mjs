@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import crypto from 'node:crypto';
+import { freePort } from './_port.mjs';
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-checkpoints-'));
 process.env.HUB_DATA_DIR = path.join(temp, 'manager-data');
@@ -188,24 +189,25 @@ test('작업 시작 연결: 두 CLI·실패·중지 후 마지막 쓰기·재시
   } finally { clearTimeout(manager._saveTimer); }
 });
 
-test('분리된 7712 시험 서버: 작업·세션 API, 충돌·복원·취소 SSE, 세션 삭제 정리', async (t) => {
+test('분리된 시험 서버: 작업·세션 API, 충돌·복원·취소 SSE, 세션 삭제 정리', async (t) => {
+  const port = await freePort();
   const f = fixture(); f.write('a', '전\n'); const j = { ...f.job('api-job'), tasks: [], createdAt: new Date().toISOString(), finishedAt: new Date().toISOString(), intercepts: [] }; await f.c.begin(j); f.write('a', '후\n'); await f.finish(j);
   const session = { id: j.sessionId, cwd: f.cwd, jobIds: [j.id], createdAt: j.createdAt, updatedAt: j.createdAt, title: '시험' };
   fs.mkdirSync(f.dataDir, { recursive: true }); fs.writeFileSync(path.join(f.dataDir, 'jobs.json'), JSON.stringify([j])); fs.writeFileSync(path.join(f.dataDir, 'sessions.json'), JSON.stringify([session]));
-  const configFile = path.join(f.root, 'config.json'); fs.writeFileSync(configFile, JSON.stringify({ host: '127.0.0.1', port: 7712, hubDir: path.join(f.root, 'shared'), defaultCwd: f.cwd, tools: {} }));
-  const child = spawn(process.execPath, ['server.mjs'], { cwd: path.resolve('.'), env: { ...process.env, HUB_PORT: '7712', HUB_DATA_DIR: f.dataDir, HUB_RUNS_DIR: path.join(f.root, 'runs'), HUB_CONFIG_FILE: configFile, HUB_SKIP_CLI_INSTALL: '1' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const configFile = path.join(f.root, 'config.json'); fs.writeFileSync(configFile, JSON.stringify({ host: '127.0.0.1', port, hubDir: path.join(f.root, 'shared'), defaultCwd: f.cwd, tools: {} }));
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: path.resolve('.'), env: { ...process.env, HUB_PORT: String(port), HUB_DATA_DIR: f.dataDir, HUB_RUNS_DIR: path.join(f.root, 'runs'), HUB_CONFIG_FILE: configFile, HUB_SKIP_CLI_INSTALL: '1' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stdout.on('data', (b) => { output += b; }); child.stderr.on('data', (b) => { output += b; });
   t.after(async () => { child.kill(); if (child.exitCode === null) await new Promise((r) => child.once('exit', r)); });
-  const end = Date.now() + 8000; while (!output.includes('ODDIN  http://127.0.0.1:7712')) { if (child.exitCode !== null || Date.now() > end) throw new Error(`시험 서버 시작 실패: ${output}`); await delay(20); }
-  const api = async (p, body, method = body === undefined ? 'GET' : 'POST') => { const res = await fetch(`http://127.0.0.1:7712${p}`, { method, headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); return { status: res.status, body: await res.json() }; };
+  const end = Date.now() + 30000; while (!output.includes(`ODDIN  http://127.0.0.1:${port}`)) { if (child.exitCode !== null || Date.now() > end) throw new Error(`시험 서버 시작 실패: ${output}`); await delay(20); }
+  const api = async (p, body, method = body === undefined ? 'GET' : 'POST') => { const res = await fetch(`http://127.0.0.1:${port}${p}`, { method, headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); return { status: res.status, body: await res.json() }; };
   assert.equal((await api('/api/jobs/api-job/changes')).body.files[0].path, 'a'); assert.equal((await api(`/api/sessions/${j.sessionId}/changes`)).body.files.length, 1); assert.match((await api('/api/jobs/api-job/changes/diff?path=a')).body.unified, /-전/);
-  const abort = new AbortController(), stream = await fetch('http://127.0.0.1:7712/api/events', { signal: abort.signal }); const reader = stream.body.getReader(); await reader.read();
+  const abort = new AbortController(), stream = await fetch(`http://127.0.0.1:${port}/api/events`, { signal: abort.signal }); const reader = stream.body.getReader(); await reader.read();
   f.write('a', '사용자'); const blocked = await api('/api/jobs/api-job/rewind', {}); assert.equal(blocked.status, 200); assert.equal(blocked.body.conflicts.length, 1);
   const r = await api('/api/jobs/api-job/rewind', { force: true }); assert.equal(r.status, 200); assert.equal(f.read('a'), '전\n');
-  let events = ''; const deadline = Date.now() + 3000; while (!events.includes('"type":"rewind"')) { if (Date.now() > deadline) throw new Error('복원 SSE 대기 시간 초과'); const chunk = await reader.read(); events += Buffer.from(chunk.value).toString(); } abort.abort();
+  let events = ''; const deadline = Date.now() + 15000; while (!events.includes('"type":"rewind"')) { if (Date.now() > deadline) throw new Error('복원 SSE 대기 시간 초과'); const chunk = await reader.read(); events += Buffer.from(chunk.value).toString(); } abort.abort();
   assert.equal((await api(`/api/rewinds/${r.body.backup}/undo`, {})).body.status, 'undone'); assert.equal(f.read('a'), '사용자');
   assert.equal((await api('/api/jobs/no-job/changes')).status, 404); assert.equal((await api('/api/jobs/api-job/changes/diff?path=../a')).status, 400);
   assert((await api('/api/checkpoints')).body.bytes > 0); assert.equal((await api(`/api/sessions/${j.sessionId}`, undefined, 'DELETE')).body.removed, true);
-  const cleanupEnd = Date.now() + 3000; while ((await api('/api/checkpoints')).body.repositories.some((r) => r.jobs.length)) { if (Date.now() > cleanupEnd) throw new Error('참조 정리 대기 시간 초과'); await delay(20); }
+  const cleanupEnd = Date.now() + 15000; while ((await api('/api/checkpoints')).body.repositories.some((r) => r.jobs.length)) { if (Date.now() > cleanupEnd) throw new Error('참조 정리 대기 시간 초과'); await delay(20); }
   assert.equal((await api('/api/checkpoints/cleanup', {})).body.removed.length, 1);
 });

@@ -14,3 +14,4 @@
 .cp-inline:hover{color:var(--fg) !important}
 .cp-inline.done{color:var(--ok) !important}
 @media (hover:none){.cp-corner{opacity:.75}.cp-inline{opacity:1}}
+

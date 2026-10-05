@@ -30,6 +30,16 @@ try {
     console.log(JSON.stringify(s, null, 2));
   } else if (cmd === 'install') {
     console.log(JSON.stringify(await call('POST', '/api/adobe/install', {}), null, 2));
+  } else if (cmd === 'op' && app) {
+    // 이름 붙은 명령: op premiere status · op aftereffects newComp '{"name":"A","width":1080,"height":1920}'
+    const ns = { premiere: 'pr', pr: 'pr', ppro: 'pr', aftereffects: 'ae', ae: 'ae', aeft: 'ae' }[String(app).toLowerCase()];
+    const name = rest[0], arg = rest[1];
+    if (!ns || !/^[A-Za-z]\w*$/.test(name || '')) throw new Error(`예: op premiere status · op aftereffects newComp '{"name":"A"}'`);
+    let json = '';
+    if (arg) { try { json = JSON.stringify(JSON.parse(arg)); } catch { throw new Error('인자는 JSON 이어야 해요'); } }
+    const r = await call('POST', '/api/adobe/run', { app, script: `return ODDIN.${ns}.${name}(${json});`, timeoutSeconds: Number(opt('timeout')) || 600 });
+    console.log(JSON.stringify(r, null, 2));
+    process.exitCode = r.ok ? 0 : 1;
   } else if (cmd === 'run' && app) {
     const file = opt('file'), code = opt('code');
     if (!file && !code) throw new Error('--code "스크립트" 또는 --file 경로 를 주세요');
@@ -39,7 +49,7 @@ try {
     console.log(JSON.stringify(r, null, 2));
     process.exitCode = r.ok ? 0 : 1;
   } else {
-    console.log('사용법: node scripts/adobe.mjs status | install | run <premiere|aftereffects> (--code "..." | --file 경로) [--timeout 초]');
+    console.log(`사용법: node scripts/adobe.mjs status | install | op <premiere|aftereffects> <명령> ['{JSON 인자}'] | run <premiere|aftereffects> (--code "..." | --file 경로) [--timeout 초]`);
     process.exitCode = 2;
   }
 } catch (e) { console.error(`실패: ${e.message}`); process.exitCode = 1; }

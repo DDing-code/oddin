@@ -149,3 +149,29 @@ test('플러그인 연결 코드(adobe/plugin/bridge.js)가 허브와 실제로 
     assert.ok(seen.some((c) => c.startsWith('ODDIN.run(function () {') && !/[^\x00-\x7e]/.test(c)));
   } finally { ctx.window.ODDINBridge.stop(); b.close(); server.closeAllConnections?.(); server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('앱이 예전 판 도우미를 들고 있으면 새 도우미를 먼저 읽혀 보낸다 (앱을 다시 켜지 않아도 새 명령)', async () => {
+  const b = new AdobeBridge({ installed: (app) => (app === 'premiere' ? { version: '1.1.0', host: 'C:\\ext\\com.oddin.premiere\\host\\oddin.jsx' } : null) });
+  try {
+    b.hello({ app: 'premiere', instance: 'pr-old', version: '1.0.0' });
+    const p = b.run({ app: 'premiere', script: 'return ODDIN.pr.status();' });
+    const r = fakeRes(); b.next({ app: 'premiere', instance: 'pr-old' }, r.res, r.json);
+    assert.equal(r.res.body.cmd.script, '$.evalFile("C:/ext/com.oddin.premiere/host/oddin.jsx");\nreturn ODDIN.pr.status();');
+    b.result({ id: r.res.body.cmd.id, ok: true, result: {} }); await p;
+    // 같은 판이면 그대로
+    b.hello({ app: 'premiere', instance: 'pr-old', version: '1.1.0' });
+    const p2 = b.run({ app: 'premiere', script: 'return 1;' });
+    const r2 = fakeRes(); b.next({ app: 'premiere', instance: 'pr-old' }, r2.res, r2.json);
+    assert.equal(r2.res.body.cmd.script, 'return 1;');
+    b.result({ id: r2.res.body.cmd.id, ok: true, result: 1 }); await p2;
+  } finally { b.close(); }
+});
+
+test('이름 붙은 명령: 도우미에 프리미어·애프터이펙트 명령이 있고 출력 파일은 덮어쓰지 않는다', () => {
+  const src = fs.readFileSync(path.join(root, 'adobe', 'plugin', 'host', 'oddin.jsx'), 'utf8');
+  const pr = src.slice(src.indexOf('ODDIN.pr = {'), src.indexOf('ODDIN.ae = {')), ae = src.slice(src.indexOf('ODDIN.ae = {'));
+  for (const n of ['status', 'open', 'save', 'saveAs', 'importFiles', 'newSequence', 'setActive', 'clips', 'place', 'marker', 'exportMedia']) assert.ok(pr.includes(`\n  ${n}: function`), `pr.${n}`);
+  for (const n of ['status', 'open', 'save', 'newComp', 'importFile', 'layers', 'addLayer', 'addText', 'frame', 'render']) assert.ok(ae.includes(`\n  ${n}: function`), `ae.${n}`);
+  assert.match(src, /File already exists \(pass overwrite:true/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'adobe', 'version.json'), 'utf8')).version, src.match(/ODDIN\.version = '([\d.]+)'/)[1], '도우미 판 = 플러그인 판');
+});

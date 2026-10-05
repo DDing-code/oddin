@@ -70,6 +70,7 @@
 - 두 PC의 ODDIN을 같은 버전으로: 연결된 PC 탭의 PC 줄 "업데이트"(그 PC 허브에 대신 요청), 이 PC 줄 "이 PC 업데이트". 각 줄에 지금 버전(커밋 날짜, 마우스를 올리면 커밋 번호)과 이 PC와 같은지 표시.
 - 허브 폴더에서 `git fetch` → fast-forward `pull`. 커밋 안 한 추적 파일 변경이나 이 PC에만 있는 커밋이 있으면 받지 않는다(409).
 - 받은 파일 중 서버 쪽(`public/`·`docs/`·`tests/`·`desktop/`·`*.md` 밖)이 바뀌었으면 `scripts/restart-hub.mjs --detach` 로 진행 중인 작업이 끝난 뒤 그 허브만 재시작. 화면 파일만 바뀌면 열린 화면이 알아서 새로 읽는다.
+- **지금 바꾸기**(2026-10-05): 재시작을 기다리는 동안 화면 위쪽에 "새 버전이 준비됐어요" 띠(`public/restart-ui.js`, `/api/hub/version`의 `pending`). 버튼을 누르면 `POST /api/hub/restart`가 `jobs.prepareRestart`로 진행 중인 작업에 `resumeOnStart` 표시를 남겨 저장하고 작업자 CLI만 끈 뒤(이후 저장·새 작업·마무리 멈춤) `restart-hub.mjs --detach --now --force`로 허브만 재시작한다. 새 버전이 켜지면 `jobs.resumeAfterRestart`가 작업자 단계에서 멈춘 작업은 같은 CLI 대화(`task.sessionId`)를 이어 쓰며 "다시 이어서" 지시를 붙이고(대화가 없으면 새로), 계획 전이던 작업은 처음부터, 진행 중이던 목표는 다시 진행한다. 다른 PC는 `POST /api/peers/:id/restart`. 시험 서버(HUB_* 환경)는 거절. 시험 `tests/restart-resume.test.mjs`.
 
 ## API
 | 경로 | 설명 |
@@ -83,7 +84,7 @@
 | `GET /api/shared/file?rel=` · `POST /api/shared/file` | 파일 읽기(base64) · 쓰기/지우기(`ifSha`, `backup`) |
 | `POST /api/shared/sync` · `GET /api/shared/status` | 지금 맞추기 · 상태 |
 | `GET/POST /api/shared/setup` | 훅 상태 · 빠진 것 설치 |
-| `GET /api/hub/version[?check=1]` · `POST /api/hub/update` | 이 허브 버전(확인하면 뒤처진 수) · 업데이트 |
+| `GET /api/hub/version[?check=1]` · `POST /api/hub/update` · `POST /api/hub/restart` | 이 허브 버전(확인하면 뒤처진 수, `pending`=재시작 대기) · 업데이트 · 지금 바꾸기 |
 | `GET /api/peers/:id/version` · `POST /api/peers/:id/update` | 연결된 PC 버전 확인 · 업데이트(대신 요청) |
 
 시험: `tests/hub-update.test.mjs`(임시 git 저장소로 받기·재시작 판단·거절), `tests/shared-sync.test.mjs`(허브 두 개 7716·7717, 처음 맞추기·한쪽 변경·목록 합치기·충돌·지우기·쓰기 검사·새 PC 훅 설치).

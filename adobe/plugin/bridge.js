@@ -69,6 +69,7 @@
   }
 
   function runCommand(cmd) {
+    try { var fresh = JSON.parse(fs.readFileSync(path.join(HERE, 'app.json'), 'utf8')); if (fresh.version) conf.version = fresh.version; } catch (e) {}
     var code = cmd.script || '';
     if (!code && cmd.file) {
       try { code = fs.readFileSync(cmd.file, 'utf8').replace(/^﻿/, ''); } catch (e) { return Promise.resolve({ ok: false, error: '스크립트 파일을 읽지 못했어요: ' + e.message }); }

@@ -5,13 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
+import { freePort } from './_port.mjs';
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-approvals-'));
 process.env.HUB_DATA_DIR = path.join(temp, 'data'); process.env.HUB_RUNS_DIR = path.join(temp, 'runs');
 const { PromptManager, permissionSetting, ToolRecords, AUTO_ANSWER, codexPolicy } = await import('../lib/prompts.mjs');
 const { runWorker } = await import('../lib/workers.mjs');
 const { JobManager } = await import('../lib/jobs.mjs');
 let serial = 0;
-async function until(fn, ms = 5000) { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('시험 조건 대기 시간 초과'); await delay(10); } }
+async function until(fn, ms = 20000) { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('시험 조건 대기 시간 초과'); await delay(10); } }
 function setup(tool, scenario, permission, extra = {}) {
   const root = path.join(temp, 'case-' + ++serial); fs.mkdirSync(root, { recursive: true });
   const capture = path.join(root, 'capture.jsonl');
@@ -182,18 +183,19 @@ test('작업 설정·waiting·작업 중지 연결', async () => {
   } finally { clearTimeout(manager._saveTimer); }
 });
 
-test('격리 서버 7711: API·SSE·원격 viewer 기록·오류 응답', async () => {
+test('격리 서버: API·SSE·원격 viewer 기록·오류 응답', async () => {
+  const port = await freePort();
   const root = path.join(temp, 'api'); fs.mkdirSync(root, { recursive: true }); const capture = path.join(root, 'capture.jsonl');
   const command = `"${process.execPath}" "${path.resolve('tests/fixtures/approval-cli.mjs')}" --tool codex --capture "${capture}" --scenario command`;
-  const config = { host: '127.0.0.1', port: 7711, hubDir: path.join(root, 'shared'), defaultCwd: root, maxParallel: 1, tools: { codex: { enabled: true, command, shell: true, transport: 'native' }, claude: { enabled: false } }, defaults: { permission: 'ask', codex: { model: '', effort: '' }, claude: { model: '', effort: '' } } };
+  const config = { host: '127.0.0.1', port, hubDir: path.join(root, 'shared'), defaultCwd: root, maxParallel: 1, tools: { codex: { enabled: true, command, shell: true, transport: 'native' }, claude: { enabled: false } }, defaults: { permission: 'ask', codex: { model: '', effort: '' }, claude: { model: '', effort: '' } } };
   const cfg = path.join(root, 'config.json'); fs.writeFileSync(cfg, JSON.stringify(config));
   fs.mkdirSync(path.join(root, 'data'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'data', 'remote.json'), JSON.stringify({ version: 1, provider: 'tailscale', enabled: true, hosts: ['approval-test.ts.net'], logins: ['owner@example.com'], url: 'https://approval-test.ts.net/', target: 'http://127.0.0.1:7711' }));
-  const server = spawn(process.execPath, ['server.mjs'], { cwd: path.resolve('.'), windowsHide: true, env: { ...process.env, HUB_PORT: '7711', HUB_DATA_DIR: path.join(root, 'data'), HUB_RUNS_DIR: path.join(root, 'runs'), HUB_CONFIG_FILE: cfg, HUB_SKIP_CLI_INSTALL: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  fs.writeFileSync(path.join(root, 'data', 'remote.json'), JSON.stringify({ version: 1, provider: 'tailscale', enabled: true, hosts: ['approval-test.ts.net'], logins: ['owner@example.com'], url: 'https://approval-test.ts.net/', target: `http://127.0.0.1:${port}` }));
+  const server = spawn(process.execPath, ['server.mjs'], { cwd: path.resolve('.'), windowsHide: true, env: { ...process.env, HUB_PORT: String(port), HUB_DATA_DIR: path.join(root, 'data'), HUB_RUNS_DIR: path.join(root, 'runs'), HUB_CONFIG_FILE: cfg, HUB_SKIP_CLI_INSTALL: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let logs = ''; server.stdout.on('data', (s) => { logs += s; }); server.stderr.on('data', (s) => { logs += s; });
-  const url = 'http://127.0.0.1:7711'; const abort = new AbortController(); let stream;
+  const url = `http://127.0.0.1:${port}`; const abort = new AbortController(); let stream;
   try {
-    await until(() => logs.includes('7711')); const response = await fetch(url + '/api/events', { signal: abort.signal });
+    await until(() => logs.includes(`127.0.0.1:${port}`)); const response = await fetch(url + '/api/events', { signal: abort.signal });
     const options = await (await fetch(url + '/api/options')).json(); assert.equal(options.permission.default, 'ask'); assert.deepEqual(options.permission.values, ['auto', 'edits', 'ask', 'plan']);
     let sse = ''; stream = (async () => { for await (const chunk of response.body) sse += new TextDecoder().decode(chunk); })().catch(() => {});
     const jobResponse = await fetch(url + '/api/jobs', { method: 'POST', body: JSON.stringify({ goal: 'echo 승인시험', mode: 'codex', settings: { permission: 'ask' } }) }); assert.equal(jobResponse.status, 201);

@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { URL } from 'node:url';
 import { createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { ROOT, DATA_DIR, readJson, readText } from './lib/util.mjs';
 import { JobManager, publicJob } from './lib/jobs.mjs';
 import { INTERCEPT_CAPABILITIES } from './lib/intercepts.mjs';
@@ -32,9 +33,9 @@ import { DriveFolders } from './lib/drive-folders.mjs';
 import { DriveHub } from './lib/drive-hub.mjs';
 import { Federation } from './lib/federation.mjs';
 import { FileAccess, fileRoots } from './lib/file-access.mjs';
-import { AdobeBridge } from './lib/adobe-bridge.mjs';
+import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
-import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins } from './lib/adobe-install.mjs';
+import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -54,7 +55,7 @@ jobs.on('event', (ev) => broadcast(ev));
 // 입력창 아래 "권한" 메뉴에서 "모든 폴더"를 켜면 이 PC의 모든 드라이브. 열기·허브 안 보기·/view/·폴더 목록이 함께 쓴다
 const fileAccess = new FileAccess({ file: path.join(DATA_DIR, 'file-access.json') });
 // 프리미어·애프터이펙트 안 ODDIN 플러그인과의 연결(lib/adobe-bridge.mjs, 플러그인 소스 adobe/)
-const adobe = new AdobeBridge({ emit: (ev) => broadcast(ev) });
+const adobe = new AdobeBridge({ emit: (ev) => broadcast(ev), installed: installedHost });
 // 계정 칸 이름·사진(lib/profile.mjs)
 const profile = new Profile({ dir: DATA_DIR });
 const openRoots = () => fileRoots([config.defaultCwd, ROOT, config.hubDir, ...jobs.workFolders(), ...projectsList().map((p) => p.path), hubInfo()?.root], fileAccess.read());
@@ -212,10 +213,21 @@ const server = http.createServer(async (req, res) => {
     // 업데이트: 이 허브(/api/hub/…)와 연결된 PC(/api/peers/:id/update — 그 PC 허브에 대신 요청)
     if (p === '/api/hub/version' && req.method === 'GET') return json(res, url.searchParams.get('check') === '1' ? await checkUpdate(ROOT) : runningCommit(ROOT));
     if (p === '/api/hub/update' && req.method === 'POST') { await readBody(req); const r = await applyUpdate(ROOT); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
-    const peerUpdate = p.match(/^\/api\/peers\/([\w-]+)\/(update|version)$/);
+    // 지금 바꾸기: 진행 중인 작업을 멈춰 저장하고(새 버전에서 같은 대화로 이어 함) 이 허브만 바로 재시작한다
+    if (p === '/api/hub/restart' && req.method === 'POST') {
+      await readBody(req);
+      if (process.env.HUB_SKIP_CLI_INSTALL === '1' || process.env.HUB_DATA_DIR || process.env.HUB_PORT) return fail(res, '시험 서버는 재시작하지 않아요', 409);
+      const stopped = jobs.prepareRestart();
+      const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'restart-hub.mjs'), '--detach', '--now', '--force'], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true });
+      child.on('error', () => {}); child.unref();
+      broadcast({ type: 'hub-restarting', jobs: stopped.length });
+      return json(res, { ok: true, stopped });
+    }
+    const peerUpdate = p.match(/^\/api\/peers\/([\w-]+)\/(update|version|restart)$/);
     if (peerUpdate) {
       const peer = peers.get(peerUpdate[1]); if (!peer) return fail(res, '연결된 PC를 찾지 못했어요', 404);
       if (peerUpdate[2] === 'version' && req.method === 'GET') return json(res, await peers.call(peer, '/api/hub/version?check=1', { timeoutMs: 90_000 }));
+      if (peerUpdate[2] === 'restart' && req.method === 'POST') { await readBody(req); return json(res, await peers.call(peer, '/api/hub/restart', { method: 'POST', body: {}, timeoutMs: 30_000 })); }
       if (peerUpdate[2] === 'update' && req.method === 'POST') { await readBody(req); const r = await peers.call(peer, '/api/hub/update', { method: 'POST', body: {}, timeoutMs: 180_000 }); peers.check(peer).then(() => broadcast({ type: 'peers', ...peersView() })); return json(res, r); }
     }
     // 드라이브 작업 폴더
@@ -295,6 +307,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/adobe/result' && req.method === 'POST') return json(res, adobe.result(await readBody(req)));
     // 앱 안 스크립트는 PC 명령까지 실행할 수 있어 이 PC에서 온 요청만 받는다(원격 접속 거절). 설치는 다른 PC에서 대신 눌러도 된다
     if (p === '/api/adobe/run' && req.hubViewer?.remote) return fail(res, '어도비 명령은 그 PC에서만 보낼 수 있어요', 403);
+    // 연결 시험: 정해진 읽기 명령(열린 프로젝트 알아보기)만 실행하므로 다른 PC에서도 부를 수 있다
+    if (p === '/api/adobe/check' && req.method === 'GET') { const app = appKey(url.searchParams.get('app') || 'premiere'); const script = url.searchParams.get('op') === 'status' ? (app === 'aftereffects' ? 'return ODDIN.ae.status();' : 'return ODDIN.pr.status();') : 'return ODDIN.info();'; return json(res, await adobe.run({ app: app || 'premiere', script, timeoutSeconds: 20 })); }
     if (p === '/api/adobe/run' && req.method === 'POST') return json(res, await adobe.run(await readBody(req)));
     if (p === '/api/adobe/install' && req.method === 'POST') { await readBody(req); const r = installAdobePlugins(ROOT, { port: config.port }); broadcast({ type: 'adobe', ...adobe.status(), install: adobeInstallStatus(ROOT) }); return json(res, r); }
     // 파일 열기·보기 범위: 허브가 아는 폴더만(기본) / 모든 폴더
@@ -415,6 +429,8 @@ server.listen(config.port, config.host || '127.0.0.1', () => {
   const settings = remote.readConfig();
   console.log(settings.enabled ? `원격 접속: ${settings.url} (허용 계정 ${settings.logins.length}개)` : '원격 접속: 꺼짐');
   if (!LOOPBACK.has(config.host || '127.0.0.1')) console.warn('허브는 127.0.0.1에만 바인딩해야 합니다. 비루프백 요청은 원격 게이트에서 차단합니다');
+  // "지금 바꾸기"로 멈췄던 작업을 새 버전에서 이어 한다 (다른 준비가 끝난 뒤)
+  setTimeout(() => { try { const ids = jobs.resumeAfterRestart(); if (ids.length) console.log(`새 버전에서 이어 하는 작업: ${ids.join(', ')}`); } catch (e) { console.warn('작업 이어 하기 실패:', e.message); } }, 1500);
   // 어도비 플러그인을 이미 설치한 PC면 ODDIN 업데이트와 함께 플러그인도 새 판으로 (시험 서버는 건너뜀)
   if (process.env.HUB_SKIP_CLI_INSTALL !== '1') { try { const r = refreshAdobePlugins(ROOT, { port: config.port }); if (r) console.log(`어도비 플러그인 갱신: ${r.apps.map((a) => `${a.app} ${a.ok ? r.version : '실패 ' + a.error}`).join(', ')}`); } catch (e) { console.warn('어도비 플러그인 갱신 실패:', e.message); } }
 });

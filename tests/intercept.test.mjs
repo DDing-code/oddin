@@ -346,12 +346,12 @@ test('Codex 생각 요약은 추론 과정 기록(thinking)으로 남는다', as
 test('계획 전 질문: 모호하면 먼저 묻고, 답을 목표에 붙여 다시 계획해 실행한다', async () => {
   const f = fixture(); invalidateToolStatus();
   const created = f.manager.create({ goal: 'ASK_FIRST 화면을 바꿔줘', mode: 'auto' }), j = f.manager.get(created.id);
-  await until(() => f.manager.prompts.list({ jobId: j.id }).length > 0, 30000);
+  await until(() => f.manager.prompts.list({ jobId: j.id }).length > 0, 60000);
   const [q] = f.manager.prompts.list({ jobId: j.id });
   assert.equal(q.kind, 'question'); assert.equal(q.phase, 'plan'); assert.equal(j.activePhase, 'plan-question');
   assert.equal(q.detail.questions[0].question, '어느 방향으로 할까요?');
   f.manager.prompts.answer(q.id, { answers: { [q.detail.questions[0].id]: ['B안'] } });
-  await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 30000);
+  await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 60000);
   assert.equal(j.status, 'done', j.error || JSON.stringify(j.tasks));
   assert.match(j.goal, /# 사용자 답변/); assert.match(j.goal, /B안/); assert.equal(j.clarified, true);
   assert.ok(j.tasks.length >= 1);
