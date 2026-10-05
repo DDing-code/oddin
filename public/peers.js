@@ -23,7 +23,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   const OLD_SERVER = '이 PC의 ODDIN 서버가 아직 재시작 전(예전 버전)이에요. 진행 중인 작업이 끝나면 자동으로 재시작되고, 그 뒤에 쓸 수 있어요';
   const why = (e) => (/^없는 API$/.test(String(e?.message || '')) ? OLD_SERVER : String(e?.message || e));
   async function load() {
-    if (P.loading) return; P.loading = true;
+    if (P.loading) return; P.loading = true; P.tried = true;
     try { [P.view, P.setup, P.folders, P.drive, P.hub] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null), call('/api/drive-folders').catch(() => null), call('/api/drive-hub').catch(() => null)]); P.error = ''; }
     catch (e) { P.error = why(e); }
     P.loading = false; refresh();
@@ -37,6 +37,8 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   }
 
   function render(body) {
+    // 실시간 이벤트가 연결된 PC 목록만 먼저 채웠어도 나머지(훅·공유 폴더·드라이브)는 한 번 불러온다
+    if (P.view && !P.tried) load();
     if (!P.view && !P.error) { load(); body.innerHTML = '<div class="pc-pane"><div class="ch-skel" aria-busy="true"><i></i><i></i><i></i></div></div>'; return; }
     if (!P.view) { body.innerHTML = `<div class="pc-pane"><div class="mem-cur err">${IC('alert')}<span>${P.error === OLD_SERVER ? '' : '불러오지 못했어요: '}${E(P.error)}</span></div></div>`; return; }
     const v = P.view, sync = new Map((v.sync?.peers || []).map((x) => [x.id, x]));
@@ -83,7 +85,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
           const label = a.common ? '자산 · 공용' : `자산 · ${a.pc} · ${a.folder}`;
           h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(label)}</b><span class="pc-url">파일 ${a.files}개</span><span class="grow"></span><button class="btn sm" data-dv-work="${E(a.path)}" title="이 폴더로 새 세션을 열어요">여기서 작업</button><button class="btn sm" data-dv-open="${E(a.path)}" title="${E(a.path)}">열기</button></div></div>`;
         }
-        h += '<p class="pc-hint">공유 기억/ = 두 PC가 쓰는 지침·메모리 사본(각 PC의 ODDIN이 20초마다·바뀔 때마다 맞춤). 자산/<PC>/<폴더>/ = 각 PC가 공유하는 폴더를 원본 PC가 올린 것. 자산/공용/ = 함께 쓸 파일을 직접 넣는 곳. 다른 PC도 이 폴더를 쓰면 PC끼리 직접 맞추기는 쉬고 드라이브로만 맞춰요.</p>';
+        h += '<p class="pc-hint">공유 기억/ = 두 PC가 쓰는 지침·메모리 사본(각 PC의 ODDIN이 20초마다·바뀔 때마다 맞춤). 자산/&lt;PC&gt;/&lt;폴더&gt;/ = 각 PC가 공유하는 폴더를 원본 PC가 올린 것. 자산/공용/ = 함께 쓸 파일을 직접 넣는 곳. 다른 PC도 이 폴더를 쓰면 PC끼리 직접 맞추기는 쉬고 드라이브로만 맞춰요.</p>';
       }
     }
 
