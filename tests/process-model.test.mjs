@@ -137,7 +137,7 @@ test('섹션은 계획 다음 작업 순서이고 요청·호출은 섹션을 �
   const logs = new Map([['j/plan', [{ kind: 'message', at: at(0), text: '계획' }]], ['j/t1', [tool('same')]], ['j/t2', [tool('same', 'Edit')]]]);
   const model = M.build(j, logs, [prompt({ taskId: undefined }), prompt({ id: 'p2', taskId: 't2' }), prompt({ id: 'other', jobId: '다른작업' })]);
   assert.deepEqual(plain(model.sections.map((s) => s.taskId)), ['plan', 't2', 't1']);
-  assert.deepEqual(plain(model.counts), { steps: 5, commands: 1, edits: 1, errors: 0 }); assert.equal(model.multi, true);
+  assert.deepEqual(plain(model.counts), { steps: 5, commands: 1, edits: 1, errors: 0, thoughts: 1 }); assert.equal(model.multi, true);
   assert.equal(model.sections[0].items.filter((e) => e.kind === 'prompt').length, 1);
 });
 
@@ -212,12 +212,51 @@ function renderer() {
 
 test('화면 렌더러는 기본 접힘과 머리 요약·단일 작업 타임라인을 연결한다', () => {
   const r = renderer(), j = job();
-  let html = r.render(j, [tool('a')]); assert.match(html, /추론 과정/); assert.match(html, /1단계/); assert.match(html, /명령 1/); assert.doesNotMatch(html, /class="proc-body"/);
+  let html = r.render(j, [tool('a')]); assert.match(html, /생각 과정/); assert.doesNotMatch(html, /명령 1/); assert.doesNotMatch(html, /class="proc-body"/);
   r.state.open.add('proc:j'); html = r.render(j, [tool('a')]); assert.match(html, /class="proc-body"/); assert.doesNotMatch(html, /class="proc-sec-h"/); assert.match(html, /aria-controls=/);
+  r.state.open.add('procdetail:j'); html = r.render(j, [tool('a')]); assert.match(html, /1단계/); assert.match(html, /명령 1/); assert.match(html, /aria-pressed="true"/);
+});
+
+test('생각만 보기(기본)는 생각·중간 설명만 보이고 명령·수정 원문은 숨긴다', () => {
+  const r = renderer(), j = job({ status: 'done', finishedAt: at(9), tasks: [{ id: 't1', title: '구현', assignee: 'codex', status: 'done', startedAt: at(0) }] }); r.state.open.add('proc:j');
+  const records = [
+    { kind: 'message', at: at(0), text: '먼저 기존 코드를 확인하겠습니다.' },
+    { kind: 'thinking', at: at(1), text: '**Reviewing design outputs**' },
+    tool('a', 'Bash', 2, { input: { command: 'npm run 비밀명령' }, output: '출력' }),
+    { kind: 'thinking', at: at(3), text: '**Refining layout**\n\n본문 설명입니다.' },
+    tool('b', 'Edit', 4, { diff: [{ path: 'public/app.js', unified: '+줄' }] }),
+    { kind: 'message', at: at(5), text: '{"summary":"계획 요약","tasks":[]}' },
+  ];
+  const html = r.render(j, records);
+  for (const pattern of [/먼저 기존 코드를 확인하겠습니다/, /Reviewing design outputs/, /Refining layout/, /본문 설명입니다/, /계획 요약/, /작업 기록/]) assert.match(html, pattern);
+  for (const pattern of [/비밀명령/, /public\/app\.js/, /tc-h/, /&quot;summary&quot;/]) assert.doesNotMatch(html, pattern);
+  // 이어진 생각 두 조각은 한 덩어리로
+  assert.equal((html.match(/class="pt pt-think"/g) || []).length, 1);
+  // 작업 기록 단추로 전체 기록을 펼치고, 다시 누르면 생각만으로
+  const button = { dataset: { procMode: 'j' }, id: 'procmode-j', disabled: false, hasAttribute: (name) => name === 'data-proc-mode' };
+  const event = { target: { closest: (selector) => selector === '.proc' ? { dataset: { proc: 'j' } } : selector === 'button' ? button : null } };
+  r.events.click(event); assert.match(r.scope.lastRender, /비밀명령/); assert.match(r.scope.lastRender, /생각만/);
+  r.events.click(event); assert.doesNotMatch(r.scope.lastRender, /비밀명령/);
+});
+
+test('생각만 보기: 진행 중에는 명령 대신 하는 일 종류와 마지막 생각을 보여 준다', () => {
+  const r = renderer(), j = job();
+  const records = [{ kind: 'thinking', at: at(0), text: '**Planning the fix**' }, { kind: 'tool', callId: 'run', name: 'Bash', at: at(1), input: { command: 'git push --force' } }];
+  let html = r.render(j, records); assert.match(html, /명령 실행 중/); assert.match(html, /Planning the fix/); assert.doesNotMatch(html, /git push/);
+  r.state.open.add('proc:j'); html = r.render(j, records); assert.match(html, /pt-live/); assert.doesNotMatch(html, /git push/);
+  html = r.render(job({ status: 'done', tasks: [{ id: 't1', title: '구현', assignee: 'codex', status: 'done', startedAt: at(0) }] }), [tool('a')]); assert.match(html, /남긴 생각이 없어요 · 명령 1개는 작업 기록에서/);
+});
+
+test('생각 글 나누기: Codex 제목·본문, 제목만 여러 줄, Claude 글', () => {
+  assert.deepEqual(plain(M.parseThought('**A 제목**\n**B 제목.**')), [{ title: 'A 제목', body: '' }, { title: 'B 제목', body: '' }]);
+  assert.deepEqual(plain(M.parseThought('**제목**\n\n첫 줄\n둘째 줄')), [{ title: '제목', body: '첫 줄\n둘째 줄' }]);
+  assert.deepEqual(plain(M.parseThought('그냥 생각입니다.\n\n\n\n다음 생각.')), [{ title: '', body: '그냥 생각입니다.\n\n다음 생각.' }]);
+  assert.deepEqual(plain(M.parseThought('**하나** **둘**')), [{ title: '하나', body: '' }, { title: '둘', body: '' }]);
+  assert.equal(M.narration('{"summary":"요약","tasks":[]}'), '요약'); assert.equal(M.narration('{"notes":{}}'), ''); assert.equal(M.narration('그냥 글'), '그냥 글');
 });
 
 test('명령 출력 펼침은 전문·폴더·긴 출력·종료 코드·키보드 스크롤을 표시한다', () => {
-  const r = renderer(); r.state.open.add('proc:j'); r.p.toolOpen.add('a');
+  const r = renderer(); r.state.open.add('procdetail:j'); r.state.open.add('proc:j'); r.p.toolOpen.add('a');
   const records = [tool('a', 'Bash', 0, { status: 'error', input: { command: 'npm test\ngit status', cwd: 'F:/자료' }, output: Array.from({ length: 20 }, (_, i) => `출력 ${i}`).join('\n') + '\nexit 2' })];
   let html = r.render(job(), records);
   for (const pattern of [/tc-cmd/, /F:\/자료/, /전체 보기 \(21줄\)/, /종료 코드 2/, /tabindex="0"/, /\+1줄/]) assert.match(html, pattern);
@@ -225,7 +264,7 @@ test('명령 출력 펼침은 전문·폴더·긴 출력·종료 코드·키보�
 });
 
 test('파일 수정 펼침은 차이 수치와 긴 차이의 전체 보기·출력 대체를 표시한다', () => {
-  const r = renderer(); r.state.open.add('proc:j'); r.p.toolOpen.add('a');
+  const r = renderer(); r.state.open.add('procdetail:j'); r.state.open.add('proc:j'); r.p.toolOpen.add('a');
   const records = [tool('a', 'Edit', 0, { diff: [{ path: 'public/app.js', unified: Array.from({ length: 45 }, (_, i) => `+줄 ${i}`).join('\n') }] })];
   const html = r.render(job(), records); assert.match(html, /\+45/); assert.match(html, /전체 보기 \(45줄\)/); assert.match(html, /파일 변경 내용/); assert.doesNotMatch(html, />\+줄 44</);
   assert.match(r.render(job(), [tool('a', 'Edit', 0, { output: '수정 완료' })]), /수정 완료/);
@@ -241,7 +280,7 @@ test('승인 요청은 카드 끝 기록 없이 대기·거절·만료를 같은
 });
 
 test('긴 타임라인은 최근 200개만 표시하고 버튼으로 200개씩 더 보여 준다', () => {
-  const r = renderer(); r.state.open.add('proc:j');
+  const r = renderer(); r.state.open.add('procdetail:j'); r.state.open.add('proc:j');
   const records = Array.from({ length: 450 }, (_, i) => ({ kind: 'message', at: at(i), text: `기록 ${i}` }));
   let html = r.render(job(), records); assert.match(html, /이전 250단계 보기/); assert.doesNotMatch(html, />기록 249</); assert.match(html, />기록 250</);
   const button = { dataset: { procPrevious: 'j/t1' }, disabled: false, id: '이전버튼', hasAttribute: (name) => name === 'data-proc-previous' };
@@ -250,7 +289,7 @@ test('긴 타임라인은 최근 200개만 표시하고 버튼으로 200개씩 �
 });
 
 test('모두 펼치기·접기는 섹션·묶음·도구에 적용하고 전체 출력 상태는 보존한다', () => {
-  const r = renderer(); r.state.open.add('proc:j'); r.p.toolFull.add('a');
+  const r = renderer(); r.state.open.add('procdetail:j'); r.state.open.add('proc:j'); r.p.toolFull.add('a');
   const j = job({ mode: 'both', tasks: [{ id: 't1', title: '하나', status: 'done', assignee: 'codex' }, { id: 't2', title: '둘', status: 'done', assignee: 'claude' }] });
   r.render(j, [tool('a', 'Read'), tool('b', 'Read'), tool('c', 'Read')]);
   const button = { dataset: { procAll: 'j' }, id: 'procall-j', disabled: false, hasAttribute: (name) => name === 'data-proc-all' };
@@ -260,7 +299,7 @@ test('모두 펼치기·접기는 섹션·묶음·도구에 적용하고 전체 
 });
 
 test('위로 스크롤한 상태의 새 단계만 알리고 바닥에서는 알약을 숨긴다', () => {
-  const r = renderer(); r.state.open.add('proc:j'); r.render(job(), [{ kind: 'message', at: at(0), text: '처음' }]);
+  const r = renderer(); r.state.open.add('procdetail:j'); r.state.open.add('proc:j'); r.render(job(), [{ kind: 'message', at: at(0), text: '처음' }]);
   const body = { scrollHeight: 300, scrollTop: 20, clientHeight: 100 }; r.nodes.set('procb-j', body);
   let html = r.render(job(), [{ kind: 'message', at: at(0), text: '처음' }, { kind: 'message', at: at(1), text: '추가' }]);
   assert.match(html, /새 단계 1개 ↓/); assert.match(html, /data-proc-new="j" >새 단계/);
@@ -269,13 +308,13 @@ test('위로 스크롤한 상태의 새 단계만 알리고 바닥에서는 알�
 });
 
 test('예전 도구 기록도 타임라인의 기존 줄 렌더러로 보인다', () => {
-  const r = renderer(); r.state.open.add('proc:j');
+  const r = renderer(); r.state.open.add('procdetail:j'); r.state.open.add('proc:j');
   const html = r.render(job(), [{ kind: 'tool', name: 'Bash', detail: 'git status', at: at(1) }]);
   assert.match(html, /k-legacy/); assert.match(html, /git status/); assert.match(html, /1단계/);
 });
 
 test('도구 본문에서 Esc는 카드만 접고 그 밖에서는 과정 블록을 접는다', () => {
-  const r = renderer(); r.state.open.add('proc:j'); r.p.toolOpen.add('a'); r.render(job(), [tool('a', 'Bash', 0, { output: '결과' })]);
+  const r = renderer(); r.state.open.add('procdetail:j'); r.state.open.add('proc:j'); r.p.toolOpen.add('a'); r.render(job(), [tool('a', 'Bash', 0, { output: '결과' })]);
   const proc = { dataset: { proc: 'j' } }, button = { dataset: { procTool: 'a' }, id: '카드머리' }, card = { querySelector: () => button };
   r.events.keydown({ key: 'Escape', target: { closest: (selector) => selector === '.proc' ? proc : selector === '.tc-b' ? { closest: () => card } : null }, preventDefault() {}, stopPropagation() {} });
   assert.equal(r.p.toolOpen.has('a'), false); assert.equal(r.state.open.has('proc:j'), true);

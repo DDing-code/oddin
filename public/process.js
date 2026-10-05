@@ -11,6 +11,13 @@
   function redraw(jobId, focusId) { rerenderJob(jobId); mount(); if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true }); }
   const chev = (open) => `<span class="chev ${open ? 'turned' : ''}">${icon('right')}</span>`;
   const stamp = (e, s) => `<span class="pi-m" title="${esc(hm(e.at))}">${esc(M.offset(s.startedAt, e.at))}</span>`;
+  // 기본은 생각만 보기. "작업 기록"을 누른 작업만 명령·수정까지 전부 보여 준다
+  const detailOn = (jobId) => S.open.has(`procdetail:${jobId}`);
+  const inline = (s) => esc(s).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  function nowThink(p, multi) {
+    if (!p || !p.text && !p.activity) return '';
+    return `<span class="proc-now">${multi ? tag(p.assignee) : ''}${p.activity ? `<em>${esc(p.activity)}</em>${p.text ? ' · ' : ''}` : ''}${esc(p.text)}</span>`;
+  }
   function summary(c, tasks = 0) {
     const base = [tasks > 1 ? `작업 ${tasks}개` : '', c.steps ? `${c.steps}단계` : ''].filter(Boolean).join(' · ');
     return base + [c.commands ? `명령 ${c.commands}` : '', c.edits ? `수정 ${c.edits}` : '', c.errors ? `오류 ${c.errors}` : ''].map((text, i) => text ? `<span class="opt ${i === 2 ? 'c-err' : ''}">${base || i > 0 && c.commands ? ' · ' : ''}${text}</span>` : '').join('');
@@ -95,6 +102,21 @@
       return `<li class="proc-group ${open ? 'open' : ''} ${e.kind === 'warnings' ? 'c-warn' : ''}"><button type="button" class="pi-h" id="${domId(e.id)}-h" data-proc-toggle="${esc(key)}" aria-expanded="${open}" aria-controls="${domId(e.id)}-b"><span class="pi-ic">${icon(e.kind === 'warnings' ? 'alert' : 'eye')}</span><span class="pi-c">${esc(e.label)}</span><span class="tc-m ${e.status === 'error' ? 'err' : ''}">${e.status === 'running' ? '<span class="spinner"></span>' : e.kind === 'group' ? icon(e.status === 'error' ? 'alert' : 'check') : ''}${e.kind === 'group' ? duration(e.startedAt, e.endedAt, e.status === 'running', true) : ''}${chev(open)}</span></button><div id="${domId(e.id)}-b" ${open ? '' : 'hidden'}>${e.kind === 'group' ? `<ol class="proc-tl">${rowsHtml(e.items, s)}</ol>` : `<div class="proc-warnings">${e.items.map((w) => `<pre>${esc(w.text)}</pre>`).join('')}</div>`}</div></li>`;
     }).join('');
   }
+  // 생각 한 덩어리(Claude·Codex 생각) 또는 중간 설명 한 단락. 길면 접어 두고 "더 보기"
+  function thoughtHtml(b, s) {
+    if (b.kind === 'prompt') return promptHtml(b, s);
+    if (b.kind !== 'thought' && b.kind !== 'say') return textHtml(b, s);
+    const open = S.open.has(b.id), say = b.kind === 'say', lines = say ? 8 : 6;
+    const body = say ? md(b.text, S.jobs.get(s.key.split('/')[0])?.cwd) : b.parts.map((p) => `<p>${p.title ? `<b class="th-t">${inline(p.title)}</b>` : ''}${p.body ? `<span class="th-b">${inline(p.body)}</span>` : ''}</p>`).join('');
+    return `<li class="pt ${say ? 'pt-say' : 'pt-think'}" title="${esc(hm(b.at))}"><div id="${domId(b.id)}-b" class="pt-c ${say ? 'md' : ''}" data-pi-line-limit="${lines}" data-pi-open="${open}" style="--pi-lines:${lines}">${body}</div><button type="button" class="tc-more" id="${domId(b.id)}-h" data-proc-text="${esc(b.id)}" aria-expanded="${open}" aria-controls="${domId(b.id)}-b" hidden>${open ? '접기' : '더 보기'}</button></li>`;
+  }
+  function thinkListHtml(s, hidden, shown) {
+    const loading = !S.loadedLogs.has(s.key) && !S.logs.has(s.key), live = M.active(s.status);
+    const did = [s.counts.commands ? `명령 ${s.counts.commands}개` : '', s.counts.edits ? `수정 ${s.counts.edits}개` : ''].filter(Boolean).join(' · ');
+    const empty = shown.length || live ? '' : `<li class="proc-empty">${loading ? '기록을 불러오는 중' : s.items.length ? `남긴 생각이 없어요${did ? ` · ${did}는 작업 기록에서 볼 수 있어요` : ''}` : '기록이 없어요'}</li>`;
+    const tail = live ? `<li class="pt pt-live"><span class="spinner"></span>${esc(s.thinkPreview?.activity || (s.waiting ? '답을 기다리는 중' : '생각하는 중'))}</li>` : '';
+    return `${hidden ? `<button type="button" class="tc-more proc-previous" id="${domId(s.key)}-previous" data-proc-previous="${esc(s.key)}#th">이전 생각 ${hidden}개 보기</button>` : ''}<ol class="proc-th">${shown.map((b) => thoughtHtml(b, s)).join('')}${empty}${tail}${endHtml(s)}</ol>`;
+  }
   function endHtml(s) {
     if (!M.terminal(s.status)) return '';
     const text = s.status === 'done' ? `완료 · ${M.elapsed(s.startedAt, s.finishedAt)}` : s.status === 'failed' ? `실패${s.error ? ' · ' + String(s.error).split('\n')[0] : ''}` : { cancelled: '여기서 중지됨', interrupted: '여기서 중단됨', skipped: '건너뜀' }[s.status];
@@ -103,27 +125,39 @@
   const sectionOpen = (s, m, job) => !m.multi || openFor(`proc:${s.key}`, M.active(s.status) || s.waiting || s.status === 'failed' || s.counts.errors > 0 && M.active(job.status));
   const shownRows = (s) => M.groupItems(s.items.slice(-(limits.get(s.key) || 200)), s.key);
   function sectionHtml(s, model, job) {
-    const key = `proc:${s.key}`, open = sectionOpen(s, model, job);
-    const limit = limits.get(s.key) || 200, hidden = Math.max(0, s.items.length - limit), shown = hidden ? M.groupItems(s.items.slice(hidden), s.key) : s.rows;
-    const loading = !S.loadedLogs.has(s.key) && !S.logs.has(s.key);
-    return `<section class="proc-sec ${open ? 'open' : ''}" data-proc-sec="${esc(s.key)}">${model.multi ? `<button type="button" class="proc-sec-h" id="${domId(s.key)}-h" data-proc-toggle="${esc(key)}" aria-expanded="${open}" aria-controls="${domId(s.key)}-b" aria-label="추론 과정 · ${esc(s.title)}">${stIcon(s.status)}${tag(s.assignee)}<span class="proc-title">${esc(s.title)}</span>${M.active(s.status) ? now(s.preview) : `<span class="proc-sum">${summary(s.counts)} · ${duration(s.startedAt, s.finishedAt)}</span>`}${chev(open)}</button>` : ''}<div id="${domId(s.key)}-b" ${open ? '' : 'hidden'}>${hidden ? `<button type="button" class="tc-more proc-previous" id="${domId(s.key)}-previous" data-proc-previous="${esc(s.key)}">이전 ${hidden}단계 보기</button>` : ''}<ol class="proc-tl">${s.items.length ? rowsHtml(shown, s) : `<li class="proc-empty">${loading ? '기록을 불러오는 중' : M.active(s.status) ? '시작하는 중' : '기록이 없어요'}</li>`}${endHtml(s)}</ol></div></section>`;
+    const key = `proc:${s.key}`, open = sectionOpen(s, model, job), detail = detailOn(job.id);
+    const head = !model.multi ? '' : `<button type="button" class="proc-sec-h" id="${domId(s.key)}-h" data-proc-toggle="${esc(key)}" aria-expanded="${open}" aria-controls="${domId(s.key)}-b" aria-label="생각 과정 · ${esc(s.title)}">${stIcon(s.status)}${tag(s.assignee)}<span class="proc-title">${esc(s.title)}</span>${M.active(s.status) ? detail ? now(s.preview) : nowThink(s.thinkPreview) : `<span class="proc-sum">${detail ? summary(s.counts) : s.counts.thoughts ? `생각 ${s.counts.thoughts}` : ''}${detail || s.counts.thoughts ? ' · ' : ''}${duration(s.startedAt, s.finishedAt)}</span>`}${chev(open)}</button>`;
+    let body;
+    if (!detail) {
+      const limit = limits.get(`${s.key}#th`) || 200, hidden = Math.max(0, s.thoughts.length - limit);
+      body = thinkListHtml(s, hidden, s.thoughts.slice(hidden));
+    } else {
+      const limit = limits.get(s.key) || 200, hidden = Math.max(0, s.items.length - limit), shown = hidden ? M.groupItems(s.items.slice(hidden), s.key) : s.rows;
+      const loading = !S.loadedLogs.has(s.key) && !S.logs.has(s.key);
+      body = `${hidden ? `<button type="button" class="tc-more proc-previous" id="${domId(s.key)}-previous" data-proc-previous="${esc(s.key)}">이전 ${hidden}단계 보기</button>` : ''}<ol class="proc-tl">${s.items.length ? rowsHtml(shown, s) : `<li class="proc-empty">${loading ? '기록을 불러오는 중' : M.active(s.status) ? '시작하는 중' : '기록이 없어요'}</li>`}${endHtml(s)}</ol>`;
+    }
+    return `<section class="proc-sec ${open ? 'open' : ''}" data-proc-sec="${esc(s.key)}">${head}<div id="${domId(s.key)}-b" ${open ? '' : 'hidden'}>${body}</div></section>`;
   }
   window.hubJobProcess = (job) => {
     const m = modelFor(job); if (!m.visible) return '';
-    const open = S.open.has(`proc:${job.id}`), previous = totals.get(job.id) ?? m.counts.steps;
+    const detail = detailOn(job.id), steps = detail ? m.counts.steps : m.counts.thoughts;
+    const open = S.open.has(`proc:${job.id}`), previous = totals.get(job.id) ?? steps;
     const body = document.getElementById(`procb-${job.id}`), atBottom = !body || body.scrollHeight - body.scrollTop - body.clientHeight < 30;
     if (body) scrolls.set(job.id, { top: body.scrollTop, bottom: atBottom });
-    if (open && !atBottom && m.counts.steps > previous) unread.set(job.id, (unread.get(job.id) || 0) + m.counts.steps - previous);
-    if (atBottom) unread.delete(job.id); totals.set(job.id, m.counts.steps);
+    if (open && !atBottom && steps > previous) unread.set(job.id, (unread.get(job.id) || 0) + steps - previous);
+    if (atBottom) unread.delete(job.id); totals.set(job.id, steps);
     const activeElement = document.activeElement;
     if (activeElement?.id && activeElement.closest('.proc')?.dataset.proc === job.id) focus.set(job.id, activeElement.id);
     const count = unread.get(job.id) || 0, all = allOpen(m, job), title = all ? '모두 접기' : '모두 펼치기';
-    const meta = summary(m.counts, job.tasks.length), elapsed = duration(job.startedAt || job.createdAt, job.finishedAt, M.active(job.status));
-    const preview = m.waiting ? `<span class="proc-now c-warn">답을 기다리는 중${m.pending ? ' · ' + esc(promptKind(m.pending)) : ''}</span>` : M.active(job.status) ? now(m.preview, m.multi) : '';
+    const meta = detail ? summary(m.counts, job.tasks.length) : job.tasks.length > 1 ? `작업 ${job.tasks.length}개` : '', elapsed = duration(job.startedAt || job.createdAt, job.finishedAt, M.active(job.status));
+    const preview = m.waiting ? `<span class="proc-now c-warn">답을 기다리는 중${m.pending ? ' · ' + esc(promptKind(m.pending)) : ''}</span>` : !M.active(job.status) ? '' : detail ? now(m.preview, m.multi) : nowThink(m.thinkPreview, m.multi);
+    const mode = `<button type="button" class="btn sm proc-mode" id="procmode-${esc(job.id)}" data-proc-mode="${esc(job.id)}" aria-pressed="${detail}" title="${detail ? '생각만 보기' : '명령·파일 수정까지 모두 보기'}">${detail ? '생각만' : '작업 기록'}</button>`;
     // 답하기와 전체 토글은 머리 버튼의 형제로 두어 중첩 버튼을 피한다
-    return `<section class="proc s-${esc(m.status)} ${open ? 'open' : ''}" id="proc-${esc(job.id)}" data-proc="${esc(job.id)}"><div class="proc-head"><button type="button" class="proc-h" id="proch-${esc(job.id)}" data-proc-toggle="proc:${esc(job.id)}" aria-expanded="${open}" aria-controls="procb-${esc(job.id)}" aria-label="추론 과정">${m.waiting ? `<span class="st c-warn">${icon('bell')}</span>` : stIcon(job.status)}<b>추론 과정</b><span class="proc-sum">${!m.sections.some((s) => s.items.length) && M.active(job.status) ? '시작하는 중' : `${meta}${meta ? ' · ' : ''}${['cancelled', 'interrupted'].includes(job.status) ? ST_KO[job.status] + ' · ' : ''}${elapsed}`}</span>${preview}${chev(open)}</button>${m.pending ? `<button type="button" class="btn sm" data-pr-focus="${esc(m.pending.id)}">답하기</button>` : ''}${open ? `<button type="button" class="icon-btn sm" id="procall-${esc(job.id)}" data-proc-all="${esc(job.id)}" title="${title}" aria-label="${title}">${icon('updown')}</button>` : ''}</div>${open ? `<div class="proc-body" id="procb-${esc(job.id)}" role="region" aria-label="추론 과정">${m.sections.map((s) => sectionHtml(s, m, job)).join('')}<button type="button" class="proc-new btn sm" data-proc-new="${esc(job.id)}" ${count ? '' : 'hidden'}>새 단계 ${count}개 ↓</button></div>` : ''}</section>`;
+    return `<section class="proc s-${esc(m.status)} ${open ? 'open' : ''} ${detail ? 'detail' : 'think'}" id="proc-${esc(job.id)}" data-proc="${esc(job.id)}"><div class="proc-head"><button type="button" class="proc-h" id="proch-${esc(job.id)}" data-proc-toggle="proc:${esc(job.id)}" aria-expanded="${open}" aria-controls="procb-${esc(job.id)}" aria-label="생각 과정">${m.waiting ? `<span class="st c-warn">${icon('bell')}</span>` : stIcon(job.status)}<b>생각 과정</b><span class="proc-sum">${!m.sections.some((s) => s.items.length) && M.active(job.status) ? '시작하는 중' : `${meta}${meta ? ' · ' : ''}${['cancelled', 'interrupted'].includes(job.status) ? ST_KO[job.status] + ' · ' : ''}${elapsed}`}</span>${preview}${chev(open)}</button>${m.pending ? `<button type="button" class="btn sm" data-pr-focus="${esc(m.pending.id)}">답하기</button>` : ''}${open ? `${mode}<button type="button" class="icon-btn sm" id="procall-${esc(job.id)}" data-proc-all="${esc(job.id)}" title="${title}" aria-label="${title}">${icon('updown')}</button>` : ''}</div>${open ? `<div class="proc-body" id="procb-${esc(job.id)}" role="region" aria-label="생각 과정">${m.sections.map((s) => sectionHtml(s, m, job)).join('')}<button type="button" class="proc-new btn sm" data-proc-new="${esc(job.id)}" ${count ? '' : 'hidden'}>${detail ? '새 단계' : '새 생각'} ${count}개 ↓</button></div>` : ''}</section>`;
   };
+  const longBlock = (b) => b.kind === 'thought' || b.kind === 'say';
   function allOpen(m, job) {
+    if (!detailOn(job.id)) return m.sections.every((s) => sectionOpen(s, m, job) && s.thoughts.every((b) => !longBlock(b) || S.open.has(b.id)));
     return m.sections.every((s) => sectionOpen(s, m, job) && shownRows(s).every((r) => !['group', 'warnings'].includes(r.kind) || openFor(`proc:${r.id}`, r.status === 'running')) && s.items.every((e) => e.kind !== 'tool' || !e.callId || P.toolOpen.has(e.callId)));
   }
   function showTask(key) {
@@ -145,8 +179,12 @@
     else if (b.hasAttribute('data-proc-full')) P.toolFull.has(b.dataset.procFull) ? P.toolFull.delete(b.dataset.procFull) : P.toolFull.add(b.dataset.procFull);
     else if (b.hasAttribute('data-proc-text')) setOpen(b.dataset.procText, !S.open.has(b.dataset.procText));
     else if (b.hasAttribute('data-proc-previous')) { const key = b.dataset.procPrevious; limits.set(key, (limits.get(key) || 200) + 200); }
-    else if (b.hasAttribute('data-proc-all')) {
+    else if (b.hasAttribute('data-proc-mode')) {
+      // 생각만 ↔ 작업 기록. 단계 수 세는 기준이 바뀌므로 새 단계 알림은 새로 센다
+      setOpen(`procdetail:${jobId}`, !detailOn(jobId)); totals.delete(jobId); unread.delete(jobId); scrolls.delete(jobId);
+    } else if (b.hasAttribute('data-proc-all')) {
       const job = S.jobs.get(jobId), m = modelFor(job), open = !allOpen(m, job);
+      if (!detailOn(jobId)) { for (const s of m.sections) { setOpen(`proc:${s.key}`, open); for (const t of s.thoughts) if (longBlock(t)) setOpen(t.id, open); } redraw(jobId, b.id); return; }
       for (const s of m.sections) { setOpen(`proc:${s.key}`, open); for (const r of [...s.rows, ...shownRows(s)]) if (['group', 'warnings'].includes(r.kind)) setOpen(`proc:${r.id}`, open); for (const e of s.items) if (e.callId) open ? P.toolOpen.add(e.callId) : P.toolOpen.delete(e.callId); }
     } else return;
     redraw(jobId, b.id);

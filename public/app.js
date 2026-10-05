@@ -240,7 +240,7 @@ function taskHtml(j, t) {
     h += `<div class="tdetail">${t.autoPicked && t.reason ? `<div class="why">${icon('sparkle')}<span>${esc(t.model || '')}${t.effort ? ' · ' + esc(t.effort) : ''} 자동 선택 — ${esc(t.reason)}</span></div>` : ''}`;
     if (t.error) h += `<div class="terr" style="margin:10px 0 0">${esc(t.error)}</div>`;
     if (t.resultText && multi) h += `<div class="tres md">${md(t.resultText, j.cwd)}</div>`;
-    if (multi) h += `<button type="button" class="tc-more" data-proc-show="${esc(key)}">추론 과정에서 보기</button>`;
+    if (multi) h += `<button type="button" class="tc-more" data-proc-show="${esc(key)}">생각 과정에서 보기</button>`;
     h += `</div>`;
   }
   return h + `</div>`;
@@ -248,10 +248,13 @@ function taskHtml(j, t) {
 
 function lastLog(key) {
   const list = S.logs.get(key) || [];
+  // 명령 원문 대신 마지막 생각·설명 글을 보여 준다 (생각만 보기와 같은 기준)
+  const M = window.ProcessModel;
   for (let i = list.length - 1; i >= 0; i--) {
     const e = list[i];
-    if (e.kind === 'tool') return `${e.name}${e.detail ? '  ' + e.detail : ''}`.slice(0, 160);
-    if (e.kind === 'message' || e.kind === 'thinking') return String(e.text || '').replace(/\s+/g, ' ').slice(0, 160);
+    const text = e.kind === 'thinking' ? (M ? (M.parseThought(e.text).at(-1) || {}) : { body: e.text }) : e.kind === 'message' ? { body: M ? M.narration(e.text) : e.text } : null;
+    const line = text && (text.title || text.body);
+    if (line) return String(line).replace(/\s+/g, ' ').slice(0, 160);
   }
   return '';
 }
