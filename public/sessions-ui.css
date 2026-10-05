@@ -143,7 +143,8 @@
 .insp-head{container-type:inline-size}
 .insp-head .tabs{overflow-x:auto;scrollbar-width:none}
 .insp-head .tabs::-webkit-scrollbar{display:none}
-@container (max-width:440px){.insp-head .tab{padding:0 8px;gap:5px}.insp-head .tab .ico{display:none}}
+/* 좁을 때: 선택한 탭은 이름만, 나머지는 아이콘만(이름은 title). 예전엔 여기서 아이콘을, tools-ui.css 가 이름을 숨겨 선택 안 된 탭이 빈 버튼이 됐다(2026-10-05) */
+@container (max-width:440px){.insp-head .tab{padding:0 8px;gap:5px}.insp-head .tab.on .ico{display:none}.insp-head .tab:not(.on) span:not(.ico){display:none}}
 
 /* ---------------- 오른쪽 패널: Git 탭 ---------------- */
 .su-card{padding:12px}

@@ -25,6 +25,7 @@ import { knownProjects } from './lib/projects.mjs';
 import { Peers } from './lib/peers.mjs';
 import { SharedSync, scanShared, readShared, writeShared } from './lib/shared-sync.mjs';
 import { setupStatus, installSharedHooks } from './lib/shared-setup.mjs';
+import { hubCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -65,7 +66,7 @@ setInterval(async () => {
 }, 15_000).unref();
 
 // 연결된 PC(다른 ODDIN 허브)와 공유 기억(~/.ai-shared) 동기화 — 집·회사 PC 두 대를 한 대시보드로 (docs/peers.md)
-const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {}).version || '' });
+const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {}).version || '', commit: () => hubCommit(ROOT) });
 const sharedCfg = config.sharedSync || {};
 const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false });
 shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
@@ -137,6 +138,15 @@ const server = http.createServer(async (req, res) => {
     const peerRoute = p.match(/^\/api\/peers\/([\w-]+)$/);
     if (peerRoute && req.method === 'DELETE') { const r = peers.remove(peerRoute[1]); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     if (peerRoute && req.method === 'POST') { const r = peers.rename(peerRoute[1], (await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
+    // 새 판 받기: 이 허브(/api/hub/…)와 연결된 PC(/api/peers/:id/update — 그 PC 허브에 대신 요청)
+    if (p === '/api/hub/version' && req.method === 'GET') return json(res, url.searchParams.get('check') === '1' ? await checkUpdate(ROOT) : hubCommit(ROOT));
+    if (p === '/api/hub/update' && req.method === 'POST') { await readBody(req); const r = await applyUpdate(ROOT); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
+    const peerUpdate = p.match(/^\/api\/peers\/([\w-]+)\/(update|version)$/);
+    if (peerUpdate) {
+      const peer = peers.get(peerUpdate[1]); if (!peer) return fail(res, '연결된 PC를 찾지 못했어요', 404);
+      if (peerUpdate[2] === 'version' && req.method === 'GET') return json(res, await peers.call(peer, '/api/hub/version?check=1', { timeoutMs: 90_000 }));
+      if (peerUpdate[2] === 'update' && req.method === 'POST') { await readBody(req); const r = await peers.call(peer, '/api/hub/update', { method: 'POST', body: {}, timeoutMs: 180_000 }); peers.check(peer).then(() => broadcast({ type: 'peers', ...peersView() })); return json(res, r); }
+    }
     if (p.startsWith('/api/shared/') && !shared) return fail(res, '공유 기억 동기화가 꺼져 있어요 (config.sharedSync.enabled)', 503);
     if (p === '/api/shared/manifest' && req.method === 'GET') return json(res, { machine: peers.self().name, files: scanShared(config.hubDir) });
     if (p === '/api/shared/file' && req.method === 'GET') return json(res, readShared(config.hubDir, url.searchParams.get('rel')));

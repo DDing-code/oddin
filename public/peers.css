@@ -23,3 +23,7 @@
 .pc-setup li{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--fg2)}
 .pc-setup li .ico{width:13px;height:13px;flex:none}
 .pc-setup li.ok .ico{color:var(--ok)}.pc-setup li.no{color:var(--muted)}.pc-setup li.no .ico{color:var(--faint)}
+.pc-sync .btn.sm{padding:2px 9px;font-size:12px;flex:none}
+.pc-sync .grow{flex:1}
+.pc-hint .linkish{border:0;background:none;padding:0;color:var(--codex);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.pc-hint .linkish:disabled{color:var(--muted);cursor:default;text-decoration:none}

@@ -2,6 +2,8 @@
    - 오른쪽 패널 'PC' 탭: 이 PC 이름, 연결된 PC(다른 ODDIN 허브) 목록·상태·추가·이름 바꾸기·끊기,
      공유 기억(~/.ai-shared) 동기화 상태·지금 맞추기, 이 PC의 Claude·Codex 공유 기억 훅 상태·설치
    - 실시간: hub:event 의 peers / shared-sync 로 갱신 */
+// 탭 아이콘: 모니터 (사용량 탭의 계기판과 겹치지 않게). 아래 함수 안의 IC 는 도우미라 전역 아이콘 목록은 여기서 더한다
+if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>';
 (() => {
   const E = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const IC = (n) => (typeof icon === 'function' ? icon(n) : '');
@@ -35,7 +37,7 @@
     const v = P.view, sync = new Map((v.sync?.peers || []).map((x) => [x.id, x]));
     let h = '<div class="pc-pane">';
     h += `<div class="ilabel">이 PC</div><form class="pc-self" data-pc-self><input name="n" maxlength="30" value="${E(v.self.name)}" aria-label="이 PC 이름" title="다른 PC에서 이 이름으로 보여요"><button class="btn" type="submit" ${P.busy === 'self' ? 'disabled' : ''}>저장</button></form>`;
-    h += `<p class="pc-hint">${E(v.self.hostname)} · 다른 PC에서 이 이름(예: 집, 회사)으로 보여요.</p>`;
+    h += `<p class="pc-hint">${E(v.self.hostname)} · ODDIN ${E(v.self.commit || '판 모름')} · 다른 PC에서 이 이름(예: 집, 회사)으로 보여요. <button class="linkish" data-pc-update="self" ${P.busy === 'update:self' ? 'disabled' : ''}>${P.busy === 'update:self' ? '받는 중…' : '이 PC 새 판 받기'}</button></p>`;
 
     h += `<div class="ilabel">연결된 PC ${v.peers.length || ''}</div>`;
     if (!v.peers.length) h += '<div class="mem-empty">아직 없어요. 다른 PC의 ODDIN 주소(Tailscale)를 아래에 넣으면 기억을 함께 써요.</div>';
@@ -45,6 +47,10 @@
       h += `<div class="pc-peer"><div class="pc-row"><span class="pc-dot ${tone}" title="${tone === 'ok' ? '연결됨' : tone === 'off' ? '연결 안 됨' : '확인 전'}"></span><b>${E(p.name)}</b><span class="pc-url" title="${E(p.url)}">${E(p.url.replace(/^https?:\/\//, ''))}</span><span class="grow"></span>`
         + `<button class="icon-btn" data-pc-rename="${E(p.id)}" title="이름 바꾸기">${IC('pencil')}</button><button class="icon-btn" data-pc-remove="${E(p.id)}" title="연결 끊기">${IC('x')}</button></div>`;
       if (st && !st.online) h += `<div class="pc-err">${IC('alert')}<span>${E(st.error || '연결 안 됨')}</span></div>`;
+      if (st?.online) {
+        const same = st.commit && st.commit === v.self.commit;
+        h += `<div class="pc-sync">${IC('bolt')}<span>ODDIN ${E(st.commit || '판 모름')}${st.commit ? same ? ' · 이 PC와 같은 판' : ' · 이 PC와 다른 판' : ''}</span><span class="grow"></span><button class="btn sm" data-pc-update="${E(p.id)}" ${P.busy === `update:${p.id}` ? 'disabled' : ''} title="그 PC의 ODDIN이 GitHub에서 새 판을 받아요. 서버가 바뀌면 작업이 끝난 뒤 재시작">${P.busy === `update:${p.id}` ? '<span class="spin-xs"></span>받는 중' : '새 판 받기'}</button></div>`;
+      }
       h += `<div class="pc-sync ${sy.ok === false ? 'err' : ''}">${IC('refresh')}<span>공유 기억 ${E(when(sy.lastAt))}${sy.lastAt ? ` · ${E(countsText(sy.counts))}` : ''}${sy.ok === false && sy.error ? ` · ${E(sy.error)}` : ''}</span></div></div>`;
     }
     h += `<form class="pc-add" data-pc-add><input name="u" placeholder="https://회사pc이름.tailnet.ts.net" autocomplete="off" aria-label="연결할 PC 주소"><input name="n" placeholder="이름 (예: 회사)" maxlength="30" autocomplete="off" aria-label="연결할 PC 이름"><button class="btn" type="submit" ${P.busy === 'add' ? 'disabled' : ''}>${IC('plus')}연결</button></form>`;
@@ -64,7 +70,7 @@
     body.innerHTML = h + '</div>';
   }
   window.hubTabs = window.hubTabs || [];
-  window.hubTabs.push({ key: 'peers', label: 'PC', icon: 'gauge', render });
+  window.hubTabs.push({ key: 'peers', label: '연결된 PC', icon: 'monitor', render });
 
   document.addEventListener('submit', (e) => {
     const add = e.target.closest('[data-pc-add]'), self = e.target.closest('[data-pc-self]');
@@ -79,8 +85,11 @@
     }
   });
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename]'); if (!b) return;
-    if (b.hasAttribute('data-pc-sync')) act('sync', () => call('/api/shared/sync', { method: 'POST', body: '{}' }), (r) => (r.results || []).every((x) => x.ok) ? '공유 기억을 맞췄어요' : `일부 못 맞췄어요: ${(r.results || []).find((x) => !x.ok)?.error || (r.results || []).find((x) => !x.ok)?.errors?.[0] || ''}`);
+    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update]'); if (!b) return;
+    if (b.hasAttribute('data-pc-update')) {
+      const id = b.dataset.pcUpdate, name = id === 'self' ? '이 PC' : P.view?.peers.find((x) => x.id === id)?.name || '그 PC';
+      act(`update:${id}`, () => call(id === 'self' ? '/api/hub/update' : `/api/peers/${encodeURIComponent(id)}/update`, { method: 'POST', body: '{}' }), (r) => `${name}: ${r.message}${r.updated ? ` (${r.from} → ${r.to}, 파일 ${r.files}개)` : ''}`);
+    } else if (b.hasAttribute('data-pc-sync')) act('sync', () => call('/api/shared/sync', { method: 'POST', body: '{}' }), (r) => (r.results || []).every((x) => x.ok) ? '공유 기억을 맞췄어요' : `일부 못 맞췄어요: ${(r.results || []).find((x) => !x.ok)?.error || (r.results || []).find((x) => !x.ok)?.errors?.[0] || ''}`);
     else if (b.hasAttribute('data-pc-setup')) act('setup', () => call('/api/shared/setup', { method: 'POST', body: '{}' }), (r) => r.changed?.length ? `설치했어요: ${r.changed.join(', ')}` : '이미 다 있어요');
     else if (b.hasAttribute('data-pc-remove')) {
       const p = P.view?.peers.find((x) => x.id === b.dataset.pcRemove);
