@@ -110,7 +110,7 @@ test('두 CLI 훅: 새 요청·같은 세션·재개·본문 변경·삭제 갱�
   const f = fixture();
   for (const mode of ['claude', 'codex']) {
     assert.match(hook(f, mode), /PROBE_OLD/);
-    assert.match(hook(f, mode), /최신 확인/);
+    assert.match(hook(f, mode), /이미 넣은 기억에서 바뀐 것이 없/, '같은 대화에 그대로인 메모리는 다시 넣지 않는다');
     write(f.probe, fact('probe', 'probe', 'PROBE_NEW'));
     assert.match(hook(f, mode), /PROBE_NEW/);
     assert.match(hook(f, mode, 'resumed'), /PROBE_NEW/);
@@ -145,7 +145,9 @@ test('새 자동 작업·의존 작업 분배·본문 갱신·보고·세션 후
   const newHash = JSON.parse(fs.readFileSync(path.join(first.runDir, 't2/memory-context.json'))).selected.find((x) => x.file === f.probe).hash;
   assert.notEqual(oldHash, newHash);
   const next = await completed(manager, manager.create({ goal: 'probe 메모리 이어서', mode: 'codex', sessionId: first.sessionId }));
-  assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /PROBE_NEW/);
+  // 이어 쓰는 대화에는 그 대화에 이미 넣은 메모리(내용 그대로)를 다시 넣지 않는다
+  const nextPrompt = fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8');
+  assert.doesNotMatch(nextPrompt, /PROBE_NEW/); assert.match(nextPrompt, /이미 넣은 공유 메모리/);
   // 같은 세션 후속 요청: 직전 Codex 대화를 이어 쓰므로 이전 명령 대신 [이어서] 안내 (이전 명령은 그 대화에 이미 있음)
   const nextTask = next.tasks[0];
   assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /\[이어서\]/);
