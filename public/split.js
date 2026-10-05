@@ -47,13 +47,26 @@
           <button type="button" class="icon-btn" data-sp="main" title="가운데와 바꾸기" aria-label="가운데와 바꾸기">${icon('expand')}</button>
           <button type="button" class="icon-btn" data-sp="window" title="새 창으로" aria-label="새 창으로">${icon('open')}</button>
           <button type="button" class="icon-btn" data-sp="close" title="닫기" aria-label="닫기">${icon('x')}</button></div>
-          <iframe src="${paneUrl(sid)}" title="세션 ${esc(title(sid))}"></iframe><div class="sp-drop">이 칸에서 열기</div>`;
+          <iframe src="${paneUrl(sid)}" title="세션 ${esc(title(sid))}"></iframe><div class="sp-drop">이 칸에서 열기</div>
+          <div class="sp-blocked" role="status">${icon('alert')}<b>이 칸을 열지 못했어요</b><span>이 PC의 ODDIN이 아직 예전 버전이라 나란히 보기가 막혀 있어요. 위쪽 "새 버전이 준비됐어요"에서 <b>지금 바꾸기</b>를 누르거나 진행 중인 작업이 끝나면 저절로 열려요.</span><button type="button" class="btn" data-sp="reload">${icon('refresh')}다시 열기</button></div>`;
+        watchFrame(p);
         box.appendChild(p);
       }
       if (box.children[i] !== p) box.insertBefore(p, box.children[i] || null);
       p.querySelector('.sp-title').textContent = title(sid);
     });
   }
+
+  // 칸이 막혔는지(예전 서버의 화면 끼워 넣기 금지 등): 하얀 빈 칸 대신 이유와 다시 열기를 보여 준다
+  function watchFrame(p) {
+    const f = p.querySelector('iframe');
+    f.addEventListener('load', () => {
+      let ok = false;
+      try { ok = !!f.contentDocument?.getElementById('app'); } catch { ok = false; }
+      p.classList.toggle('blocked', !ok);
+    });
+  }
+  const reloadBlocked = () => document.querySelectorAll('.sp-pane.blocked iframe').forEach((f) => { f.src = f.src; });
 
   function openSplit(sid, at = null) {
     if (typeof S !== 'undefined' && sid === S.current && !SP.panes.length) return toast('지금 보고 있는 세션이에요. 다른 세션을 나란히 열어 보세요');
@@ -88,6 +101,7 @@
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-sp]'); if (!b) return;
     const sid = b.closest('.sp-pane')?.dataset.sid; if (!sid) return;
+    if (b.dataset.sp === 'reload') { const f = b.closest('.sp-pane').querySelector('iframe'); f.src = f.src; return; }
     if (b.dataset.sp === 'close') closePane(sid);
     else if (b.dataset.sp === 'window') { openWindow(sid); closePane(sid); }
     else swapWithMain(sid);
@@ -101,6 +115,7 @@
   window.addEventListener('hub:event', (e) => {
     const t = e.detail?.type;
     if (t === 'session' || t === 'hello' || t === 'remote_sync') render();
+    if (t === 'hello') setTimeout(reloadBlocked, 500); // 새 버전으로 재시작해 다시 연결되면 막혔던 칸을 다시 연다
     if (t === 'session_removed' && SP.panes.includes(e.detail.sessionId)) closePane(e.detail.sessionId);
   });
 
