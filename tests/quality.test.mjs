@@ -116,7 +116,7 @@ test('대화 이어 쓰기 후보: 직전 완료 요청의 같은 AI·같은 폴
   ] });
   const job = { id: 'j3', sessionId: 's1', cwd: project, createdAt: '2026-10-04T02:00:00.000Z' };
   assert.deepEqual(m.continuation(job, { assignee: 'codex' }), { jobId: 'j2', taskId: 't2', sessionId: 'cx-b' });
-  assert.equal(m.continuation(job, { assignee: 'codex' }), null, 'AI마다 한 작업만');
+  assert.equal(m.continuation(job, { assignee: 'codex' }), null, '같은 AI·역할은 한 작업만');
   assert.equal(m.continuation(job, { assignee: 'claude' }), null, '실패한 작업은 이어 쓰지 않음');
   assert.equal(m.continuation({ ...job, id: 'j4', cwd: other }, { assignee: 'codex' }), null, '다른 폴더');
   m.jobs.get('j2').finishedAt = new Date(now - 30 * 3_600_000).toISOString();
@@ -140,6 +140,24 @@ test('세션 맥락 다이어트: 최근 N건·건당 글자 제한, 노트만',
   assert.match(p, /### 이전 명령 3/); assert.doesNotMatch(p, /### 이전 명령 2 /); // 1만 2천 자 안에 최근 3건
   assert.ok(p.length < 12_500, `플래너 맥락 ${p.length}자`);
   assert.equal(m.historyContext(job, 6000, { notesOnly: true }), '## 세션 결정 노트 (이 세션에서 정해진 것 — 잘리지 않음. 이번 요청이 노트와 다르면 이번 요청을 따르세요)\n- 다크 테마');
+});
+
+test('구현 후속 요청은 화면 검수·디자인 기획 대신 구현 대화를 이어 쓴다', () => {
+  const m = fakeManager(config()), now = new Date().toISOString();
+  const prev = { id: 'p', cwd: project, createdAt: '2026-01-01T00:00:00Z', finishedAt: now, status: 'done', tasks: [
+    { id: 'd', assignee: 'codex', status: 'done', sessionId: 'design-thread', designPlan: true, finishedAt: '1' },
+    { id: 'i', assignee: 'codex', status: 'done', sessionId: 'implementation-thread', finishedAt: '2' },
+    { id: 'v', assignee: 'codex', status: 'done', sessionId: 'review-thread', visualCheck: true, finishedAt: '3' },
+  ] };
+  m.jobs.set('p', prev); m.sessions.set('s', { id: 's', jobIds: ['p'] });
+  const job = () => ({ id: 'next', sessionId: 's', cwd: project, createdAt: now });
+  const next = job();
+  assert.equal(m.continuation(next, { assignee: 'codex', designPlan: true }).sessionId, 'design-thread');
+  assert.equal(m.continuation(next, { assignee: 'codex' }).sessionId, 'implementation-thread', '기획 대화를 이었다고 같은 AI의 구현을 막지 않음');
+  assert.equal(m.continuation(next, { assignee: 'codex', visualCheck: true }).sessionId, 'review-thread');
+  assert.equal(m.continuation(next, { assignee: 'codex' }), null, '같은 CLI를 두 작업에 주지 않음');
+  prev.tasks = prev.tasks.filter((t) => t.visualCheck);
+  assert.equal(m.continuation(job(), { assignee: 'codex' }), null, '다른 역할의 대화로 대신 잇지 않음');
 });
 
 test('계획 지시문: 기본 작업 1개·요청 원문 인용·비율 맞추려 쪼개지 않기, 작업 폴더 안내는 기본 폴더 세션에서만', () => {

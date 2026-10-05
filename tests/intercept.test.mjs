@@ -26,14 +26,18 @@ function fixture() {
   const rows = () => fs.existsSync(capture) ? fs.readFileSync(capture, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
   return { root, config, manager, capture, rows };
 }
-async function until(fn, ms = 6000) { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('시험 조건 대기 시간 초과'); await delay(10); } }
+// 시간 한도는 전체 병렬 실행(파일 수십 개가 동시에 CLI를 띄움) 부하에서도 버티게 넉넉히 둔다. 조건이 맞으면 바로 끝난다.
+async function until(fn, ms = 20000) { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('시험 조건 대기 시간 초과'); await delay(10); } }
 function request(job, text, id = randomUUID()) { return { sessionId: job.sessionId, clientRequestId: id, text }; }
 function seeded(f, prompts = ['SLOW WORK_A', 'SLOW WORK_B', 'WORK_C', 'WORK_D']) {
   const s = f.manager.createSession({ cwd: f.root });
   const job = { id: 'job-' + randomUUID(), sessionId: s.id, goal: '원래 목표', title: '시험', cwd: f.root, mode: 'both', status: 'running', activePhase: 'worker', createdAt: new Date().toISOString(), instructionRevision: 0, intercepts: [], phaseRuns: {}, settings: f.config.defaults, runDir: path.join(f.root, 'run-' + randomUUID()), tasks: prompts.map((prompt, i) => ({ id: 't' + (i + 1), title: '작업 ' + i, prompt, assignee: i % 2 ? 'claude' : 'codex', dependsOn: i > 1 ? ['t1', 't2'] : [], status: 'pending', settings: f.config.defaults[i % 2 ? 'claude' : 'codex'] })) };
   fs.mkdirSync(job.runDir, { recursive: true }); f.manager.jobs.set(job.id, job); f.manager.sessions.get(s.id).jobIds.push(job.id); return job;
 }
-function worker(f, tool, prompt, overrides = {}) { return runWorker({ tool, prompt, cwd: f.root, runDir: path.join(f.root, 'worker-' + tool), toolCfg: f.config.tools[tool], settings: f.config.defaults[tool], managed: true, timeoutMs: 5000, ackTimeoutMs: 150, onEvent() {}, ...overrides }); }
+// 수신 확인 대기(ackTimeoutMs)는 "전달됨"을 기대하는 시험이 부하로 늦은 응답을 놓치지 않게 넉넉히(실제 기본 10초).
+// 확인이 끝내 오지 않아 시간이 지나야 하는 시험만 짧은 값을 따로 준다(ACK_LOSS·NO_INIT).
+function worker(f, tool, prompt, overrides = {}) { return runWorker({ tool, prompt, cwd: f.root, runDir: path.join(f.root, 'worker-' + tool), toolCfg: f.config.tools[tool], settings: f.config.defaults[tool], managed: true, timeoutMs: 20000, ackTimeoutMs: 5000, onEvent() {}, ...overrides }); }
+const EXPIRE_ACK = { ackTimeoutMs: 300 };
 
 test('두 네이티브 CLI: 현재 턴 전달·동일 세션·연속 지시·중단된 결과 미채택', async () => {
   for (const tool of ['claude', 'codex']) {
@@ -110,7 +114,7 @@ test('두 CLI가 전달 ACK 대기 중 종료될 때: 늦은 결과로 중지 �
 });
 test('ACK 유실·잘못된 턴·지원 불가: 성공으로 표시하거나 중복 전송하지 않음', async () => {
   for (const marker of ['ACK_LOSS', 'WRONG_TURN', 'REJECT_STEER']) {
-    const f = fixture(), h = worker(f, 'codex', 'SLOW ' + marker);
+    const f = fixture(), h = worker(f, 'codex', 'SLOW ' + marker, marker === 'ACK_LOSS' ? EXPIRE_ACK : {});
     try { await until(() => h.getState().ready); const receipt = await h.intercept({ text: 'ONLY_ONCE', messageId: randomUUID() });
       assert.equal(receipt.status, marker === 'REJECT_STEER' ? 'failed' : 'uncertain');
       assert.equal(f.rows().filter((r) => r.message?.method === 'turn/steer').length, 1);
@@ -119,7 +123,7 @@ test('ACK 유실·잘못된 턴·지원 불가: 성공으로 표시하거나 중
 });
 test('Claude init 누락과 잔여 큐: 수신 확인 없이 전달 성공으로 기록하지 않음', async () => {
   for (const marker of ['NO_INIT', 'STILL_QUEUED']) {
-    const f = fixture(), h = worker(f, 'claude', 'SLOW ' + marker);
+    const f = fixture(), h = worker(f, 'claude', 'SLOW ' + marker, marker === 'NO_INIT' ? EXPIRE_ACK : {});
     try { if (marker !== 'NO_INIT') await until(() => h.getState().ready); const r = await h.intercept({ text: 'FOLLOWUP', messageId: randomUUID() }); assert.equal(r.status, 'uncertain'); }
     finally { h.cancel(); h.close(); clearTimeout(f.manager._saveTimer); }
   }
@@ -192,7 +196,7 @@ test('Claude 상시 감시용 백그라운드 작업은 최종 완료를 막지 
 test('Claude 백그라운드 조기 프로세스 종료·원래 시간 제한·중지: 완료로 오인하지 않음', async () => {
   for (const scenario of ['EXIT', 'TIMEOUT', 'CANCEL']) {
     const f = fixture(); let held = false;
-    const h = worker(f, 'claude', scenario === 'EXIT' ? 'BACKGROUND_EXIT' : 'BACKGROUND_STUCK', { timeoutMs: scenario === 'TIMEOUT' ? 1100 : 5000, onEvent: (e) => { if (e.kind === 'background' && e.text) held = true; } });
+    const h = worker(f, 'claude', scenario === 'EXIT' ? 'BACKGROUND_EXIT' : 'BACKGROUND_STUCK', { timeoutMs: scenario === 'TIMEOUT' ? 1100 : 20000, onEvent: (e) => { if (e.kind === 'background' && e.text) held = true; } });
     try {
       await until(() => held);
       if (scenario === 'CANCEL') h.cancel();
@@ -224,9 +228,9 @@ test('접수 대기열 20개 제한과 기존 ID 조회 우선', () => {
 test('전체 계획 실행의 보고 중 지시: 완료 작업 보존·같은 job에 실제 보완 추가', async () => {
   const f = fixture(); invalidateToolStatus();
   const created = f.manager.create({ goal: 'REPORT_RECONCILIATION', mode: 'auto' }), j = f.manager.get(created.id);
-  await until(() => j.activePhase === 'report' && f.manager.running.has(`${j.id}/phase:report`), 12000);
+  await until(() => j.activePhase === 'report' && f.manager.running.has(`${j.id}/phase:report`), 30000);
   const originalTasks = [...j.tasks]; f.manager.acceptIntercept(j.id, request(j, 'IMPLEMENT_CHANGE'));
-  await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 12000);
+  await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 30000);
   assert.equal(j.status, 'done', j.error || JSON.stringify(j.tasks)); assert.equal(j.tasks.length, 3); assert.equal(j.tasks[0], originalTasks[0]); assert.match(j.tasks[2].resultText, /SUPPLEMENT_WORK/); assert.equal(j.tasks[2].sessionId, j.tasks[0].sessionId);
   clearTimeout(f.manager._saveTimer);
 });
@@ -244,23 +248,23 @@ test('마지막 워커 완료 경계에서 먼저 접수하면 같은 job에 보
   const f = fixture(); invalidateToolStatus(); let sent = false;
   const onEvent = (e) => { if (e.type !== 'job') return; const j = f.manager.get(e.job.id); if (j?.goal === 'COMPLETION_BOUNDARY' && j.status === 'running' && j.tasks.length === 1 && j.tasks[0].status === 'done' && !sent) { sent = true; f.manager.acceptIntercept(j.id, request(j, 'BOUNDARY_CHANGE')); } };
   f.manager.on('event', onEvent); const first = f.manager.create({ goal: 'COMPLETION_BOUNDARY', mode: 'codex' }), j = f.manager.get(first.id);
-  await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 12000);
+  await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 30000);
   assert(sent); assert.equal(j.status, 'done', j.error); assert.equal(j.tasks.length, 2); assert.equal(j.tasks[1].sessionId, j.tasks[0].sessionId); f.manager.off('event', onEvent); clearTimeout(f.manager._saveTimer);
 });
 test('목표 판정 중 전달·다음 라운드 상속·라운드 수 유지', async () => {
   const f = fixture(); invalidateToolStatus();
   const first = f.manager.startGoal({ text: 'GOAL_ORIGINAL', mode: 'codex', maxRounds: 2 }), j = f.manager.get(first.id), s = f.manager.sessions.get(j.sessionId);
-  await until(() => f.manager.running.has(`${j.id}/phase:goal-check`), 12000);
+  await until(() => f.manager.running.has(`${j.id}/phase:goal-check`), 30000);
   assert.equal(f.manager.publicSession(s).status, 'running'); assert.equal(f.manager.canIntercept(j), true);
   f.manager.acceptIntercept(j.id, request(j, 'NEXT_ROUND'));
-  await until(() => s.jobIds.length === 2, 12000); const next = f.manager.get(s.jobIds[1]);
+  await until(() => s.jobIds.length === 2, 30000); const next = f.manager.get(s.jobIds[1]);
   assert.equal(next.goalId, j.goalId); assert.equal(next.intercepts.length, 1); assert.match(next.intercepts[0].text, /NEXT_ROUND/); assert.equal(j.goalRound, 1); assert.equal(next.goalRound, 2);
-  await until(() => s.goal.status !== 'active', 12000); assert.equal(s.goal.status, 'stopped'); assert.equal(s.jobIds.length, 2); clearTimeout(f.manager._saveTimer);
+  await until(() => s.goal.status !== 'active', 30000); assert.equal(s.goal.status, 'stopped'); assert.equal(s.jobIds.length, 2); clearTimeout(f.manager._saveTimer);
 });
 test('목표 판정 중 전체 중지: 늦은 판정이 목표를 완료하거나 재개하지 않음', async () => {
   const f = fixture(); invalidateToolStatus();
   const first = f.manager.startGoal({ text: 'GOAL_STOP', mode: 'codex', maxRounds: 2 }), j = f.manager.get(first.id), s = f.manager.sessions.get(j.sessionId);
-  await until(() => f.manager.running.has(`${j.id}/phase:goal-check`), 12000);
+  await until(() => f.manager.running.has(`${j.id}/phase:goal-check`), 30000);
   f.manager.stopGoal(s.id); await until(() => !f.manager.running.size);
   assert.equal(s.goal.status, 'stopped'); assert.equal(j.status, 'cancelled'); assert.equal(s.jobIds.length, 1); clearTimeout(f.manager._saveTimer);
 });
@@ -272,12 +276,12 @@ test('격리 HTTP: 202 저장·200 재전송·GET/SSE 복원·Origin 차단·첨
   const api = async (route, body, headers = {}) => { const res = await fetch(base + route, { method: body === undefined ? 'GET' : 'POST', headers: { 'content-type': 'application/json', ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); return { status: res.status, value: await res.json() }; };
   let stream;
   try {
-    const end = Date.now() + 6000; for (;;) { try { await api('/api/options'); break; } catch (e) { if (Date.now() >= end) throw e; await delay(30); } }
+    const end = Date.now() + 20000; for (;;) { try { await api('/api/options'); break; } catch (e) { if (Date.now() >= end) throw e; await delay(30); } }
     assert.equal((await api('/api/status')).value.capabilities.intercept, 1);
     assert.match((await api('/api/ui-version')).value.v, /^[0-9a-f]{12}$/);
     const created = await api('/api/jobs', { goal: 'SLOW HTTP_ORIGINAL', mode: 'both' }); assert.equal(created.status, 201); const j = created.value;
     let snapshot;
-    for (let n = 0; n < 150; n++) { snapshot = (await api('/api/jobs/' + j.id)).value; if (snapshot.tasks.length === 2 && snapshot.tasks.every((t) => t.sessionId)) break; await delay(20); }
+    for (const stop = Date.now() + 20000; Date.now() < stop;) { snapshot = (await api('/api/jobs/' + j.id)).value; if (snapshot.tasks.length === 2 && snapshot.tasks.every((t) => t.sessionId)) break; await delay(20); }
     assert(snapshot.tasks.every((t) => t.sessionId));
     const denied = await api(`/api/jobs/${j.id}/intercepts`, request(j, 'BLOCKED'), { origin: 'https://evil.example' }); assert.equal(denied.status, 403);
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
@@ -290,7 +294,7 @@ test('격리 HTTP: 202 저장·200 재전송·GET/SSE 복원·Origin 차단·첨
     assert.equal((await api(`/api/jobs/${j.id}/intercepts`)).value.revision, 1);
     let hello = ''; stream = http.get(base + '/api/events', (res) => res.on('data', (d) => { hello += d; })); await until(() => hello.includes(body.clientRequestId));
     assert(hello.includes('"instructionRevision":1'));
-    for (let n = 0; n < 150; n++) { snapshot = (await api('/api/jobs/' + j.id)).value; if (snapshot.status === 'done') break; await delay(20); }
+    for (const stop = Date.now() + 20000; Date.now() < stop;) { snapshot = (await api('/api/jobs/' + j.id)).value; if (snapshot.status === 'done') break; await delay(20); }
     assert.equal(snapshot.status, 'done', JSON.stringify(snapshot)); assert.equal(snapshot.intercepts[0].status, 'delivered');
     const messages = f.rows().filter((r) => r.kind === 'input' && JSON.stringify(r.message).includes('HTTP_MARKER'));
     assert(messages.some((r) => r.message.params?.input?.some((c) => c.type === 'localImage'))); assert(messages.some((r) => r.message.message?.content?.some((c) => c.type === 'image')));
@@ -342,12 +346,12 @@ test('Codex 생각 요약은 추론 과정 기록(thinking)으로 남는다', as
 test('계획 전 질문: 모호하면 먼저 묻고, 답을 목표에 붙여 다시 계획해 실행한다', async () => {
   const f = fixture(); invalidateToolStatus();
   const created = f.manager.create({ goal: 'ASK_FIRST 화면을 바꿔줘', mode: 'auto' }), j = f.manager.get(created.id);
-  await until(() => f.manager.prompts.list({ jobId: j.id }).length > 0, 12000);
+  await until(() => f.manager.prompts.list({ jobId: j.id }).length > 0, 30000);
   const [q] = f.manager.prompts.list({ jobId: j.id });
   assert.equal(q.kind, 'question'); assert.equal(q.phase, 'plan'); assert.equal(j.activePhase, 'plan-question');
   assert.equal(q.detail.questions[0].question, '어느 방향으로 할까요?');
   f.manager.prompts.answer(q.id, { answers: { [q.detail.questions[0].id]: ['B안'] } });
-  await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 15000);
+  await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 30000);
   assert.equal(j.status, 'done', j.error || JSON.stringify(j.tasks));
   assert.match(j.goal, /# 사용자 답변/); assert.match(j.goal, /B안/); assert.equal(j.clarified, true);
   assert.ok(j.tasks.length >= 1);

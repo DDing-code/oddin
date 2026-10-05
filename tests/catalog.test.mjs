@@ -100,6 +100,22 @@ test('재배정: 80% 넘은 쪽은 권장 비율만큼만, 전용 역할은 유�
 });
 
 import { dropVerifyOnly } from '../lib/planner.mjs';
+
+test('제작·검증 혼합 작업을 지우거나 기획자에게 넘기지 않는다', () => {
+  for (const title of ['차트던전 06편 영상 제작·검증', '컷 편집과 재생 확인', '3D 렌더·검증', '빌드·동작 점검', '최종 출력·QA']) {
+    const tasks = [
+      { id: 't1', title: '디자인 기획', prompt: '명세만 작성', dependsOn: [] },
+      { id: 't2', title, prompt: '실제 결과물을 제작하고 검증', dependsOn: ['t1'] },
+    ];
+    assert.deepEqual(dropVerifyOnly(tasks), [], title);
+    assert.equal(tasks[0].prompt, '명세만 작성');
+  }
+  const tasks = [
+    { id: 't1', title: '기획', prompt: '명세만', dependsOn: [] },
+    { id: 't2', title: '산출물 확인', prompt: '시각 결과물을 생성', dependsOn: ['t1'], visualOutput: true },
+  ];
+  assert.deepEqual(dropVerifyOnly(tasks), []);
+});
 import { deepEffortJustified } from '../lib/router.mjs';
 
 test('속도: 검증만 하는 끝 작업은 빼고 앞 작업에 합친다', () => {

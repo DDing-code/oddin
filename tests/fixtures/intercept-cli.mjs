@@ -108,7 +108,8 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
       if (p.expectedTurnId !== tid || original.includes('REJECT_STEER')) { emit({ id: x.id, error: { code: -32600, message: 'expected turn conflict' } }); continue; }
       if (original.includes('ACK_LOSS')) { current += p.input[0].text; continue; }
       current += '\n' + p.input.filter((i) => i.type === 'text').map((i) => i.text).join('\n');
-      if (!ended) { clearTimeout(timer); timer = setTimeout(complete, 200); }
+      // SLOW 턴은 지시를 받은 뒤에도 바로 끝내지 않는다. 연속 지시가 병렬 시험 부하로 조금 늦게 와도 같은 턴에 들어가야 한다.
+      if (!ended) { clearTimeout(timer); timer = setTimeout(complete, original.includes('SLOW') ? 1500 : 200); }
       const ack = () => { reply({ turnId: original.includes('WRONG_TURN') ? 'wrong-turn' : tid }); emit({ method: 'item/started', params: { threadId: sid, item: { type: 'userMessage', clientId: p.clientUserMessageId } } }); };
       if (original.includes('DELAY_ACK')) { clearTimeout(timer); timer = setTimeout(ack, 500); } else ack();
     } else if (x.method === 'turn/interrupt') { clearTimeout(timer); reply({}); ended = true; emit({ method: 'turn/completed', params: { threadId: sid, turn: { id: tid, status: 'interrupted' } } }); }

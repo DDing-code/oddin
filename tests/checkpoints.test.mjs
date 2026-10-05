@@ -77,6 +77,25 @@ test('파일 수 초과·Git 실행 실패는 경고로 남고 호출을 막지 
   const other = fixture(); const k = other.job(); other.c.snapshot = async () => { throw new Error('실패'); }; await other.c.begin(k); await other.c.end(k); assert.equal(k.checkpoint.warning, '체크포인트를 저장하지 못했습니다');
 });
 
+test('허브 소스 스냅샷에서 예전 workspace·기록 제외, 해당 폴더에서 하는 작업은 보존', async () => {
+  const f = fixture(); f.c.hubRoot = f.cwd;
+  f.write('source.mjs', '소스');
+  for (const dir of ['workspace', 'logs', 'data', 'runs']) f.write(`${dir}/generated.txt`, '이전 결과물');
+  const j = f.job(); await f.c.begin(j);
+  const repo = await f.c.location(f.cwd);
+  assert.deepEqual([...(await f.c.tree(repo, j.checkpoint.before)).keys()], ['source.mjs']);
+  await f.finish(j);
+  const sub = { id: 'workspace-job', cwd: path.join(f.cwd, 'workspace'), status: 'running', notes: [] };
+  await f.c.begin(sub);
+  const subRepo = await f.c.location(sub.cwd);
+  assert.deepEqual([...(await f.c.tree(subRepo, sub.checkpoint.before)).keys()], ['generated.txt']);
+  sub.status = 'done'; await f.c.end(sub);
+  const other = fixture(); other.write('workspace/actual-source.mjs', '다른 프로젝트 소스');
+  const k = other.job(); await other.c.begin(k);
+  assert.deepEqual([...(await other.c.tree(await other.c.location(other.cwd), k.checkpoint.before)).keys()], ['workspace/actual-source.mjs']);
+  await other.finish(k);
+});
+
 test('Git 사용자 속성으로 텍스트 diff를 감추지 않음·실패한 캡처의 저장소 용량도 조회 가능', async () => {
   const f = fixture(); f.write('.gitattributes', '*.txt -diff\n'); f.write('a.txt', '전\n'); const j = f.job(); await f.c.begin(j); f.write('a.txt', '후\n'); await f.finish(j); assert.equal(j.checkpoint.files.find((x) => x.path === 'a.txt').binary, false); assert.match((await f.c.diff(j, 'a.txt')).unified, /-전/);
   const g = fixture(); g.write('a', '내용'); const k = g.job(), original = g.c.git.bind(g.c); g.c.git = async (repo, args, options) => { if (args[0] === 'hash-object') throw new Error('시험 해시 실패'); return original(repo, args, options); }; await g.c.begin(k); k.status = 'failed'; await g.c.end(k); assert.equal(k.checkpoint.status, 'warning'); assert((await g.c.storage()).bytes > 0); assert.equal((await g.c.cleanup()).removed.length, 1);
