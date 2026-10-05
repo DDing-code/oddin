@@ -25,6 +25,17 @@ const usage = (codex = 10) => ({ claude: { windows: [{ key: 'seven_day', label: 
 const manager = (config = WHOLE, agents = []) => Object.assign(Object.create(JobManager.prototype), { config: { tools: {}, defaults: {}, ...config }, _cat: { agents } });
 const name = (t) => (t === 'claude' ? 'Claude' : 'Codex');
 
+test('현황 답변·서버 진단의 과거 영상 언급으로 화면 확인 작업을 붙이지 않는다', () => {
+  const m = manager({ designRule: { enabled: true, mode: 'split', check: true } });
+  const make = (task = {}) => ({ mode: 'auto', goal: '오딘을 쓸 때랑 단독으로 쓸 때 속도와 품질 차이가 심해', notes: [], tasks: [
+    { id: 't1', title: '오딘 속도·품질 진단', assignee: 'codex', prompt: '이전 영상 제작은 재개하지 않는다. 스크린샷 검증과 모델 실행 로그를 비교한다.', dependsOn: [], ...task },
+  ] });
+  assert.deepEqual(m.enforceDesignRule(make(), ['claude', 'codex'], name, usage()), [], '예전 계획도 재작성 과제의 단어만으로 붙이지 않음');
+  assert.deepEqual(m.enforceDesignRule(make({ title: '영상 엔진 적용 현황 답변', visualOutput: false }), ['claude', 'codex'], name, usage()), [], '결과물이 없는 명시적 판정');
+  const visual = make({ title: '일곱 번째 편 완성', visualOutput: true });
+  assert.equal(m.enforceDesignRule(visual, ['claude', 'codex'], name, usage())[0].visualCheck, true, '제목이 모호해도 실제 시각 결과물 판정은 유지');
+});
+
 test('판정: 디자인뿐 아니라 이미지·영상·3D·화면·색·버튼도 눈으로 보는 결과물, 검색·색인·버그·설계는 아님', () => {
   for (const s of ['5편은 3d로 만들어줘', '썸네일 이미지 만들어', '먹방 영상 컷 편집', '대시보드 버튼 색 바꿔', '화면 예쁘게 꾸며줘', '로고 시안', '애니메이션 GIF']) assert.equal(isDesignText(WHOLE, s), true, s);
   for (const s of ['검색 기능 추가', '파일 탐색 속도', '색인 재구성', '버그 원인 찾아서 고쳐', 'DDingUI 애드온 성능 개선', '시스템 설계 문서', 'API 응답 형식 정리']) assert.equal(isDesignText(WHOLE, s), false, s);

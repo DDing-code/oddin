@@ -45,6 +45,25 @@ test('실행 도중 모델 용량 초과로 끊기면 같은 대화를 이어서
   assert.match(lines[3].prompt, /붐벼 직전 턴이 중간에 끊겼습니다/);
 });
 
+test('대화 재개도 초기화 잠금 오류를 재시도하며 기존 스레드를 보존한다', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-hub-resume-flaky-'));
+  const fixture = fileURLToPath(new URL('./fixtures/intercept-cli.mjs', import.meta.url));
+  const cap = path.join(dir, 'cap.jsonl'), marker = path.join(dir, 'once');
+  const h = runWorker({
+    tool: 'codex', prompt: '직전 작업 이어서', cwd: dir, runDir: path.join(dir, 'run'), resumeSessionId: 'existing-thread',
+    toolCfg: { command: `"${process.execPath}" "${fixture}" --tool codex --capture "${cap}" --flaky-once "${marker}"`, transport: 'native', shell: true },
+    settings: { model: 'gpt-6.1-sol', effort: 'high' }, timeoutMs: 30_000, ackTimeoutMs: 5000, onEvent() {},
+  });
+  try {
+    const res = await h.promise;
+    assert.equal(res.ok, true, JSON.stringify(res)); assert.equal(res.sessionId, 'existing-thread');
+    assert(fs.existsSync(path.join(dir, 'run', 'attempt-2')));
+    const calls = fs.readFileSync(cap, 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.kind === 'input');
+    assert.equal(calls.filter((e) => e.message.method === 'thread/start').length, 0);
+    assert.equal(calls.find((e) => e.message.method === 'thread/resume').message.params.threadId, 'existing-thread');
+  } finally { h.close?.(); }
+});
+
 test('네이티브 연결에서 용량 초과로 끊기면 같은 스레드에 새 턴을 시작해 성공', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-hub-capacity-native-'));
   const fixture = fileURLToPath(new URL('./fixtures/intercept-cli.mjs', import.meta.url));
