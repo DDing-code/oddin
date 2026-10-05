@@ -73,3 +73,20 @@ test('작업 지시문: 드라이브 작업 폴더면 두 PC가 함께 쓴다는
   assert.ok(withDrive.includes("구글 드라이브로 두 PC가 함께 쓰는 작업 폴더(업무 보관함)입니다 — 다른 PC에서는 회사: C:/Work/Archive"));
   assert.doesNotMatch(buildWorkerPrompt({ job, task, depResults: [], siblings: [task], hubDir: 'H', memoryCtx: '' }), /구글 드라이브/);
 });
+
+test('원본 PC는 자기 드라이브 백업("다른 컴퓨터")이 아니라 원본 폴더를 고른다', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-drive-rank-'));
+  try {
+    const hub = path.join(dir, 'shared'); put(path.join(hub, 'sync'), []);
+    fs.writeFileSync(path.join(hub, 'sync', 'config.json'), JSON.stringify({ memoryAliases: {} }));
+    const files = ['a/', 'b/', 'c.md', 'd.md'];
+    const homeCopy = path.join(dir, 'home-drive', '다른 컴퓨터', '내 컴퓨터', 'Archive (1)'); put(homeCopy, files);
+    const officeLocal = path.join(dir, 'office', 'Archive'); put(officeLocal, files);
+    const officeOwnBackup = path.join(dir, 'office-drive', '다른 컴퓨터', '내 컴퓨터', 'Archive (1)'); put(officeOwnBackup, files);
+    put(path.join(dir, 'office-drive', '내 드라이브'), []);
+    const home = new DriveFolders({ hubDir: hub, self: () => ({ id: 'home', name: '집' }), projects: () => [], driveRoot: path.join(dir, 'home-drive') });
+    const office = new DriveFolders({ hubDir: hub, self: () => ({ id: 'office', name: '회사' }), projects: () => [officeLocal], driveRoot: path.join(dir, 'office-drive') });
+    home.add({ path: homeCopy, name: '보관함' });
+    assert.deepEqual(office.resolve().found.map((x) => x.path), [officeLocal]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
