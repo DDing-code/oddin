@@ -28,6 +28,7 @@ import { setupStatus, installSharedHooks } from './lib/shared-setup.mjs';
 import { listMemory, moveMemory, createBlock, renameBlock, setBlockRoot, deleteBlock, readBlockMemory } from './lib/memory-blocks.mjs';
 import { hubCommit, runningCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
 import { SharedFolders } from './lib/shared-folders.mjs';
+import { DriveFolders } from './lib/drive-folders.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -78,6 +79,31 @@ const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared
 const folders = new SharedFolders({ hubDir: config.hubDir, peers, intervalMs: (config.sharedFolders?.intervalSeconds ?? 120) * 1000 });
 folders.on('status', (s) => broadcast({ type: 'shared-folders', ...s }));
 setTimeout(() => { if (peers.list().length) folders.pullAll().catch(() => {}); }, 8000).unref();
+// 드라이브 작업 폴더(구글 드라이브로 두 PC가 함께 쓰는 폴더): 다른 PC 경로 찾기·같은 메모리로 잇기·작업 순서 (lib/drive-folders.mjs)
+const drive = new DriveFolders({ hubDir: config.hubDir, self: () => peers.self(), projects: () => projectsList().map((x) => x.path) });
+const LIVE_JOB = new Set(['planning', 'running', 'reporting']);
+const driveBusy = () => { const out = {}; for (const j of jobs.list()) if (LIVE_JOB.has(j.status)) { const f = drive.folderOf(j.cwd); if (f) out[f.id] = { jobId: j.id, title: j.title || '', since: j.createdAt, machine: peers.self().name }; } return out; };
+const peerBusy = async () => {
+  const out = {};
+  await Promise.all(peers.list().map(async (x) => { try { Object.assign(out, await peers.call(x, '/api/drive-folders/busy', { timeoutMs: 5000 })); } catch {} }));
+  return out;
+};
+jobs.driveInfo = (job) => drive.folderOf(job.cwd);
+jobs.driveGuard = async (job, task) => {
+  const f = drive.folderOf(job.cwd); if (!f) return;
+  const wait = config.driveFolders?.waitMinutes ?? 30, until = Date.now() + wait * 60_000; let told = false;
+  while (Date.now() < until && job.status !== 'cancelled') {
+    const other = (await peerBusy())[f.id];
+    // 먼저 시작한 쪽이 먼저 한다(같은 시각이면 PC 이름순) — 두 PC가 서로를 기다리며 멈추지 않게
+    if (!other || other.since > job.createdAt || (other.since === job.createdAt && other.machine >= peers.self().name)) break;
+    if (!told) { told = true; job.notes = job.notes || []; job.notes.push(`${other.machine}에서 드라이브 작업 폴더 "${f.name}"로 작업 중이라 끝날 때까지 기다려요(같은 파일 동시 수정 방지)`); jobs.emitJob(job); }
+    await new Promise((r) => setTimeout(r, 20_000));
+  }
+  if (told) { if (Date.now() >= until) job.notes.push(`기다리는 시간(${wait}분)이 지나 그대로 시작해요`); jobs.emitJob(job); }
+};
+const driveResolve = () => { try { const r = drive.resolve(); if (r.found.length) broadcast({ type: 'drive-folders' }); return r; } catch (e) { return { error: e.message }; } };
+setTimeout(driveResolve, 5000).unref();
+setInterval(driveResolve, 120_000).unref();
 const checkPeers = async () => {
   if (!peers.list().length) return;
   await Promise.all(peers.list().map((x) => peers.check(x)));
@@ -155,6 +181,21 @@ const server = http.createServer(async (req, res) => {
       const peer = peers.get(peerUpdate[1]); if (!peer) return fail(res, '연결된 PC를 찾지 못했어요', 404);
       if (peerUpdate[2] === 'version' && req.method === 'GET') return json(res, await peers.call(peer, '/api/hub/version?check=1', { timeoutMs: 90_000 }));
       if (peerUpdate[2] === 'update' && req.method === 'POST') { await readBody(req); const r = await peers.call(peer, '/api/hub/update', { method: 'POST', body: {}, timeoutMs: 180_000 }); peers.check(peer).then(() => broadcast({ type: 'peers', ...peersView() })); return json(res, r); }
+    }
+    // 드라이브 작업 폴더
+    if (p === '/api/drive-folders' && req.method === 'GET') { const [busyPeers] = await Promise.all([peerBusy()]); return json(res, { drive: drive.drive(), folders: drive.list({ ...busyPeers, ...driveBusy() }), here: peers.self().name }); }
+    if (p === '/api/drive-folders/busy' && req.method === 'GET') return json(res, driveBusy());
+    if (p === '/api/drive-folders/resolve' && req.method === 'POST') { await readBody(req); return json(res, driveResolve()); }
+    if (p === '/api/drive-folders' && req.method === 'POST') {
+      const f = drive.add(await readBody(req)); broadcast({ type: 'drive-folders' });
+      // 목록이 연결된 PC에 넘어간 뒤 그쪽에서 자기 경로를 찾게 한다
+      (async () => { try { await shared?.syncAll('드라이브 작업 폴더'); for (const x of peers.list()) await peers.call(x, '/api/drive-folders/resolve', { method: 'POST', body: {} }).catch(() => {}); broadcast({ type: 'drive-folders' }); } catch {} })();
+      return json(res, f, 201);
+    }
+    {
+      const df = p.match(/^\/api\/drive-folders\/([\w-]+)(\/path)?$/);
+      if (df && df[2] && req.method === 'POST') { const r = drive.setPath(df[1], (await readBody(req)).path); broadcast({ type: 'drive-folders' }); return json(res, r); }
+      if (df && !df[2] && req.method === 'DELETE') { const r = drive.remove(df[1]); broadcast({ type: 'drive-folders' }); return json(res, r); }
     }
     // 공유 폴더(읽기용 사본)
     if (p === '/api/shared-folders' && req.method === 'GET') return json(res, { own: folders.own(), mirrors: folders.mirrors(), root: folders.mirrorRoot });

@@ -24,7 +24,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   const why = (e) => (/^없는 API$/.test(String(e?.message || '')) ? OLD_SERVER : String(e?.message || e));
   async function load() {
     if (P.loading) return; P.loading = true;
-    try { [P.view, P.setup, P.folders] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null)]); P.error = ''; }
+    try { [P.view, P.setup, P.folders, P.drive] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null), call('/api/drive-folders').catch(() => null)]); P.error = ''; }
     catch (e) { P.error = why(e); }
     P.loading = false; refresh();
   }
@@ -66,6 +66,22 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
       h += `<p class="pc-hint">둘 다 고친 파일은 목록(MEMORY.md)이면 줄을 합치고, 아니면 최근에 고친 쪽을 써요. 밀린 판과 지운 파일은 ${E((v.sync?.root || '~/.ai-shared') + '\\backups\\sync')}에 남아요.</p>`;
     }
 
+    // 드라이브 작업 폴더: 구글 드라이브로 두 PC가 함께 쓰는 폴더에서 바로 작업
+    const dv = P.drive;
+    if (dv) {
+      h += `<div class="ilabel">드라이브 작업 폴더 ${dv.folders.length || ''}</div>`;
+      h += `<p class="pc-hint">${dv.drive ? `이 PC 구글 드라이브: ${E(dv.drive.root)} (${E(dv.drive.myDrive.split(/[\\\\/]/).pop())}${dv.drive.computers ? ` · ${E(dv.drive.computers.split(/[\\\\/]/).pop())}` : ''})` : '이 PC에서 구글 드라이브 앱을 찾지 못했어요'}. 드라이브로 두 PC에 맞춰지는 폴더를 등록하면 두 PC 모두 그 폴더에서 바로 작업하고, 같은 프로젝트 기억을 써요.</p>`;
+      for (const f of dv.folders) {
+        const busy = f.busy ? `<div class="pc-sync err">${IC('clock')}<span>${E(f.busy.machine)}에서 작업 중 — 다른 PC의 새 작업은 끝날 때까지 기다려요</span></div>` : '';
+        h += `<div class="pc-peer"><div class="pc-row">${IC('folder')}<b>${E(f.name)}</b><span class="grow"></span>${f.here ? `<button class="btn sm" data-dv-work="${E(f.here)}" title="이 폴더로 새 세션을 열어요">여기서 작업</button><button class="btn sm" data-dv-open="${E(f.here)}" title="${E(f.here)}">열기</button>` : ''}<button class="icon-btn" data-dv-remove="${E(f.id)}" title="등록 빼기 (폴더·파일은 그대로)">${IC('x')}</button></div>`
+          + `<div class="pc-sync"><span>이 PC: ${f.here ? `<span class="pc-path">${E(f.here)}</span>` : '<span class="c-err">아직 못 찾음</span> <button class="linkish" data-dv-path="' + E(f.id) + '">경로 직접 지정</button>'}</span></div>`
+          + f.others.map((o) => `<div class="pc-sync"><span>${E(o.name)}: <span class="pc-path">${E(o.path)}</span></span></div>`).join('')
+          + (f.hasGit ? `<div class="pc-sync err">${IC('alert')}<span>안에 git 저장소가 있어요. 드라이브 동기화와 git이 겹치면 저장소가 깨질 수 있어요</span></div>` : '') + busy + '</div>';
+      }
+      h += `<form class="pc-add" data-dv-add><input name="p" placeholder="드라이브 폴더 경로 (예: D:\\다른 컴퓨터\\내 컴퓨터\\작업폴더 (1))" autocomplete="off" aria-label="드라이브 작업 폴더 경로"><input name="n" placeholder="이름 (예: 업무 보관함)" maxlength="60" autocomplete="off" aria-label="드라이브 작업 폴더 이름"><button class="btn" type="submit" ${P.busy === 'dv-add' ? 'disabled' : ''}>${IC('plus')}등록</button></form>`;
+      h += `<div class="pc-actions"><button class="btn" data-dv-resolve ${P.busy === 'dv-resolve' ? 'disabled' : ''}>${IC('refresh')}다른 PC 경로 다시 찾기</button></div><p class="pc-hint">고친 파일은 드라이브가 10~20초 안에 다른 PC에 맞춰요. 같은 파일을 두 PC가 동시에 고치면 충돌 사본이 생기니, 한 PC가 작업 중이면 다른 PC는 기다려요. 드라이브 앱에서 이 폴더를 "오프라인 사용"으로 두면 빨라요.</p>`;
+    }
+
     // 공유 폴더(읽기용 사본): 플러그인 소스처럼 파일까지 다른 PC가 봐야 하는 것
     const fo = P.folders;
     if (fo) {
@@ -95,7 +111,13 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   window.hubTabs.push({ key: 'peers', label: '연결된 PC', icon: 'monitor', render });
 
   document.addEventListener('submit', (e) => {
-    const add = e.target.closest('[data-pc-add]'), self = e.target.closest('[data-pc-self]'), sf = e.target.closest('[data-sf-add]');
+    const add = e.target.closest('[data-pc-add]'), self = e.target.closest('[data-pc-self]'), sf = e.target.closest('[data-sf-add]'), dva = e.target.closest('[data-dv-add]');
+    if (dva) {
+      e.preventDefault();
+      const p = dva.p.value.trim(), name = dva.n.value.trim(); if (!p) return;
+      act('dv-add', () => call('/api/drive-folders', { method: 'POST', body: JSON.stringify({ path: p, name }) }), (f) => `"${f.name}" 등록했어요. 다른 PC에서 경로를 찾는 중이에요`);
+      return;
+    }
     if (sf) {
       e.preventDefault();
       const p = sf.p.value.trim(), name = sf.n.value.trim(), mode = sf.m?.value || 'code'; if (!p) return;
@@ -113,7 +135,12 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     }
   });
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode]'); if (!b) return;
+    const b = e.target.closest('[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
+    if (b.hasAttribute('data-dv-work')) { if (typeof newSession === 'function') { newSession(b.dataset.dvWork); say('드라이브 작업 폴더에서 새 세션을 시작해요. 요청을 입력하세요'); } return; }
+    if (b.hasAttribute('data-dv-open')) { if (typeof window.openPath === 'function') window.openPath(b.dataset.dvOpen); return; }
+    if (b.hasAttribute('data-dv-resolve')) { act('dv-resolve', () => call('/api/drive-folders/resolve', { method: 'POST', body: '{}' }), (r) => r.found?.length ? `찾았어요: ${r.found.map((x) => x.name).join(', ')}` : r.missing?.length ? `아직 못 찾은 폴더: ${r.missing.join(', ')}` : '모두 찾아 두었어요'); return; }
+    if (b.hasAttribute('data-dv-remove')) { const f = P.drive?.folders.find((x) => x.id === b.dataset.dvRemove); if (f && confirm(`"${f.name}" 등록을 뺄까요? 폴더와 파일은 그대로예요.`)) act('dv-remove', () => call(`/api/drive-folders/${encodeURIComponent(f.id)}`, { method: 'DELETE' }), '등록을 뺐어요'); return; }
+    if (b.hasAttribute('data-dv-path')) { const p = prompt('이 PC에서 그 폴더의 경로'); if (p && p.trim()) act('dv-path', () => call(`/api/drive-folders/${encodeURIComponent(b.dataset.dvPath)}/path`, { method: 'POST', body: JSON.stringify({ path: p.trim() }) }), '이 PC 경로를 지정했어요'); return; }
     if (b.hasAttribute('data-sf-mode')) { act('sf-mode', () => call(`/api/shared-folders/${encodeURIComponent(b.dataset.sfMode)}`, { method: 'POST', body: JSON.stringify({ mode: b.dataset.mode }) }), (f) => `${f.name}: ${f.mode === 'all' ? '그림 포함' : '코드·문서만'}으로 바꿨어요 (파일 ${f.files}개)`); return; }
     if (b.hasAttribute('data-sf-open')) { if (typeof window.openPath === 'function') window.openPath(b.dataset.sfOpen); return; }
     if (b.hasAttribute('data-sf-pull')) { act('sf-pull', () => call('/api/shared-folders/pull', { method: 'POST', body: '{}' }), (r) => (r.results || []).every((x) => x.ok) ? '다른 PC의 공유 폴더를 받았어요' : `일부 못 받았어요: ${(r.results || []).find((x) => !x.ok)?.error || ''}`); return; }
@@ -140,6 +167,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     const ev = e.detail || {};
     if (ev.type === 'peers' && ev.self) { P.view = { self: ev.self, peers: ev.peers, sync: ev.sync }; refresh(); }
     else if (ev.type === 'shared-sync' && P.view) { P.view.sync = ev.status; if (!ev.status.running) call('/api/shared/setup').then((s) => { P.setup = s; refresh(); }).catch(() => {}); refresh(); }
+    else if (ev.type === 'drive-folders') { call('/api/drive-folders').then((d) => { P.drive = d; refresh(); }).catch(() => {}); }
     else if (ev.type === 'shared-folders' && ev.own) { P.folders = { ...(P.folders || {}), own: ev.own, mirrors: ev.mirrors }; refresh(); }
     else if (ev.type === 'hello' && P.view) load();
   });

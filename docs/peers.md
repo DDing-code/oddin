@@ -30,9 +30,19 @@
 - 한 방향(원본 → 사본). 사본을 고쳐도 다음 차례에 원본 내용으로 돌아가고, 원본에서 지운 파일은 사본에서도 지운다. 공유를 그만두면 상대 PC의 사본 폴더를 지운다(원본은 그대로).
 - 공유 방식: 기본 **코드·문서만**(코드·설정·문서·스크립트 확장자만 — 2026-10-05 회사 YM_Inv 가 그림·PDF 로 100MB 를 채워 코드가 밀려났다), 폴더마다 "그림 포함"으로 바꿀 수 있다(`POST /api/shared-folders/:id` `{mode}`).
 - 늘 빼는 것: node_modules·.git·dist·build·out·캐시·가상환경 폴더, 2MB 넘는 파일, 영상·소리·압축·실행 파일·프로젝트 바이너리(psd·aep·prproj 등). 폴더당 5,000개·100MB까지.
-- 구글 드라이브 등으로 이미 두 PC에 보이는 폴더는 공유 폴더 대신 그 경로를 쓴다(회사 YM_Inv → 집 `D:다른 컴퓨터내 컴퓨터`, 공유 메모리 reference-ym-inv-studio).
+- 구글 드라이브로 이미 두 PC에 보이는 폴더는 공유 폴더 대신 아래 "드라이브 작업 폴더"로 등록한다.
 - `peer-files`는 공유 기억 동기화 범위 밖이라 다시 돌려보내지 않는다. 파일 보기 창에서 열 수 있다(허브 폴더 안).
 - API: `GET /api/shared-folders`(이 PC 공유·받은 사본), `POST /api/shared-folders` `{path,name}`, `DELETE /api/shared-folders/:id`, `GET /api/shared-folders/offer`(상대 PC용 목록), `GET /api/shared-folders/:id/manifest`, `GET /api/shared-folders/:id/file?rel=`, `POST /api/shared-folders/pull`. 시험 `tests/shared-folders.test.mjs`.
+
+## 드라이브 작업 폴더 — 두 PC가 같은 폴더에서 작업 (`lib/drive-folders.mjs`)
+- 2026-10-05 사용자 "PC탭에서 구글 드라이브로 맞춰지는 폴더를 등록하면 거기 안에서 작업". 구글 드라이브 앱이 두 PC에 맞추는 폴더(내 드라이브·"다른 컴퓨터"로 백업한 폴더)를 연결된 PC 탭 "드라이브 작업 폴더"에 경로·이름으로 등록하면, 두 PC의 ODDIN이 각자 자기 경로에서 그 폴더를 작업 폴더로 쓴다. 공유 폴더(읽기용 사본)와 달리 실제 파일을 양쪽에서 고친다(드라이브가 10~20초 안에 맞춤, 2026-10-05 집↔회사 실측).
+- 목록은 공유 기억 `~/.ai-shared/sync/drive-folders.json`(공유 기억 동기화로 두 PC에 같음): 폴더마다 `id`·`name`·`fingerprint`(맨 위 항목 이름 목록, `desktop.ini`·`.tmp.drive*` 등 드라이브 부속 파일 제외)·`paths{PC id: 경로}`.
+- 다른 PC 경로 찾기: 등록하면 목록을 바로 맞추고 연결된 PC에 `POST /api/drive-folders/resolve`를 보낸다. 각 PC는 시작 5초 뒤·2분마다·"다른 PC 경로 다시 찾기"로 아직 경로가 없는 폴더를 자기 드라이브(드라이브 문자 D~Z에서 `내 드라이브`/`My Drive`·`다른 컴퓨터`/`Other computers`를 찾음, 시험은 `HUB_DRIVE_ROOT`)의 내 드라이브 2단계·다른 컴퓨터/*/*·알려진 프로젝트 폴더 중 지문이 가장 비슷한(0.6 이상) 폴더로 채운다. 이름이 비슷해도 내용이 다르면 고르지 않는다(이름이 같은 영상 작업물 폴더와 문서 보관함 폴더를 구별). 못 찾으면 "경로 직접 지정".
+- 같은 기억: 경로가 정해질 때마다 모든 PC 경로를 `sync/config.json`의 `memoryAliases`에서 한 프로젝트 메모리 폴더로 잇는다(처음 등록한 PC 경로의 메모리).
+- 작업 폴더 목록·플래너 후보에 "드라이브 · 이름"으로 위쪽에 나온다(`lib/projects.mjs`). PC 탭의 "여기서 작업"은 이 PC 경로로 새 세션을 연다.
+- 같은 파일 동시 수정 방지: 작업자가 시작하기 전(`jobs.driveGuard`) 연결된 PC가 같은 드라이브 폴더에서 진행 중인 요청이 있는지 `GET /api/drive-folders/busy`로 묻고, 상대가 먼저 시작했으면(요청 생성 시각, 같으면 PC 이름순) 끝날 때까지 20초마다 확인하며 기다린다. 최대 `config.driveFolders.waitMinutes`(기본 30분) 뒤에는 그대로 시작하고, 기다린 사실은 요청 메모에 남는다.
+- 작업 지시문(`buildWorkerPrompt`의 `driveFolder`)에 "두 PC가 함께 쓰는 폴더, 다른 PC 경로, 큰 임시 파일·node_modules·가상환경·git 저장소 만들지 말 것"을 붙인다.
+- API: `GET /api/drive-folders`(드라이브 위치·폴더·이 PC 경로·다른 PC 경로·진행 중), `POST /api/drive-folders` `{path,name}`, `POST /api/drive-folders/:id/path` `{path}`, `DELETE /api/drive-folders/:id`(등록만 뺌), `POST /api/drive-folders/resolve`, `GET /api/drive-folders/busy`. 시험 `tests/drive-folders.test.mjs`.
 
 ## 업데이트 (`lib/hub-update.mjs`)
 - 두 PC의 ODDIN을 같은 버전으로: 연결된 PC 탭의 PC 줄 "업데이트"(그 PC 허브에 대신 요청), 이 PC 줄 "이 PC 업데이트". 각 줄에 지금 버전(커밋 날짜, 마우스를 올리면 커밋 번호)과 이 PC와 같은지 표시.
