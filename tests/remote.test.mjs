@@ -181,7 +181,7 @@ test('격리 시험 서버: API·Origin·SSE·이미지와 재시작 없는 설�
   });
   let res = await httpRequest('/api/remote', { headers: remoteHeaders }); const status = JSON.parse(res.body);
   assert.equal(res.status, 200); assert.equal(status.viewer.remote, true); assert.equal(status.canManage, false); assert.equal(Object.hasOwn(status, 'logins'), false); assert.equal(status.tailscale.authUrl, null);
-  assert.equal(res.headers['x-frame-options'], 'DENY'); assert.equal(res.headers['referrer-policy'], 'same-origin');
+  assert.equal(res.headers['x-frame-options'], 'SAMEORIGIN'); assert.equal(res.headers['referrer-policy'], 'same-origin');
   assert.equal(await hasRemoteGate(base), true);
   res = await httpRequest('/api/memory', { headers: { host: 'evil.example' } }); assert.equal(res.status, 421);
   for (const route of ['/api/jobs', '/api/events', '/uploads/missing.png', '/style.css']) { res = await httpRequest(route, { headers: { host } }); assert.equal(res.status, 403); }
@@ -195,7 +195,7 @@ test('격리 시험 서버: API·Origin·SSE·이미지와 재시작 없는 설�
   res = await httpRequest(`/uploads/${id}`, { headers: remoteHeaders }); assert.equal(res.status, 200); assert.equal(res.headers['content-type'], 'image/png'); assert.deepEqual(res.body, png);
   let stream, streamRes, content = '';
   const ended = new Promise((resolve, reject) => {
-    stream = http.get(`${base}/api/events`, { headers: remoteHeaders }, (r) => { streamRes = r; assert.equal(r.headers['x-frame-options'], 'DENY'); r.on('data', (c) => { content += c; }); r.on('end', resolve); r.on('error', reject); }); stream.on('error', reject);
+    stream = http.get(`${base}/api/events`, { headers: remoteHeaders }, (r) => { streamRes = r; assert.equal(r.headers['x-frame-options'], 'SAMEORIGIN'); r.on('data', (c) => { content += c; }); r.on('end', resolve); r.on('error', reject); }); stream.on('error', reject);
   });
   t.after(() => stream.destroy());
   for (let i = 0; i < 50 && !content.includes('"type":"hello"'); i++) await delay(50);

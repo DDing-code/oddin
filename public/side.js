@@ -66,7 +66,7 @@ function rowHtml(s, pinnedRow = false, showFolder = false) {
     : s.status === 'partial' ? `<span class="c-warn">${icon('alert')}</span>`
     : pinnedRow ? `<span class="c-muted">${icon('pin')}</span>` : '';
   const tip = `${s.title}\n${s.cwd}\n${ST_KO[s.status] || ''} · ${new Date(s.updatedAt).toLocaleString('ko-KR')}`;
-  return `<div class="sess ${s.id === S.current ? 'on' : ''} ${unread ? 'unread' : ''} ${waiting ? 'waiting' : ''}" data-sid="${s.id}" tabindex="0" role="treeitem" title="${esc(tip)}">
+  return `<div class="sess ${s.id === S.current ? 'on' : ''} ${unread ? 'unread' : ''} ${waiting ? 'waiting' : ''}" data-sid="${s.id}" tabindex="0" role="treeitem" draggable="true" title="${esc(tip)}&#10;끌어서 오른쪽에 놓으면 나란히, 창 밖에 놓으면 새 창">
     <span class="s-ic">${ic}</span><span class="t">${esc(s.title)}</span>${s.machine ? `<span class="s-pc ${s.machine.online === false ? 'off' : ''}" title="${esc(s.machine.name)} PC에서 실행되는 세션${s.machine.online === false ? ' (지금 연결 안 됨)' : ''}">${esc(s.machine.name)}</span>` : ''}${showFolder ? `<span class="meta f">${esc(shortPath(s.cwd, 1))}</span>` : `<span class="meta">${waiting ? '승인 대기' : s.status === 'running' ? '작업 중' : ago(s.updatedAt)}</span>`}
     <button class="row-more" data-more="${s.id}" title="더보기" tabindex="-1">${icon('more')}</button></div>`;
 }

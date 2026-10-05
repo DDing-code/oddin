@@ -25,6 +25,7 @@
     question: [[880, 0, 0.16, 0.17], [880, 0.19, 0.16, 0.17], [1174.66, 0.38, 0.6, 0.2]], // 띵·띵·딩: 답을 기다림
   };
   function play(kind) {
+    if (document.documentElement.classList.contains('embed')) return; // 나눈 칸·새 창(한 세션만 보기)은 바깥 창이 울린다
     if (!on) return false;
     const c = ensure();
     if (!c || c.state !== 'running') return false;
