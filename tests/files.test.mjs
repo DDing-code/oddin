@@ -34,6 +34,22 @@ test('파일·터미널·미리보기 API: 7714 격리 서버', { timeout: 15000
   const list = (suffix = '') => `${base}/api/files/list?${new URLSearchParams({ path: cwd })}${suffix}`;
   const post = (route, body) => fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+  await t.test('결과 페이지 보기: HTML 은 격리된 페이지로, 상대 경로 그림·폴더 주소·범위 밖 거절', async () => {
+    const out = path.join(cwd, '결과 페이지'); fs.mkdirSync(out, { recursive: true });
+    fs.writeFileSync(path.join(out, 'index.html'), '<img src="그림.png">'); fs.writeFileSync(path.join(out, '그림.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const view = (p) => base + '/view/' + p.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    let r = await fetch(view(path.join(out, 'index.html')));
+    assert.equal(r.status, 200); assert.match(r.headers.get('content-type'), /text\/html/); assert.match(r.headers.get('content-security-policy'), /^sandbox allow-scripts/); assert.doesNotMatch(r.headers.get('content-security-policy'), /allow-same-origin/);
+    assert.equal(await r.text(), '<img src="그림.png">');
+    r = await fetch(view(path.join(out, '그림.png'))); assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'image/png'); await r.arrayBuffer();
+    r = await fetch(view(out), { redirect: 'manual' }); assert.equal(r.status, 302); assert.match(r.headers.get('location'), /\/$/); await r.arrayBuffer();
+    r = await fetch(view(out) + '/'); assert.equal(r.status, 200); assert.match(r.headers.get('content-type'), /text\/html/); await r.arrayBuffer();
+    fs.writeFileSync(path.join(dir, 'outside.html'), '밖');
+    assert.equal((await fetch(view(path.join(dir, 'outside.html')))).status, 403);
+    assert.equal((await fetch(base + '/view/' + encodeURIComponent(path.join(out, '..', '..', 'outside.html')))).status, 403);
+    assert.equal((await fetch(view(path.join(out, '없음.html')))).status, 404);
+  });
+
   await t.test('범위 밖·없는 경로·상대 경로·바깥 정션 거절', async () => {
     fs.writeFileSync(path.join(dir, 'outside.txt'), '범위 밖');
     assert.equal((await fetch(`${base}/api/file?${new URLSearchParams({ path: path.join(dir, 'outside.txt') })}`)).status, 403);

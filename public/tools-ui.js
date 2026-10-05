@@ -32,6 +32,10 @@
   /* ================= 공용 ================= */
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const remote = () => (typeof isRemoteView === 'function' ? isRemoteView() : false);
+  // 결과 페이지 보기 주소(서버 lib/files.mjs 의 serveView): 폴더 구조 그대로라 페이지 안 상대 경로도 이어진다
+  const isPage = (p) => /\.html?$/i.test(String(p || '').trim());
+  const pageUrl = (p) => '/view/' + String(p).trim().replace(/&amp;/g, '&').replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+  const openPage = (p) => window.open(pageUrl(p), '_blank', 'noopener');
   const fmtSize = (n) => (!Number.isFinite(n) ? '' : n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024).toFixed(n < 10240 ? 1 : 0)}KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)}MB` : `${(n / 1073741824).toFixed(2)}GB`);
   const fmtMs = (ms) => (ms < 1000 ? `${Math.max(0, ms | 0)}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}초` : `${(ms / 60000) | 0}분 ${((ms % 60000) / 1000) | 0}초`);
   const fmtWhen = (iso) => { if (!iso) return ''; const d = new Date(iso); if (Number.isNaN(d.getTime())) return ''; return d.toDateString() === new Date().toDateString() ? `오늘 ${hm(iso)}` : d.toLocaleString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }); };
@@ -544,6 +548,7 @@
     if (d?.kind === 'text' && d.language === 'markdown' && d.content != null) acts.push(`<span class="seg2 fv-seg" role="group" aria-label="보기 방식"><button type="button" data-f="mode" data-v="render" class="${FV.mode === 'render' ? 'on' : ''}">렌더</button><button type="button" data-f="mode" data-v="raw" class="${FV.mode === 'raw' ? 'on' : ''}">원문</button></span>`);
     if (d?.kind === 'text' && d.content != null && (d.language !== 'markdown' || FV.mode === 'raw')) acts.push(`<button type="button" class="icon-btn ${P.wrap ? 'on' : ''}" data-f="wrap" title="줄바꿈" aria-pressed="${!!P.wrap}">${icon('wrap')}</button>`);
     if (d?.kind === 'text' && d.content != null) acts.push(`<button type="button" class="icon-btn" data-f="copytext" title="내용 복사">${icon('copy')}</button>`);
+    if (d?.kind === 'text' && isPage(c.path)) acts.unshift(`<a class="btn sm fv-page" href="${esc(pageUrl(c.path))}" target="_blank" rel="noopener" title="새 탭에서 결과 페이지 보기 · 원격에서도">${icon('browser')}페이지로 열기</a>`);
     if (d && d.kind !== 'error' && d.kind !== 'dir' && d.kind !== 'text' && d.url) acts.push(`<a class="icon-btn" href="${esc(d.url)}" target="_blank" rel="noopener" title="원본을 새 탭에서 열기" aria-label="원본을 새 탭에서 열기">${icon('open')}</a>`);
     if (!remote()) acts.push(`<button type="button" class="icon-btn" data-f="explorer" title="${d?.kind === 'dir' ? '탐색기로 열기' : '이 PC에서 열기'}">${icon('folder')}</button>`);
     acts.push(`<button type="button" class="icon-btn" data-f="copypath" title="경로 복사">${icon('clip')}</button>`, `<button type="button" class="icon-btn" data-f="reload" title="다시 읽기">${icon('refresh')}</button>`);
@@ -827,6 +832,8 @@
   const baseOpenPath = window.openPath;
   window.openPath = async function (p, mode = 'auto', rel = '', base = '') {
     const inFv = FV.open && UI.lastTarget && FV.el?.contains(UI.lastTarget);
+    // 원격에서 결과 HTML 링크는 새 탭에 페이지로 (따로 게시하지 않아도 된다)
+    if (remote() && !inFv && isPage(p)) return void openPage(p);
     if (inFv || remote()) return viewPath(p, { rel, base });
     return baseOpenPath.call(this, p, mode, rel, base);
   };
@@ -836,6 +843,7 @@
     e.preventDefault(); e.stopPropagation();
     const p = el.dataset.open.replace(/&amp;/g, '&'), rel = el.dataset.rel || '', base = el.dataset.base || '';
     const items = [{ label: '허브에서 보기', desc: '이 화면 안에서 내용 보기', icon: 'eye', run: () => { closePop(); viewPath(p, { rel, base }); } }];
+    if (isPage(p)) items.unshift({ label: '페이지로 열기', desc: '새 탭에서 결과 페이지 보기 · 원격에서도', icon: 'browser', run: () => { closePop(); openPage(p); } });
     if (!remote()) items.push({ label: '열기', desc: '탐색기·기본 프로그램 (이 PC)', icon: 'folder', run: () => { closePop(); baseOpenPath(p, 'auto', rel, base); } }, { label: '탐색기에서 위치 보기', icon: 'folderOpen', run: () => { closePop(); baseOpenPath(p, 'reveal', rel, base); } });
     items.push({ sep: true }, { label: '경로 복사', icon: 'copy', run: async () => { closePop(); let v = p; if (rel && !remote()) { try { v = (await api('/api/open', { method: 'POST', body: JSON.stringify({ path: p, rel, base, mode: 'resolve' }) })).path || p; } catch {} } copyText(v, '경로를 복사했어요'); } });
     openPop(pointAnchor(e.clientX, e.clientY), items, { below: true });
