@@ -197,3 +197,16 @@ test('메모리 다이어트: 작업자 지시문에 전역 메모리 목록이 
   m.config.context = { globalIndex: true };
   assert.match(m.memoryFor(job, 'worker', { id: 't1', title: '픽셀', prompt: '픽셀' }), /전역 인덱스/);
 });
+
+test('대화 이어 쓰기: 직전 요청에 그 역할이 없으면 더 앞의 같은 역할 대화, @에이전트는 그 역할 대화끼리', () => {
+  const m = fakeManager(config());
+  const s = { id: 's1', cwd: defaultCwd, jobIds: [] }; m.sessions.set('s1', s);
+  const fin = new Date(Date.now() - 60_000).toISOString();
+  const add = (id, createdAt, tasks) => { const j = { id, sessionId: 's1', cwd: project, status: 'done', createdAt, finishedAt: fin, tasks }; m.jobs.set(id, j); s.jobIds.push(id); };
+  add('j1', '2026-10-04T00:00:00.000Z', [{ id: 't1', assignee: 'claude', status: 'done', sessionId: 'cl-plan', designPlan: true, finishedAt: '1' }, { id: 't2', assignee: 'codex', status: 'done', sessionId: 'cx-review', agent: 'reviewer', finishedAt: '2' }]);
+  add('j2', '2026-10-04T01:00:00.000Z', [{ id: 't1', assignee: 'codex', status: 'done', sessionId: 'cx-work', finishedAt: '3' }]);
+  const job = { id: 'j3', sessionId: 's1', cwd: project, createdAt: '2026-10-04T02:00:00.000Z' };
+  assert.deepEqual(m.continuation(job, { assignee: 'claude', designPlan: true }), { jobId: 'j1', taskId: 't1', sessionId: 'cl-plan' }, '직전 요청에 기획이 없으면 그 앞 요청의 기획 대화');
+  assert.deepEqual(m.continuation(job, { assignee: 'codex', agent: 'reviewer' }), { jobId: 'j1', taskId: 't2', sessionId: 'cx-review' }, '@리뷰어는 리뷰어 대화끼리');
+  assert.deepEqual(m.continuation(job, { assignee: 'codex' }), { jobId: 'j2', taskId: 't1', sessionId: 'cx-work' }, '일반 작업은 작업 대화');
+});
