@@ -524,9 +524,15 @@ function renderAtts() {
 }
 $('#atts').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { S.atts = S.atts.filter((a) => a.key !== b.dataset.rm); renderAtts(); } });
 async function addFiles(files) {
-  for (const f of files) {
-    if (!f.type.startsWith('image/')) { toast(`이미지만 첨부할 수 있어요: ${f.name}`, true); continue; }
-    if (S.atts.filter((a) => a.state !== 'bad').length >= 4) { toast('이미지는 한 번에 4장까지', true); break; }
+  const max = S.cfg?.limits?.maxCount || 24;
+  outer: for (const original of files) {
+    if (!original.type.startsWith('image/')) { toast(`이미지만 첨부할 수 있어요: ${original.name}`, true); continue; }
+    // 긴 이미지는 여러 장으로 나눠 붙인다(image-split.js — AI가 받는 한 변 8000픽셀 제한, 줄여 보면 글씨가 안 읽힘)
+    let parts = [original];
+    try { if (window.hubSplitImage) parts = await window.hubSplitImage(original); } catch {}
+    if (parts.length > 1) toast(`긴 이미지를 ${parts.length}장으로 나눠 붙였어요 · AI에게 이어서 읽으라고 알려요`);
+    for (const f of parts) {
+    if (S.atts.filter((a) => a.state !== 'bad').length >= max) { toast(`이미지는 한 번에 ${max}장까지`, true); break outer; }
     const a = { key: Math.random().toString(36).slice(2), name: f.name || 'clipboard.png', url: URL.createObjectURL(f), state: 'up' };
     S.atts.push(a); renderAtts();
     try {
@@ -535,6 +541,7 @@ async function addFiles(files) {
       Object.assign(a, { id: j.id, state: 'ok' });
     } catch (e) { Object.assign(a, { state: 'bad', error: e.message }); }
     renderAtts();
+    }
   }
 }
 $('#file').addEventListener('change', (e) => { addFiles([...e.target.files]); e.target.value = ''; input.focus(); });
