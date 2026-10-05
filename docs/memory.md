@@ -30,6 +30,16 @@
 - 사용자가 '기억' 탭에서 고친 `session.notesEdit`가 그 스냅샷의 정리 시각(`curation.at`)보다 새것이면 그것.
 - 갈래 세션은 갈라진 시점의 노트를 그대로 이어받는다.
 
+## 블록 · 공유/이 PC만 · 세션별 연결 (2026-10-05, `lib/memory-blocks.mjs`)
+사용자 요구: "메모리를 블록별로 정리하고 공유/로컬 메모리를 나누고 세션별로 실시간 동기화/해제".
+- **블록**: 전역 `MEMORY.md`의 `## 제목` 하나가 블록 하나(제목 앞 줄은 "기본", 목록에 없는 파일은 "미분류"). 새 줄이 끝에 붙으면 맨 끝 `## 미분류`에 들어간다. 프로젝트 메모리 폴더(`projects/<폴더>`)는 폴더 하나가 블록 하나(`project:<폴더>`, 이름은 대응표 경로 끝).
+- **공유 / 이 PC만**: 공유 `~/.ai-shared/memory`(연결된 PC와 맞춤, `docs/peers.md`), 이 PC만 `~/.ai-shared/memory-local`(같은 구조, 맞추지 않음 — 동기화 범위 `SHARED_TOP` 밖). 메모리·블록 단위로 옮긴다(파일과 목록 줄을 함께). 공유→이 PC만으로 옮기면 연결된 PC에서는 지워지고 그쪽 `backups/sync`에 남는다.
+- **세션별 연결**: 세션의 `memory.blocks`에 블록마다 `on`(연결 — 관련성과 상관없이 매 단계 최신 내용을 넣음, 개수 한도 밖·본문 예산은 나눠 씀) / `off`(해제 — 목록·본문 모두 뺌, 한국어 규칙은 예외) / 없음(자동 — 예전처럼 관련 있을 때만). `jobs.sessionBlocks` → 공용 선택기 `buildMemoryContext({ blocks: { on, off } })`. 이 PC만 메모리도 함께 읽는다(목록 머리 "이 PC만 · …").
+- **새 기억 저장 위치**: 세션의 `memory.save` = `shared`(기본) / `local`(정리 담당의 새 기억을 `memory-local`에) / `none`(장기 기억은 건너뛰고 결정 노트만). 정리 담당은 새 전역 기억의 `block`(전역 블록 중 하나, 없으면 미분류)을 고르고 허브가 그 블록 끝에 줄을 넣는다(`placeIndexLine`).
+- **화면**: 사이드바 "공유 메모리" → 기억 관리 창(`public/memory-blocks.js`): 블록 목록(공유·이 PC만 개수), 메모리별 공유↔이 PC만·블록 옮기기·본문 보기, 블록 만들기·이름 바꾸기(세션 설정도 따라 바뀜)·지우기(빈 블록만)·블록 통째로 공유/이 PC만. 오른쪽 "기억" 탭 위쪽: 이 세션에 넣는 기억 [자동·연결·해제], 새 기억 저장 [공유·이 PC만·저장 안 함].
+- **API**: `GET /api/memory/blocks`, `POST /api/memory/move` `{root, rel, block?, toRoot?}`, `POST /api/memory/blocks` `{name}`, `POST /api/memory/blocks/rename` `{from, to}`, `POST /api/memory/blocks/root` `{id, root}`, `POST /api/memory/blocks/delete` `{name}`, `GET /api/memory/text?root&rel`, `POST /api/sessions/:id/memory` `{blocks, save}`.
+- 시험: `tests/memory-blocks.test.mjs`.
+
 ## API
 - `GET /api/sessions/:id/notes` → `{ notes, editedAt }`
 - `PUT /api/sessions/:id/notes` `{ notes: [{ id?, text }] }` → 목록 통째로 바꾸기(빈 줄 제외, 비밀 거절)

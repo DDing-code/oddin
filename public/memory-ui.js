@@ -79,7 +79,8 @@
     const list = st?.list || [];
     const jobs = typeof sessionJobs === 'function' ? sessionJobs(s.id) : [];
     const running = jobs.some((j) => j.curation?.status === 'running');
-    let h = `<div class="mem-pane"><div class="ilabel">세션 결정 노트 ${list.length ? list.length : ''}</div>`
+    // 이 세션에 넣는 기억(블록 연결·해제, 새 기억 저장 위치) — public/memory-blocks.js
+    let h = `<div class="mem-pane">${window.hubMemoryBlocks?.sessionHtml?.(s) || ''}<div class="ilabel">세션 결정 노트 ${list.length ? list.length : ''}</div>`
       + `<p class="mem-hint">요청이 끝날 때마다 이 세션에서 정한 것·알아낸 것을 모아 둬요. 다음 요청부터 작업자들이 이 노트를 빠짐없이 받아요(오래된 보고서는 잘려도 노트는 남아요). 틀린 건 지우고, 꼭 지킬 건 직접 더하세요.</p>`;
     if (running) h += `<div class="mem-cur run"><span class="spin-xs"></span><span>방금 끝난 요청을 정리하는 중…</span></div>`;
     if (!st || (st.status === 'loading' && !list.length)) h += `<div class="ch-skel" aria-busy="true"><i></i><i></i><i></i></div>`;

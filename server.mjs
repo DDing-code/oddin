@@ -25,6 +25,7 @@ import { knownProjects } from './lib/projects.mjs';
 import { Peers } from './lib/peers.mjs';
 import { SharedSync, scanShared, readShared, writeShared } from './lib/shared-sync.mjs';
 import { setupStatus, installSharedHooks } from './lib/shared-setup.mjs';
+import { listMemory, moveMemory, createBlock, renameBlock, setBlockRoot, deleteBlock, readBlockMemory } from './lib/memory-blocks.mjs';
 import { hubCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
@@ -233,6 +234,18 @@ const server = http.createServer(async (req, res) => {
     }
     // ---- 메모리·보드 ----
     if (p === '/api/memory') return json(res, memoryOverview(config.hubDir));
+    // ---- 기억 블록·공유/이 PC만·세션별 연결 (lib/memory-blocks.mjs, docs/memory.md) ----
+    if (p === '/api/memory/blocks' && req.method === 'GET') return json(res, listMemory(config.hubDir));
+    {
+      const memChange = (r) => { broadcast({ type: 'memory-blocks' }); return json(res, r); };
+      if (p === '/api/memory/move' && req.method === 'POST') return memChange(moveMemory(config.hubDir, await readBody(req)));
+      if (p === '/api/memory/blocks' && req.method === 'POST') return memChange(createBlock(config.hubDir, await readBody(req)));
+      if (p === '/api/memory/blocks/rename' && req.method === 'POST') { const b = await readBody(req); const r = renameBlock(config.hubDir, b); jobs.renameSessionBlock(r.from, r.to); return memChange(r); }
+      if (p === '/api/memory/blocks/root' && req.method === 'POST') return memChange(setBlockRoot(config.hubDir, await readBody(req)));
+      if (p === '/api/memory/blocks/delete' && req.method === 'POST') return memChange(deleteBlock(config.hubDir, await readBody(req)));
+      if (p === '/api/memory/text' && req.method === 'GET') return json(res, readBlockMemory(config.hubDir, { root: url.searchParams.get('root'), rel: url.searchParams.get('rel') }));
+    }
+    if ((r = m(/^\/api\/sessions\/([^/]+)\/memory$/)) && req.method === 'POST') return json(res, jobs.setSessionMemory(decodeURIComponent(r[1]), await readBody(req)));
     if ((r = m(/^\/api\/memory\/([^/]+)$/))) return json(res, memoryFiles(config.hubDir, decodeURIComponent(r[1])));
     if ((r = m(/^\/api\/memory\/([^/]+)\/([^/]+)$/))) return json(res, readMemoryFile(config.hubDir, decodeURIComponent(r[1]), decodeURIComponent(r[2])));
     if (p === '/api/board') return json(res, { board: readText(path.join(hubBoardDir(config.hubDir), 'BOARD.md'), '') });

@@ -1,0 +1,60 @@
+/* 기억 관리 창·세션별 기억 연결 (public/memory-blocks.js) */
+.mb-wrap{display:grid;grid-template-columns:250px minmax(0,1fr);gap:18px;align-items:start}
+.mb-left{position:sticky;top:0;display:flex;flex-direction:column;gap:2px;min-width:0}
+.mb-cap{margin:10px 2px 4px;font-size:11.5px;font-weight:600;color:var(--faint);letter-spacing:.02em}
+.mb-cap:first-child{margin-top:0}
+.mb-b{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border:0;border-radius:8px;background:none;color:var(--fg2);font:13px var(--font);text-align:left;min-width:0;cursor:pointer}
+.mb-b .ico{width:14px;height:14px;flex:none;color:var(--muted)}
+.mb-b:hover{background:var(--hover)}
+.mb-b.on{background:rgba(255,255,255,.08);color:var(--fg)}
+.mb-bn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mb-bc{display:flex;gap:4px;flex:none}
+.mb-bc i,.mb-legend i{font-style:normal;font-size:11px;min-width:18px;height:17px;padding:0 5px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);color:var(--muted)}
+.mb-bc i.sh,.mb-legend i.sh{background:rgba(91,156,245,.14);color:var(--codex)}
+.mb-bc i.lo,.mb-legend i.lo{background:rgba(217,119,87,.14);color:var(--claude)}
+.mb-legend{margin:12px 2px 0;font-size:11.5px;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+.mb-legend i{min-width:10px;height:10px;padding:0}
+.mb-new{display:flex;gap:4px;margin:4px 0 2px}
+.mb-new input{flex:1;min-width:0;height:28px;padding:0 9px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font:12.5px var(--font)}
+.mb-new .icon-btn{width:28px;height:28px}
+.mb-empty{padding:12px 2px;font-size:12.5px;color:var(--faint)}
+.mb-right{min-width:0}
+.mb-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding-bottom:10px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.mb-head h3{margin:0;font-size:15px;font-weight:650;color:var(--fg)}
+.mb-sub{font-size:12px;color:var(--muted)}
+.mb-head .grow{flex:1}
+.mb-head .btn.sm{padding:3px 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px}
+.mb-head .btn.sm .ico{width:12px;height:12px}
+.mb-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.mb-list li{padding:8px 6px;border-radius:9px}
+.mb-list li:hover,.mb-list li.open{background:rgba(255,255,255,.03)}
+.mb-m{display:flex;align-items:center;gap:8px;min-width:0}
+.mb-t{display:block;flex:1;min-width:0;border:0;background:none;padding:0;text-align:left;color:var(--fg);font:600 13px var(--font);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.mb-t:hover{text-decoration:underline;text-underline-offset:2px}
+.mb-type{flex:none;font-size:11px;color:var(--faint)}
+.mb-scope{flex:none;border:1px solid var(--line2);background:none;border-radius:999px;padding:1px 9px;font:11.5px var(--font);cursor:pointer}
+.mb-scope.shared{color:var(--codex);border-color:rgba(91,156,245,.35)}
+.mb-scope.local{color:var(--claude);border-color:rgba(217,119,87,.35)}
+.mb-scope:hover{background:rgba(255,255,255,.05)}
+.mb-move{flex:none;max-width:170px;height:26px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg2);font:12px var(--font);padding:0 6px}
+.mb-d{margin-top:3px;font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.mb-body{margin:8px 0 2px;padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font:12px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;color:var(--fg2)}
+@media(max-width:760px){.mb-wrap{grid-template-columns:1fr}.mb-left{position:static}.mb-move{max-width:120px}}
+
+/* 오른쪽 '기억' 탭: 이 세션에 넣는 기억 */
+.mbs-pane{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.mbs-list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px}
+.mbs-list li{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 2px}
+.mbs-n{flex:1;min-width:0;display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--fg2);overflow:hidden;white-space:nowrap}
+.mbs-n .ico{width:12px;height:12px;flex:none;color:var(--faint)}
+.mbs-n em{font-style:normal;font-size:11px;color:var(--faint)}
+.mbs-list li.off .mbs-n{color:var(--faint);text-decoration:line-through}
+.mbs-list li.on .mbs-n{color:var(--fg)}
+.mbs-n .mbs-live{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;box-shadow:0 0 0 3px rgba(80,200,120,.15)}
+.mbs-seg{flex:none}
+.mbs-seg button{padding:2px 8px;font-size:11.5px}
+.mbs-seg button.on.v-on{color:var(--ok)}
+.mbs-seg button.on.v-off{color:var(--err)}
+.mbs-save{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
+.mbs-save .seg2 button{padding:3px 10px;font-size:12px}
+.mbs-pane .linkish{border:0;background:none;padding:0;color:var(--codex);font:12px var(--font);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
