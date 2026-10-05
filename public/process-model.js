@@ -163,33 +163,45 @@
   }
   // 도구를 쓰는 동안 보여 줄 말 (명령·코드 원문 대신)
   const ACTIVITY = { cmd: '명령 실행 중', edit: '파일 고치는 중', read: '파일 읽는 중', search: '찾아보는 중', web: '웹에서 찾아보는 중', mcp: '도구 쓰는 중', agent: '보조 AI가 일하는 중', ask: '질문 준비 중', plan: '계획 정리 중', other: '도구 쓰는 중' };
+  // 한국어만 보이기(사용자 요구 2026-10-05): Codex 생각 요약은 대부분 영어라 한글이 없는 제목·줄은 뺀다
+  const HANGUL = /[가-힣ㄱ-ㅎㅏ-ㅣ]/;
+  function koreanOnly(parts) {
+    return parts.map((p) => ({ title: HANGUL.test(p.title) ? p.title : '', body: p.body.split('\n').filter((line) => !line.trim() || HANGUL.test(line)).join('\n').trim().replace(/\n{3,}/g, '\n\n') })).filter((p) => p.title || p.body);
+  }
+  /** 생각·설명 기록 하나에서 보여 줄 한국어 조각 (생각은 제목·본문 조각들, 설명은 글). 한국어가 없으면 null */
+  function koreanOf(e) {
+    if (e.kind === 'thinking') { const parts = koreanOnly(parseThought(e.thought ?? e.text)); return parts.length ? { parts } : null; }
+    if (e.kind === 'message') { const text = narration(e.text); return text && HANGUL.test(text) ? { text } : null; }
+    return null;
+  }
   /**
    * 생각만 보기: 생각(thinking)과 중간 설명(message)만 남기고 명령·수정·읽기 기록은 뺀다.
-   * 이어진 생각 조각은 한 덩어리로 합친다. 오류·사용자 수정 지시·승인 요청은 그대로 둔다.
+   * 한국어가 없는 생각·설명도 빼고(stats.hidden 에 셈) 이어진 생각 조각은 한 덩어리로 합친다.
+   * 오류·사용자 수정 지시·승인 요청은 그대로 둔다.
    */
-  function thoughts(items) {
+  function thoughts(items, stats = {}) {
     const out = [];
+    stats.hidden = 0;
     for (const e of items) {
-      if (e.kind === 'thinking') {
-        const parts = parseThought(e.thought ?? e.text); if (!parts.length) continue;
+      if (e.kind === 'thinking' || e.kind === 'message') {
+        const ko = koreanOf(e);
+        if (!ko) { if (e.kind === 'thinking' ? parseThought(e.thought ?? e.text).length : narration(e.text)) stats.hidden++; continue; }
         const last = out[out.length - 1];
-        if (last?.kind === 'thought') { last.parts.push(...parts); last.endedAt = e.at; }
-        else out.push({ kind: 'thought', id: `${e.id}#th`, at: e.at, endedAt: e.at, parts });
-      } else if (e.kind === 'message') {
-        const text = narration(e.text); if (text) out.push({ kind: 'say', id: e.id, at: e.at, text });
+        if (ko.text) out.push({ kind: 'say', id: e.id, at: e.at, text: ko.text });
+        else if (last?.kind === 'thought') { last.parts.push(...ko.parts); last.endedAt = e.at; }
+        else out.push({ kind: 'thought', id: `${e.id}#th`, at: e.at, endedAt: e.at, parts: ko.parts });
       } else if (['error', 'intercept', 'prompt'].includes(e.kind)) out.push(e);
     }
     return out;
   }
-  /** 지금 무엇을 생각하는지: 마지막 생각·설명 글과, 도구를 쓰는 중이면 그 종류 */
+  /** 지금 무엇을 생각하는지: 마지막 한국어 생각·설명 글과, 도구를 쓰는 중이면 그 종류 */
   function thoughtPreview(items) {
     const latest = (list) => list.reduce((last, item) => !last || (time(item.endedAt || item.at) ?? 0) >= (time(last.endedAt || last.at) ?? 0) ? item : last, null);
-    const said = latest(items.filter((e) => e.kind === 'thinking' || e.kind === 'message' && narration(e.text)));
+    const said = latest(items.filter((e) => koreanOf(e)));
     const now = latest(items.filter((e) => ['thinking', 'message', 'tool', 'prompt'].includes(e.kind)));
     if (!now) return null;
-    let text = '';
-    if (said?.kind === 'thinking') { const p = parseThought(said.thought ?? said.text).at(-1); text = p ? p.title || p.body : ''; }
-    else if (said) text = narration(said.text);
+    const ko = said && koreanOf(said), p = ko?.parts?.at(-1);
+    const text = ko ? ko.text || p.title || p.body : '';
     const activity = now.kind === 'tool' && (!now.status || now.status === 'running') ? ACTIVITY[now.toolKind] || ACTIVITY.other : now.kind === 'prompt' && now.prompt?.status === 'pending' ? '답을 기다리는 중' : '';
     return { text: String(text || '').replace(/\s+/g, ' ').slice(0, 160), activity, mono: false, at: now.endedAt || now.at };
   }
@@ -202,8 +214,8 @@
       // 최종 결과와 같은 마지막 설명은 보고와 겹치므로 추론 과정에서 뺀다
       const result = String(task.resultText || '').trim();
       const items = itemsFor(get(key), own, key).filter((e) => !(result && e.kind === 'message' && String(e.text || '').trim() === result));
-      const flow = thoughts(items);
-      sections.push({ ...task, key, taskId, items, rows: groupItems(items, key), thoughts: flow, counts: { ...counts(items), thoughts: flow.filter((b) => b.kind === 'thought' || b.kind === 'say').length }, preview: preview(items), thinkPreview: thoughtPreview(items), waiting: !!task.waiting || own.some((p) => p.status === 'pending'), startedAt: task.startedAt || items[0]?.at || job.startedAt || job.createdAt });
+      const stats = {}, flow = thoughts(items, stats);
+      sections.push({ ...task, key, taskId, items, rows: groupItems(items, key), thoughts: flow, hiddenThoughts: stats.hidden, counts: { ...counts(items), thoughts: flow.filter((b) => b.kind === 'thought' || b.kind === 'say').length }, preview: preview(items), thinkPreview: thoughtPreview(items), waiting: !!task.waiting || own.some((p) => p.status === 'pending'), startedAt: task.startedAt || items[0]?.at || job.startedAt || job.createdAt });
     };
     if (job.mode === 'auto' && (get(`${job.id}/plan`).length || requests.some((p) => !p.taskId || p.taskId === 'plan'))) append({ title: '계획', assignee: job.planner, status: job.status === 'planning' ? 'running' : job.tasks?.length ? 'done' : job.status, startedAt: job.startedAt, finishedAt: job.tasks?.[0]?.startedAt || job.finishedAt }, 'plan', requests.filter((p) => !p.taskId || p.taskId === 'plan'));
     for (const t of job.tasks || []) append(t, t.id, requests.filter((p) => p.taskId === t.id));
@@ -214,5 +226,5 @@
     const waiting = !!pending || !!job.waiting || sections.some((s) => s.waiting);
     return { sections, counts: total, pending, waiting, preview: latest, thinkPreview: thinkLatest, multi: sections.length > 1, visible: sections.some((s) => s.items.length) || active(job.status), status: waiting ? 'waiting' : active(job.status) ? 'running' : ['cancelled', 'interrupted'].includes(job.status) ? 'stopped' : job.status };
   }
-  return { active, terminal, toolKind, seconds, elapsed, offset, displayCommand, thinkingTitle, parseThought, narration, thoughts, thoughtPreview, exitCode, missingResult, mergeCalls, itemsFor, counts, groupItems, preview, build };
+  return { active, terminal, toolKind, seconds, elapsed, offset, displayCommand, thinkingTitle, parseThought, narration, koreanOnly, koreanOf, thoughts, thoughtPreview, exitCode, missingResult, mergeCalls, itemsFor, counts, groupItems, preview, build };
 });

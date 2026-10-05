@@ -221,16 +221,20 @@ test('생각만 보기(기본)는 생각·중간 설명만 보이고 명령·수
   const r = renderer(), j = job({ status: 'done', finishedAt: at(9), tasks: [{ id: 't1', title: '구현', assignee: 'codex', status: 'done', startedAt: at(0) }] }); r.state.open.add('proc:j');
   const records = [
     { kind: 'message', at: at(0), text: '먼저 기존 코드를 확인하겠습니다.' },
-    { kind: 'thinking', at: at(1), text: '**Reviewing design outputs**' },
+    { kind: 'thinking', at: at(1), text: '**디자인 결과를 살펴봅니다**' },
     tool('a', 'Bash', 2, { input: { command: 'npm run 비밀명령' }, output: '출력' }),
-    { kind: 'thinking', at: at(3), text: '**Refining layout**\n\n본문 설명입니다.' },
+    { kind: 'thinking', at: at(3), text: '**Refining layout**\n\n본문 설명입니다.\nEnglish only line.' },
+    { kind: 'thinking', at: at(3.5), text: '**Checking images**\n\nI am checking the images.' },
     tool('b', 'Edit', 4, { diff: [{ path: 'public/app.js', unified: '+줄' }] }),
     { kind: 'message', at: at(5), text: '{"summary":"계획 요약","tasks":[]}' },
+    { kind: 'message', at: at(6), text: 'Done checking.' },
   ];
   const html = r.render(j, records);
-  for (const pattern of [/먼저 기존 코드를 확인하겠습니다/, /Reviewing design outputs/, /Refining layout/, /본문 설명입니다/, /계획 요약/, /작업 기록/]) assert.match(html, pattern);
+  for (const pattern of [/먼저 기존 코드를 확인하겠습니다/, /디자인 결과를 살펴봅니다/, /본문 설명입니다/, /계획 요약/, /작업 기록/]) assert.match(html, pattern);
+  // 한국어만: 영어 제목·영어 줄·영어로만 된 생각과 설명은 뺀다
+  for (const pattern of [/Refining layout/, /English only line/, /Checking images/, /I am checking/, /Done checking/]) assert.doesNotMatch(html, pattern);
   for (const pattern of [/비밀명령/, /public\/app\.js/, /tc-h/, /&quot;summary&quot;/]) assert.doesNotMatch(html, pattern);
-  // 이어진 생각 두 조각은 한 덩어리로
+  // 이어진 생각 조각은 한 덩어리로
   assert.equal((html.match(/class="pt pt-think"/g) || []).length, 1);
   // 작업 기록 단추로 전체 기록을 펼치고, 다시 누르면 생각만으로
   const button = { dataset: { procMode: 'j' }, id: 'procmode-j', disabled: false, hasAttribute: (name) => name === 'data-proc-mode' };
@@ -241,10 +245,19 @@ test('생각만 보기(기본)는 생각·중간 설명만 보이고 명령·수
 
 test('생각만 보기: 진행 중에는 명령 대신 하는 일 종류와 마지막 생각을 보여 준다', () => {
   const r = renderer(), j = job();
-  const records = [{ kind: 'thinking', at: at(0), text: '**Planning the fix**' }, { kind: 'tool', callId: 'run', name: 'Bash', at: at(1), input: { command: 'git push --force' } }];
-  let html = r.render(j, records); assert.match(html, /명령 실행 중/); assert.match(html, /Planning the fix/); assert.doesNotMatch(html, /git push/);
+  const records = [{ kind: 'thinking', at: at(0), text: '**고칠 방법을 정합니다**' }, { kind: 'thinking', at: at(0.5), text: '**Planning the fix**' }, { kind: 'tool', callId: 'run', name: 'Bash', at: at(1), input: { command: 'git push --force' } }];
+  let html = r.render(j, records); assert.match(html, /명령 실행 중/); assert.match(html, /고칠 방법을 정합니다/); assert.doesNotMatch(html, /Planning the fix/); assert.doesNotMatch(html, /git push/);
   r.state.open.add('proc:j'); html = r.render(j, records); assert.match(html, /pt-live/); assert.doesNotMatch(html, /git push/);
-  html = r.render(job({ status: 'done', tasks: [{ id: 't1', title: '구현', assignee: 'codex', status: 'done', startedAt: at(0) }] }), [tool('a')]); assert.match(html, /남긴 생각이 없어요 · 명령 1개는 작업 기록에서/);
+  const done = job({ status: 'done', tasks: [{ id: 't1', title: '구현', assignee: 'codex', status: 'done', startedAt: at(0) }] });
+  html = r.render(done, [tool('a')]); assert.match(html, /남긴 생각이 없어요 · 명령 1개는 작업 기록에서/);
+  html = r.render(done, [{ kind: 'thinking', at: at(0), text: '**Only English**' }, tool('a')]); assert.match(html, /한국어로 남긴 생각이 없어요 · 영어 생각 1개 · 명령 1개는 작업 기록에서/);
+});
+
+test('한국어만: 생각 조각에서 한글 없는 제목·줄을 빼고 설명은 한글이 있어야 남긴다', () => {
+  assert.deepEqual(plain(M.koreanOnly([{ title: 'English', body: '한국어 줄\nEnglish line\n\n둘째 한국어' }, { title: '한글 제목', body: 'only english' }, { title: 'X', body: 'Y' }])), [{ title: '', body: '한국어 줄\n\n둘째 한국어' }, { title: '한글 제목', body: '' }]);
+  assert.equal(M.koreanOf({ kind: 'message', text: 'All done.' }), null);
+  assert.equal(M.koreanOf({ kind: 'message', text: '`npm test` 통과했습니다' }).text, '`npm test` 통과했습니다');
+  assert.equal(M.koreanOf({ kind: 'tool', name: 'Bash' }), null);
 });
 
 test('생각 글 나누기: Codex 제목·본문, 제목만 여러 줄, Claude 글', () => {

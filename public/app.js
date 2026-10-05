@@ -248,12 +248,11 @@ function taskHtml(j, t) {
 
 function lastLog(key) {
   const list = S.logs.get(key) || [];
-  // 명령 원문 대신 마지막 생각·설명 글을 보여 준다 (생각만 보기와 같은 기준)
+  // 명령 원문 대신 마지막 한국어 생각·설명 글을 보여 준다 (생각만 보기와 같은 기준)
   const M = window.ProcessModel;
   for (let i = list.length - 1; i >= 0; i--) {
-    const e = list[i];
-    const text = e.kind === 'thinking' ? (M ? (M.parseThought(e.text).at(-1) || {}) : { body: e.text }) : e.kind === 'message' ? { body: M ? M.narration(e.text) : e.text } : null;
-    const line = text && (text.title || text.body);
+    const ko = M?.koreanOf(list[i]), p = ko?.parts?.at(-1);
+    const line = ko && (ko.text || p.title || p.body);
     if (line) return String(line).replace(/\s+/g, ' ').slice(0, 160);
   }
   return '';

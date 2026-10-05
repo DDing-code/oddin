@@ -112,8 +112,8 @@
   }
   function thinkListHtml(s, hidden, shown) {
     const loading = !S.loadedLogs.has(s.key) && !S.logs.has(s.key), live = M.active(s.status);
-    const did = [s.counts.commands ? `명령 ${s.counts.commands}개` : '', s.counts.edits ? `수정 ${s.counts.edits}개` : ''].filter(Boolean).join(' · ');
-    const empty = shown.length || live ? '' : `<li class="proc-empty">${loading ? '기록을 불러오는 중' : s.items.length ? `남긴 생각이 없어요${did ? ` · ${did}는 작업 기록에서 볼 수 있어요` : ''}` : '기록이 없어요'}</li>`;
+    const did = [s.hiddenThoughts ? `영어 생각 ${s.hiddenThoughts}개` : '', s.counts.commands ? `명령 ${s.counts.commands}개` : '', s.counts.edits ? `수정 ${s.counts.edits}개` : ''].filter(Boolean).join(' · ');
+    const empty = shown.length || live ? '' : `<li class="proc-empty">${loading ? '기록을 불러오는 중' : s.items.length ? `${s.hiddenThoughts ? '한국어로 ' : ''}남긴 생각이 없어요${did ? ` · ${did}는 작업 기록에서 볼 수 있어요` : ''}` : '기록이 없어요'}</li>`;
     const tail = live ? `<li class="pt pt-live"><span class="spinner"></span>${esc(s.thinkPreview?.activity || (s.waiting ? '답을 기다리는 중' : '생각하는 중'))}</li>` : '';
     return `${hidden ? `<button type="button" class="tc-more proc-previous" id="${domId(s.key)}-previous" data-proc-previous="${esc(s.key)}#th">이전 생각 ${hidden}개 보기</button>` : ''}<ol class="proc-th">${shown.map((b) => thoughtHtml(b, s)).join('')}${empty}${tail}${endHtml(s)}</ol>`;
   }
