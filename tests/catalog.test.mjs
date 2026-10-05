@@ -173,3 +173,25 @@ test('재시도: 실패로 건너뛴 후속 작업도 함께 되살린다', () =
   assert.equal(tasks[2].status, 'pending'); assert.equal(tasks[2].error, null);
   assert.equal(tasks[4].status, 'skipped');
 });
+
+test('두 PC 공유 스킬: ~/.ai-shared/skills 를 Claude·Codex 스킬 폴더에 연결, 같은 이름의 이 PC 스킬은 그대로, 빠지면 연결 정리', async () => {
+  const { linkSharedSkills, loadSkills } = await import('../lib/catalog.mjs');
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-shared-skills-'));
+  try {
+    const hub = path.join(dir, 'shared'), home = path.join(dir, 'home');
+    const skill = (root, n, d) => { fs.mkdirSync(path.join(root, n), { recursive: true }); fs.writeFileSync(path.join(root, n, 'SKILL.md'), `---\nname: ${n}\ndescription: ${d}\n---\n본문`); };
+    skill(path.join(hub, 'skills'), 'chart-reels', '차트 릴스'); skill(path.join(hub, 'skills'), 'video-studio', '영상 제작');
+    skill(path.join(home, '.claude', 'skills'), 'video-studio', '이 PC 판');
+    const r = linkSharedSkills(hub, { home });
+    assert.deepEqual(r.linked.sort(), ['chart-reels', 'chart-reels', 'video-studio'].sort());
+    assert.equal(r.kept.length, 1, '이 PC의 같은 이름 스킬은 그대로');
+    assert.equal(fs.readFileSync(path.join(home, '.agents', 'skills', 'chart-reels', 'SKILL.md'), 'utf8').includes('차트 릴스'), true);
+    assert.equal(fs.readFileSync(path.join(home, '.claude', 'skills', 'video-studio', 'SKILL.md'), 'utf8').includes('이 PC 판'), true);
+    assert.deepEqual(linkSharedSkills(hub, { home }).linked, [], '다시 해도 그대로');
+    assert.ok(loadSkills(hub).find((s) => s.name === 'chart-reels').shared);
+    fs.rmSync(path.join(hub, 'skills', 'chart-reels'), { recursive: true });
+    assert.deepEqual(linkSharedSkills(hub, { home }).removed.sort(), ['chart-reels', 'chart-reels']);
+    assert.ok(!fs.existsSync(path.join(home, '.claude', 'skills', 'chart-reels')));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

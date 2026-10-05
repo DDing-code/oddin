@@ -10,7 +10,7 @@
 - 1분마다 상태 확인(`/api/peers/whoami`), 화면에는 `peers` 실시간 이벤트로 알린다.
 
 ## 공유 기억 동기화 (`lib/shared-sync.mjs`)
-- 범위: `~/.ai-shared` 의 `AGENTS.md`·`README.md`·`memory/`·`commands/`·`agents/`·`sync/`.
+- 범위: `~/.ai-shared` 의 `AGENTS.md`·`README.md`·`memory/`·`commands/`·`agents/`·`skills/`·`sync/`. `skills/<이름>/SKILL.md` 는 두 PC 공유 스킬 — ODDIN 이 시작할 때·바뀔 때 각 PC의 `~/.claude/skills`·`~/.agents/skills` 에 정션으로 연결한다(`catalog.linkSharedSkills`, 같은 이름의 이 PC 스킬은 그대로 둠).
   빼는 것(PC마다 따로): `backups/`, `hub/`(허브 작업 보드), `sync/state.json`·`sync.log`·`.lock`·`memory-check-state/`, `memory/projects/INDEX.md`(sync.mjs 가 PC 경로로 다시 만듦), 4MB 넘는 파일, 정션·링크.
 - 때: 1분마다(`config.sharedSync.intervalSeconds`), `~/.ai-shared` 가 바뀌면 3초 뒤(`watch`), PC를 연결할 때, PC 탭 "지금 맞추기".
 - 방식: 상대마다 마지막으로 맞춘 내용(파일별 해시, `data/shared-sync.json`)을 기준으로

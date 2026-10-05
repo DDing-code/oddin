@@ -14,7 +14,7 @@
 - `lib/memory.mjs` 공유 메모리 읽기, 허브 보드(`~/.ai-shared/hub/BOARD.md`, `jobs/<id>.md`) 기록
 - `lib/options.mjs` 작업별 모델·추론 강도 선택지(Codex는 `~/.codex/models_cache.json`·`config.toml`)와 검증
 - `lib/usage.mjs` 구독 한도: Claude는 CLI 제어 프로토콜 `get_usage`(모델 호출 없음), Codex는 최신 `~/.codex/sessions` 기록의 `rate_limits`
-- `lib/catalog.mjs` 공통 커맨드(`~/.ai-shared/commands`)·서브 에이전트(`~/.ai-shared/agents`)·스킬 목록, 입력 해석(`/goal`·`/커맨드`·`/스킬`·`@에이전트`), Claude Code·Codex 설치(표식 `ai-hub:managed` 파일만 덮어씀)
+- `lib/catalog.mjs` 공통 커맨드(`~/.ai-shared/commands`)·서브 에이전트(`~/.ai-shared/agents`)·두 PC 공유 스킬(`~/.ai-shared/skills`, `linkSharedSkills`로 각 PC Claude·Codex 스킬 폴더에 정션)·스킬 목록, 입력 해석(`/goal`·`/커맨드`·`/스킬`·`@에이전트`), Claude Code·Codex 설치(표식 `ai-hub:managed` 파일만 덮어씀)
 - `lib/goals.mjs` 목표 모드 라운드 지시문과 달성 판정. 진행 상태는 세션의 `goal` 필드, 반복은 `jobs.mjs`의 `afterGoalRound`
 - `lib/memory-blocks.mjs` 기억 블록(전역 MEMORY.md 의 `## 제목` = 블록, 프로젝트 폴더 = 블록)·공유(`~/.ai-shared/memory`)/이 PC만(`memory-local`, 맞추지 않음)·세션별 연결/해제(`session.memory.blocks` on/off → 공용 선택기 blocks)·새 기억 저장 위치(`session.memory.save`). 화면 `public/memory-blocks.js`(기억 관리 창·기억 탭 위쪽), 규약 `docs/memory.md`
 - `lib/memory-curate.mjs` 기억 정리(2026-10-04): 요청이 끝나면 `jobs.curate`가 한 번 정리해 세션 결정 노트 스냅샷(`job.sessionNotes`)을 남기고 장기 기억을 공유 메모리에 적용(되돌리기 기록 `runs/<작업>/memory/memory-undo.json`). 다음 요청은 정리를 기다린 뒤 `session-tools.historyContext`가 노트를 통째로 앞에 둔다. 작업자는 공유 메모리를 직접 쓰지 않고 공용 메모판 `runs/<작업>/notes/<작업ID>.md`에 결정을 남긴다. 화면 `public/memory-ui.js`, 규약 `docs/memory.md`, 끄기 `config.memory.curate:false`
