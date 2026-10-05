@@ -4,7 +4,7 @@
 // Commands from ODDIN arrive as ODDIN.run(function () { ...agent script... }).
 
 var ODDIN = (typeof ODDIN === 'object' && ODDIN) ? ODDIN : {};
-ODDIN.version = '1.1.0';
+ODDIN.version = '1.1.1';
 
 ODDIN.quote = function (s) {
   var out = '"', i, c, code, hex;
@@ -89,7 +89,15 @@ ODDIN.outFile = function (p, overwrite) {
   if (f.exists) { ODDIN.must(overwrite, 'File already exists (pass overwrite:true to replace): ' + p); f.remove(); }
   return f;
 };
-ODDIN.secs = function (t) { try { return t ? Number(t.seconds) : 0; } catch (e) { return 0; } };
+// Time object (.seconds) or a Premiere ticks string (Sequence.end / zeroPoint): 254016000000 ticks per second.
+ODDIN.secs = function (t) {
+  try {
+    if (t === null || t === undefined || t === '') return 0;
+    if (typeof t === 'object' && t.seconds !== undefined) return Number(t.seconds);
+    var n = Number(t);
+    return isFinite(n) ? n / 254016000000 : 0;
+  } catch (e) { return 0; }
+};
 
 ODDIN.pr = {
   // Project, sequences and the active sequence in one call.
