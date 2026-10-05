@@ -163,7 +163,8 @@ function heroHtml() {
     ['문서', 'README를 지금 코드에 맞게 한국어로 새로 써줘'],
     ['비교', '같은 기능을 Claude와 Codex가 각각 구현하게 해서 비교해줘'],
   ];
-  return `<div class="hero"><span class="mark"><i></i><i></i></span><h2>무엇을 할까요?</h2><p>요청을 보내면 Claude와 Codex가 나눠서 처리하고 결과를 보고해요</p><div class="ais">${tag('claude', 'Claude Code')}${tag('codex', 'Codex')}</div></div>
+  return `<div class="hero"><span class="mark"><i></i><i></i></span><h2>무엇을 할까요?</h2><p>요청을 보내면 Claude와 Codex가 나눠서 처리하고 결과를 보고해요</p><div class="ais">${tag('claude', 'Claude Code')}${tag('codex', 'Codex')}</div><button type="button" class="hero-folder" data-hero-folder title="${esc(currentCwd())}
+눌러서 작업 폴더 고르기">${icon('folder')}<span class="k">작업 폴더</span><span class="v">${esc(shortPath(currentCwd(), 3))}</span><span class="go">바꾸기${icon('down')}</span></button></div>
     <div class="sugg">${sug.map(([b, s]) => `<button data-sugg="${esc(s)}"><b>${b}</b>${esc(s)}</button>`).join('')}</div>`;
 }
 
@@ -300,6 +301,7 @@ function queueRerender(id) { rq.add(id); if (!rt) rt = setTimeout(() => { rt = n
 
 $('#thread').addEventListener('click', async (e) => {
   const sg = e.target.closest('[data-sugg]'); if (sg) { setInput(sg.dataset.sugg); return; }
+  const hf = e.target.closest('[data-hero-folder]'); if (hf) { e.stopPropagation(); return openFolderPicker(hf); }
   const tg = e.target.closest('[data-toggle]'); if (tg) { const k = tg.dataset.toggle; S.open.has(k) ? S.open.delete(k) : S.open.add(k); return rerenderJob(k.split('/')[0]); }
   const c = e.target.closest('[data-cancel]'); if (c) return stopJob(c.dataset.cancel);
   const it = e.target.closest('[data-ic-toggle]'); if (it) { const k = `ic:${it.dataset.icToggle}`; S.open.has(k) ? S.open.delete(k) : S.open.add(k); return rerenderJob(it.closest('.turn').id.slice(4)); }
@@ -429,8 +431,11 @@ function openModelPicker(tool, anchor) {
 }
 function openFolderPicker(anchor) {
   const items = [{ header: '폴더를 고르면 그 폴더에서 새 세션을 시작해요' }];
-  for (const p of S.projects) items.push({ label: shortPath(p.path, 3), desc: [p.label, p.memories ? `공유 메모리 ${p.memories}개` : '', p.path].filter(Boolean).join(' · '), checked: p.path.toLowerCase() === currentCwd().toLowerCase(), run: () => { closePop(); newSession(p.path); } });
-  items.push({ sep: true }, { label: '폴더 찾아보기…', desc: '드라이브부터 둘러보며 고르기', icon: 'folder', run: async () => { closePop(); const p = await window.hubPickFolder?.({ title: '새 세션의 작업 폴더', start: currentCwd() }); if (p) newSession(p, S.draftGroup); } }, { label: '다른 폴더 경로 입력…', desc: '', run: async () => { closePop(); const v = prompt('폴더 경로', currentCwd()); if (!v) return; const r = await api(`/api/dir?path=${encodeURIComponent(v)}`); if (!r.exists) return toast(`폴더가 없습니다: ${r.path}`, true); newSession(r.path); } });
+  // 둘러보기·경로 입력을 맨 위에: 아는 폴더가 많으면 목록 아래쪽은 스크롤해야 보인다
+  items.push({ label: '폴더 찾아보기…', desc: '드라이브부터 둘러보며 고르기', icon: 'folder', run: async () => { closePop(); const p = await window.hubPickFolder?.({ title: '새 세션의 작업 폴더', start: currentCwd() }); if (p) newSession(p, S.draftGroup); } },
+    { label: '폴더 경로 입력…', desc: '경로를 붙여 넣어 바로 고르기', icon: 'pencil', run: async () => { closePop(); const v = prompt('폴더 경로', currentCwd()); if (!v) return; const r = await api(`/api/dir?path=${encodeURIComponent(v)}`); if (!r.exists) return toast(`폴더가 없습니다: ${r.path}`, true); newSession(r.path, S.draftGroup); } });
+  if (S.projects.length) items.push({ sep: true }, { header: '자주 쓰는 폴더' });
+  for (const p of S.projects) items.push({ label: shortPath(p.path, 3), desc: [p.label, p.memories ? `공유 메모리 ${p.memories}개` : '', p.path].filter(Boolean).join(' · '), checked: p.path.toLowerCase() === currentCwd().toLowerCase(), run: () => { closePop(); newSession(p.path, S.draftGroup); } });
   openPop(anchor, items, { kind: 'folder' });
 }
 

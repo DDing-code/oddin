@@ -22,3 +22,14 @@
 .fp-cur{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12.5px}
 .fp .btn.primary{background:var(--fg);color:#141416;border-color:transparent;font-weight:600}
 .fp .btn.primary:disabled{opacity:.4}
+
+/* 새 세션 첫 화면의 작업 폴더 버튼 · 입력창 아래 폴더 버튼 */
+.hero .hero-folder{display:inline-flex;align-items:center;gap:8px;margin-top:18px;max-width:min(560px,100%);padding:7px 8px 7px 12px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2, none);color:var(--fg2);font-size:13px;cursor:pointer}
+.hero .hero-folder:hover,.hero .hero-folder:focus-visible{background:var(--hover);color:var(--fg);border-color:var(--line3, var(--line2))}
+.hero .hero-folder .ico{width:15px;height:15px;color:var(--run);flex:none}
+.hero .hero-folder .k{color:var(--muted);flex:none}
+.hero .hero-folder .v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono, monospace);font-size:12.5px}
+.hero .hero-folder .go{display:inline-flex;align-items:center;gap:3px;flex:none;padding:3px 8px;border-radius:8px;background:var(--hover);color:var(--fg);font-size:12px}
+.hero .hero-folder .go .ico{width:12px;height:12px;color:var(--muted)}
+#pFolder .ico:first-child{color:var(--run)}
+@container (max-width:420px){#pFolder .v{max-width:70px}}

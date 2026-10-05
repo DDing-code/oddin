@@ -63,4 +63,18 @@
     items.push({ sep: true }, { label: '경로 복사', icon: 'copy', run: () => { closePop(); copyText(cur, '폴더 경로를 복사했어요'); } });
     openPop(anchor, items, { below: true, kind: 'folder' });
   };
+
+  // 입력창 아래 "폴더 · <이름>" 버튼: 위쪽 칩과 같은 메뉴 (위쪽 칩을 못 찾는 경우가 있어 늘 보이는 곳에도 둔다)
+  const pill = document.createElement('button');
+  pill.type = 'button'; pill.className = 'pill'; pill.id = 'pFolder';
+  $('#btnAttach').after(pill);
+  pill.addEventListener('click', (e) => { e.stopPropagation(); window.hubFolderChip(pill); });
+  function renderPill(s) {
+    const cur = currentCwd(), name = cur.split(/[\\/]/).filter(Boolean).pop() || cur;
+    pill.innerHTML = `${icon('folder')}<span class="v"><span class="nm">폴더 · </span>${esc(name)}</span>${icon('down')}`;
+    pill.title = `작업 폴더: ${cur}\n${s ? '눌러서 열기·바꾸기' : '눌러서 이 새 세션의 폴더 고르기'}`;
+    pill.setAttribute('aria-label', `작업 폴더: ${cur}`);
+  }
+  (window.hubTopExtras ||= []).push((s) => { renderPill(s); return ''; });
+  renderPill(S.sessions.get(S.current) || null);
 })();
