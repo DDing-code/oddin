@@ -22,6 +22,9 @@ import { RemoteAccess, LOOPBACK, SECURITY_HEADERS, sendRemoteBlocked } from './l
 import { checkpointRoute } from './lib/checkpoints.mjs';
 import { HubTools } from './lib/preview.mjs';
 import { knownProjects } from './lib/projects.mjs';
+import { Peers } from './lib/peers.mjs';
+import { SharedSync, scanShared, readShared, writeShared } from './lib/shared-sync.mjs';
+import { setupStatus, installSharedHooks } from './lib/shared-setup.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -60,6 +63,18 @@ setInterval(async () => {
   lastUsageAt = Date.now();
   try { broadcast({ type: 'usage', usage: await usageStatus(config, { force: busy }) }); } catch {}
 }, 15_000).unref();
+
+// 연결된 PC(다른 ODDIN 허브)와 공유 기억(~/.ai-shared) 동기화 — 집·회사 PC 두 대를 한 대시보드로 (docs/peers.md)
+const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {}).version || '' });
+const sharedCfg = config.sharedSync || {};
+const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false });
+shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
+const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared?.status() || null });
+setInterval(async () => {
+  if (!peers.list().length) return;
+  await Promise.all(peers.list().map((x) => peers.check(x)));
+  broadcast({ type: 'peers', ...peersView() });
+}, 60_000).unref();
 
 // 공통 커맨드·서브 에이전트를 Claude Code·Codex 에 설치하고, 원본이 바뀌면 다시 설치
 if (process.env.HUB_SKIP_CLI_INSTALL !== '1') {
@@ -110,6 +125,29 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/remote' && req.method === 'GET') return json(res, await remote.status({ force: url.searchParams.get('force') === '1', viewer: req.hubViewer }));
     if (p === '/api/remote/enable' && req.method === 'POST') { await readBody(req); return json(res, await remote.enable()); }
     if (p === '/api/remote/disable' && req.method === 'POST') { await readBody(req); return json(res, await remote.disable()); }
+    // ---- 연결된 PC · 공유 기억 동기화 ----
+    if (p === '/api/peers/whoami' && req.method === 'GET') return json(res, peers.self());
+    if (p === '/api/peers' && req.method === 'GET') return json(res, peersView());
+    if (p === '/api/peers' && req.method === 'POST') {
+      const peer = await peers.add(await readBody(req));
+      shared?.syncAll('연결').catch(() => {}); broadcast({ type: 'peers', ...peersView() });
+      return json(res, peer, 201);
+    }
+    if (p === '/api/peers/self' && req.method === 'POST') { const self = peers.setSelfName((await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, self); }
+    const peerRoute = p.match(/^\/api\/peers\/([\w-]+)$/);
+    if (peerRoute && req.method === 'DELETE') { const r = peers.remove(peerRoute[1]); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
+    if (peerRoute && req.method === 'POST') { const r = peers.rename(peerRoute[1], (await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
+    if (p.startsWith('/api/shared/') && !shared) return fail(res, '공유 기억 동기화가 꺼져 있어요 (config.sharedSync.enabled)', 503);
+    if (p === '/api/shared/manifest' && req.method === 'GET') return json(res, { machine: peers.self().name, files: scanShared(config.hubDir) });
+    if (p === '/api/shared/file' && req.method === 'GET') return json(res, readShared(config.hubDir, url.searchParams.get('rel')));
+    if (p === '/api/shared/file' && req.method === 'POST') {
+      let from = 'peer'; try { from = decodeURIComponent(String(req.headers['x-oddin-machine'] || 'peer')).slice(0, 30); } catch {}
+      return json(res, writeShared(config.hubDir, await readBody(req, 8_000_000), from));
+    }
+    if (p === '/api/shared/sync' && req.method === 'POST') { await readBody(req); return json(res, { results: await shared.syncAll('직접') }); }
+    if (p === '/api/shared/status' && req.method === 'GET') return json(res, shared.status());
+    if (p === '/api/shared/setup' && req.method === 'GET') return json(res, setupStatus(config.hubDir));
+    if (p === '/api/shared/setup' && req.method === 'POST') { await readBody(req); return json(res, installSharedHooks(config.hubDir)); }
     // ---- 실시간 이벤트 ----
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS });
