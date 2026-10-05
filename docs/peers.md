@@ -59,6 +59,13 @@
 - 작업 지시문(`buildWorkerPrompt`의 `driveFolder`)에 "두 PC가 함께 쓰는 폴더, 다른 PC 경로, 큰 임시 파일·node_modules·가상환경·git 저장소 만들지 말 것"을 붙인다.
 - API: `GET /api/drive-folders`(드라이브 위치·폴더·이 PC 경로·다른 PC 경로·진행 중), `POST /api/drive-folders` `{path,name}`, `POST /api/drive-folders/:id/path` `{path}`, `DELETE /api/drive-folders/:id`(등록만 뺌), `POST /api/drive-folders/resolve`, `GET /api/drive-folders/busy`. 시험 `tests/drive-folders.test.mjs`.
 
+## 실행 PC 고르기 · 다른 PC 작업 함께 보기 (`lib/federation.mjs`, 화면 `public/machines.js`)
+- 2026-10-05 사용자 "작업을 할 컴퓨터를 정할 수 있게 해줘 하단 메뉴에서 — 작업 지시는 어느 기기에서나 할 수 있지만 작업은 정할 수 있도록". 입력창 아래 "실행 · <PC>" 버튼으로 새 세션을 어느 PC에서 할지 고른다(`S.prefs.machine`, 연결된 PC가 없으면 숨김). 이미 있는 세션은 시작한 PC에서 이어 간다(버튼이 잠김).
+- 비추기: 각 허브가 연결된 PC의 `/api/events`(SSE)를 받아 그 PC 자신의 세션·작업(작업·세션·로그·수정 지시·승인 요청·체크포인트 이벤트)을 이 화면에 함께 보여 준다. 섞이지 않게 세션·작업·요청 id 앞에 `rm-<PC키>-`를 붙이고 `machine{id,name,online}`을 단다(사이드바 줄에 PC 이름). 그 PC가 비춘 다른 PC 것(machine 붙음)은 다시 비추지 않는다. 연결이 끊기거나 다시 붙으면 `remote_sync` 이벤트로 그 PC 것을 통째로 바꾼다. `/api/events` hello·`GET /api/sessions`에 함께 들어간다.
+- 넘기기: 경로·질의·본문에 `rm-` id 가 있는 `/api/…` 요청은 그 PC로 그대로 넘기고(표시를 떼서), JSON 답의 id 에 표시를 다시 붙인다(취소·재시도·승인 답·수정 지시·세션 기억·체크포인트 등). 파일 보기·터미널·미리보기는 그 PC 파일이라 넘기지 않는다.
+- 작업 만들기: `POST /api/jobs`에 `machine`(다른 PC id)이 있거나 `sessionId`가 `rm-`이면 `Federation.createJob`이 그 PC에 작업을 만든다. 폴더는 드라이브 작업 폴더면 그 PC 경로(`drive-folders.json`의 `paths[그 PC의 자기 id]`), 드라이브 ODDIN 폴더면 그 PC의 ODDIN 위치로 바꾸고, 그 밖의 폴더는 그 PC의 기본 작업 폴더를 쓴다(답의 `note`로 안내). 첨부 이미지는 그 PC `/api/uploads`로 올린다. 만든 세션은 바로 받아 둬서 화면이 곧장 연다.
+- 끄기 `config.federation.enabled:false`. 시험 `tests/federation.test.mjs`(가짜 PC 서버).
+
 ## 업데이트 (`lib/hub-update.mjs`)
 - 두 PC의 ODDIN을 같은 버전으로: 연결된 PC 탭의 PC 줄 "업데이트"(그 PC 허브에 대신 요청), 이 PC 줄 "이 PC 업데이트". 각 줄에 지금 버전(커밋 날짜, 마우스를 올리면 커밋 번호)과 이 PC와 같은지 표시.
 - 허브 폴더에서 `git fetch` → fast-forward `pull`. 커밋 안 한 추적 파일 변경이나 이 PC에만 있는 커밋이 있으면 받지 않는다(409).

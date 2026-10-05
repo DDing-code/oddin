@@ -30,6 +30,7 @@ import { hubCommit, runningCommit, checkUpdate, applyUpdate } from './lib/hub-up
 import { SharedFolders } from './lib/shared-folders.mjs';
 import { DriveFolders } from './lib/drive-folders.mjs';
 import { DriveHub } from './lib/drive-hub.mjs';
+import { Federation } from './lib/federation.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -102,6 +103,8 @@ const peerBusy = async () => {
 jobs.driveInfo = (job) => drive.folderOf(job.cwd);
 // 기억 정리가 공유를 허용한 세션의 결과물을 드라이브 ODDIN 자산으로 올릴 때 (lib/oddin-assets.mjs)
 jobs.driveHub = () => hubInfo();
+// 실행 PC 고르기·다른 PC 작업 함께 보기: 연결된 PC의 세션·작업을 이 화면에 비추고, 그 세션 요청은 그 PC로 (lib/federation.mjs)
+const fed = config.federation?.enabled === false ? null : new Federation({ peers, broadcast, drive, hubInfo, isDefaultDir: (p) => jobs.isDefaultDir(p), uploadPath });
 jobs.machineName = () => peers.self().name;
 jobs.driveGuard = async (job, task) => {
   const f = drive.folderOf(job.cwd); if (!f) return;
@@ -173,6 +176,8 @@ const server = http.createServer(async (req, res) => {
     const m = (re) => p.match(re);
     const denial = remote.check(req);
     if (denial) return sendRemoteBlocked(res, denial, p, send);
+    // 다른 PC 세션·작업(rm-<PC>- id)에 대한 요청은 그 PC로 넘긴다
+    if (fed && p.startsWith('/api/') && /rm-[A-Za-z0-9]+-/.test(p + url.search)) { const raw = ['GET', 'HEAD'].includes(req.method) ? null : await readRaw(req, 8_000_000); return await fed.proxy(req, res, { pathname: p, search: url.search, raw }); }
     const checkpoint = await checkpointRoute({ pathname: p, method: req.method, query: url.searchParams, readBody: () => readBody(req), manager: jobs });
     if (checkpoint) return json(res, checkpoint.body);
     if (await tools.handle(req, res, url, { json, readBody })) return;
@@ -255,7 +260,7 @@ const server = http.createServer(async (req, res) => {
     // ---- 실시간 이벤트 ----
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS });
-      res.write(`data: ${JSON.stringify({ type: 'hello', sessions: jobs.listSessions(), jobs: jobs.list().map(publicJob) })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'hello', sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])] })}\n\n`);
       clients.set(res, req); res.on('close', () => clients.delete(res)); return;
     }
     // ---- 상태·선택지·사용량 ----
@@ -283,7 +288,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/dir') { const d = path.resolve(url.searchParams.get('path') || ''); return json(res, { path: d, exists: fs.existsSync(d) && fs.statSync(d).isDirectory() }); }
     // ---- 세션 ----
-    if (p === '/api/sessions' && req.method === 'GET') return json(res, jobs.listSessions({ archived: url.searchParams.get('archived') === '1' }));
+    if (p === '/api/sessions' && req.method === 'GET') { const archived = url.searchParams.get('archived') === '1'; return json(res, [...jobs.listSessions({ archived }), ...(archived ? [] : fed?.sessions() || [])]); }
     if (p === '/api/sessions' && req.method === 'POST') return json(res, jobs.createSession(await readBody(req)), 201);
     if (await sessionToolsRoute({ req, res, url, jobs, readBody, json, send })) return;
     let r;
@@ -302,7 +307,13 @@ const server = http.createServer(async (req, res) => {
     if ((r = m(/^\/api\/sessions\/([\w-]+)\/goal\/(stop|resume)$/)) && req.method === 'POST') return json(res, r[2] === 'stop' ? jobs.stopGoal(r[1]) : await jobs.resumeGoal(r[1]));
     // ---- 작업 ----
     if (p === '/api/jobs' && req.method === 'GET') return json(res, jobs.list().map(publicJob));
-    if (p === '/api/jobs' && req.method === 'POST') { const body = await readBody(req); invalidateToolStatus(); return json(res, jobs.create(body), 201); }
+    if (p === '/api/jobs' && req.method === 'POST') {
+      const body = await readBody(req); invalidateToolStatus();
+      // 실행 PC를 다른 PC로 골랐거나 다른 PC 세션에 이어서 하면 그 PC에 작업을 만든다
+      if (fed && ((body.machine && body.machine !== peers.self().id) || /^rm-[A-Za-z0-9]+-/.test(String(body.sessionId || '')))) return json(res, await fed.createJob(body), 201);
+      delete body.machine;
+      return json(res, jobs.create(body), 201);
+    }
     if ((r = m(/^\/api\/jobs\/([\w-]+)$/))) {
       if (req.method === 'DELETE') return json(res, { removed: jobs.remove(r[1]) });
       const j = jobs.get(r[1]); return j ? json(res, publicJob(j)) : fail(res, '작업 없음', 404);

@@ -465,11 +465,15 @@ async function submit() {
   if (S.submitting) return; // 앞선 보내기가 아직 응답을 기다리는 중 (중복 Enter·클릭)
   const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission, pace: S.prefs.pace === 'speed' ? 'speed' : 'quality' }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
   if (S.current) body.sessionId = S.current; else body.cwd = currentCwd();
+  // 실행 PC(machines.js): 새 세션을 다른 PC에서 시작하면 그 PC가 작업한다(다른 PC 세션은 sessionId 로 그 PC에 이어 감)
+  const machine = !S.current && typeof window.hubMachine === 'function' ? window.hubMachine() : null;
+  if (machine) body.machine = machine;
   S.submitting = true; $('#btnSend').disabled = true;
   try {
     // 확장: 새 세션 옵션(격리 등)이 있으면 기능 파일이 세션을 먼저 만들고 id를 돌려준다 (window.hubCreateSession(cwd) → sessionId|null)
-    if (!S.current && window.hubCreateSession) { const sid = await window.hubCreateSession(body.cwd); if (sid) { body.sessionId = sid; delete body.cwd; } }
+    if (!S.current && !machine && window.hubCreateSession) { const sid = await window.hubCreateSession(body.cwd); if (sid) { body.sessionId = sid; delete body.cwd; } }
     const job = await api('/api/jobs', { method: 'POST', body: JSON.stringify(body) });
+    if (job.note) toast(job.note);
     if (text) S.history.push(text); S.histIdx = -1;
     input.value = ''; autosize(); S.atts = []; renderAtts();
     S.jobs.set(job.id, job);
