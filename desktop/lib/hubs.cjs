@@ -103,7 +103,8 @@ function removeHub(state, id) {
 function summarizeSessions(list) {
   if (!Array.isArray(list)) return [];
   return list
-    .filter((s) => s && ID_RE.test(String(s.id || '')))
+    // 다른 PC 세션 사본(실행 PC 고르기로 비춘 것, machine·rm- id)은 빼고 그 허브 자신의 세션만
+    .filter((s) => s && ID_RE.test(String(s.id || '')) && !s.machine && !String(s.id).startsWith('rm-'))
     .map((s) => ({
       id: String(s.id),
       title: String(s.title || '새 세션').slice(0, 120),

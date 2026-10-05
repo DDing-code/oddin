@@ -489,7 +489,7 @@ function newSession(cwd) {
   renderTree(); renderThread(); input.focus();
 }
 async function openSession(id) {
-  if (!S.sessions.has(id)) { try { for (const x of await api('/api/sessions')) S.sessions.set(x.id, x); } catch {} }
+  if (!S.sessions.has(id)) { try { for (const x of await api('/api/sessions?all=1')) S.sessions.set(x.id, x); } catch {} }
   if (!S.sessions.has(id)) return newSession(currentCwd());
   if (!sessionJobs(id).length) { try { for (const j of await api(`/api/sessions/${id}/jobs`)) S.jobs.set(j.id, j); } catch {} }
   S.current = id; S.draftCwd = null; S.prefs.cwd = S.sessions.get(id).cwd; savePrefs();

@@ -318,7 +318,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/dir') { const d = path.resolve(url.searchParams.get('path') || ''); return json(res, { path: d, exists: fs.existsSync(d) && fs.statSync(d).isDirectory() }); }
     // ---- 세션 ----
-    if (p === '/api/sessions' && req.method === 'GET') { const archived = url.searchParams.get('archived') === '1'; return json(res, [...jobs.listSessions({ archived }), ...(archived ? [] : fed?.sessions() || [])]); }
+    // 세션 목록: 기본은 이 PC 세션만(데스크탑 앱의 "원격 세션"이 다른 PC가 비춘 이 PC 세션까지 받아 가지 않게), ?all=1 이면 다른 PC 세션 사본도
+    if (p === '/api/sessions' && req.method === 'GET') { const archived = url.searchParams.get('archived') === '1'; return json(res, [...jobs.listSessions({ archived }), ...(archived || url.searchParams.get('all') !== '1' ? [] : fed?.sessions() || [])]); }
     if (p === '/api/sessions' && req.method === 'POST') return json(res, jobs.createSession(await readBody(req)), 201);
     if (await sessionToolsRoute({ req, res, url, jobs, readBody, json, send })) return;
     let r;

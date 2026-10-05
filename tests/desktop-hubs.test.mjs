@@ -56,6 +56,9 @@ test('원격 세션 요약: 필요한 필드만, 최근 순, 최대 30개', () =
   assert.deepEqual(Object.keys(out[0]).sort(), ['cwd', 'id', 'pinned', 'status', 'title', 'updatedAt']);
   assert.ok(!out.some((s) => s.id === '../evil'));
   assert.deepEqual(H.summarizeSessions(null), []);
+  // 그 허브가 비춰 둔 다른 PC(이 PC 포함) 세션 사본은 원격 세션에 넣지 않는다
+  const mixed = H.summarizeSessions([{ id: 's-own', updatedAt: '2026-10-05' }, { id: 'rm-569eb383-s-home', updatedAt: '2026-10-06', machine: { id: '569eb383', name: '집' } }, { id: 's-x', machine: { name: '집' }, updatedAt: '2026-10-07' }]);
+  assert.deepEqual(mixed.map((s) => s.id), ['s-own']);
 });
 
 test('창 주소와 출처 판정', () => {
