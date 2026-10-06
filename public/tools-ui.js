@@ -36,6 +36,20 @@
   const isPage = (p) => /\.html?$/i.test(String(p || '').trim());
   const pageUrl = (p) => '/view/' + String(p).trim().replace(/&amp;/g, '&').replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
   const openPage = (p) => window.open(pageUrl(p), '_blank', 'noopener');
+  /** 이 링크가 다른 PC 세션 것이면 "&job=rm-…"·"&sessionId=rm-…" (없으면 '') — 작업 카드 안이면 그 작업, 아니면 지금 세션 */
+  const fedOf = (el) => {
+    const card = el?.closest?.('[id^="job-"]'), jid = card ? card.id.slice(4) : '';
+    if (jid.startsWith('rm-')) return `&job=${encodeURIComponent(jid)}`;
+    const sid = (typeof S !== 'undefined' && S.current) || '';
+    return sid.startsWith('rm-') ? `&sessionId=${encodeURIComponent(sid)}` : '';
+  };
+  const dlUrl = (q, inline = false) => `/api/download?${q}${inline ? '&inline=1' : ''}`;
+  /** 내려받기: 파일은 그대로, 폴더는 ZIP (서버 lib/files.mjs serveDownload) */
+  function download(q, name = '') {
+    const a = document.createElement('a'); a.href = dlUrl(q); a.download = name; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast(name ? `${name} 내려받기를 시작했어요` : '내려받기를 시작했어요');
+  }
   const fmtSize = (n) => (!Number.isFinite(n) ? '' : n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024).toFixed(n < 10240 ? 1 : 0)}KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)}MB` : `${(n / 1073741824).toFixed(2)}GB`);
   const fmtMs = (ms) => (ms < 1000 ? `${Math.max(0, ms | 0)}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}초` : `${(ms / 60000) | 0}분 ${((ms % 60000) / 1000) | 0}초`);
   const fmtWhen = (iso) => { if (!iso) return ''; const d = new Date(iso); if (Number.isNaN(d.getTime())) return ''; return d.toDateString() === new Date().toDateString() ? `오늘 ${hm(iso)}` : d.toLocaleString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }); };
@@ -499,15 +513,16 @@
       else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
     }
   }
-  const fvQuery = (path, rel, base) => `path=${encodeURIComponent(path)}${rel ? `&rel=${encodeURIComponent(rel)}&base=${encodeURIComponent(base || '')}` : ''}`;
+  const fvQuery = (path, rel, base) => `path=${encodeURIComponent(path)}${rel ? `&rel=${encodeURIComponent(rel)}&base=${encodeURIComponent(base || '')}` : ''}${FV.fed || ''}`;
   /** 허브 안 보기 창에서 경로 열기 (파일·폴더·미디어). rel/base 는 보고서의 상대 경로용 */
-  async function viewPath(p, { rel = '', base = '', push = true } = {}) {
+  async function viewPath(p, { rel = '', base = '', push = true, fed } = {}) {
     if (!FV.el) buildFv();
     const raw = String(p || '').replace(/&amp;/g, '&').trim(); if (!raw) return;
+    if (fed !== undefined) FV.fed = fed; else if (!FV.open) FV.fed = fedOf(null); // 다른 PC 세션 파일이면 그 PC에서 읽는다
     if (!FV.open) { openDialog(FV.el); FV.open = true; FV.hist = []; FV.el.querySelector('.tw-win').focus(); }
     if (push && FV.cur && FV.cur.path !== raw) FV.hist.push(FV.cur);
     const q = fvQuery(raw, rel, base);
-    FV.cur = { path: raw, rel, base, q }; FV.data = null; FV.zoom = false;
+    FV.cur = { path: raw, rel, base, q, fed: FV.fed || '' }; FV.data = null; FV.zoom = false;
     const token = ++FV.token;
     paintFvHead(); FV.el.querySelector('.fv-body').innerHTML = '<div class="fv-skel" aria-busy="true"><i></i><i></i><i></i><i></i></div>'; FV.el.querySelector('.fv-foot').textContent = '불러오는 중…';
     const ext = extOf(raw); const looksDir = /[\\/]$/.test(raw) || !/\.[A-Za-z0-9]{1,8}$/.test(baseName(raw));
@@ -550,7 +565,8 @@
     if (d?.kind === 'text' && d.content != null) acts.push(`<button type="button" class="icon-btn" data-f="copytext" title="내용 복사">${icon('copy')}</button>`);
     if (d?.kind === 'text' && isPage(c.path)) acts.unshift(`<a class="btn sm fv-page" href="${esc(pageUrl(c.path))}" target="_blank" rel="noopener" title="새 탭에서 결과 페이지 보기 · 원격에서도">${icon('browser')}페이지로 열기</a>`);
     if (d && d.kind !== 'error' && d.kind !== 'dir' && d.kind !== 'text' && d.url) acts.push(`<a class="icon-btn" href="${esc(d.url)}" target="_blank" rel="noopener" title="원본을 새 탭에서 열기" aria-label="원본을 새 탭에서 열기">${icon('open')}</a>`);
-    if (!remote()) acts.push(`<button type="button" class="icon-btn" data-f="explorer" title="${d?.kind === 'dir' ? '탐색기로 열기' : '이 PC에서 열기'}">${icon('folder')}</button>`);
+    if (d && d.kind !== 'error') acts.push(`<button type="button" class="icon-btn" data-f="download" title="${d.kind === 'dir' ? '폴더를 ZIP으로 내려받기' : '내려받기'}" aria-label="내려받기">${icon('download')}</button>`);
+    if (!remote() && !FV.fed) acts.push(`<button type="button" class="icon-btn" data-f="explorer" title="${d?.kind === 'dir' ? '탐색기로 열기' : '이 PC에서 열기'}">${icon('folder')}</button>`);
     acts.push(`<button type="button" class="icon-btn" data-f="copypath" title="경로 복사">${icon('clip')}</button>`, `<button type="button" class="icon-btn" data-f="reload" title="다시 읽기">${icon('refresh')}</button>`);
     FV.el.querySelector('.fv-acts').innerHTML = acts.join('');
   }
@@ -610,6 +626,7 @@
       case 'copypath': return copyText(c.path, '경로를 복사했어요');
       case 'copytext': return d?.content != null && copyText(d.content, '내용을 복사했어요');
       case 'explorer': return baseOpenPath(c.path, 'auto', c.rel, c.base);
+      case 'download': return download(c.q, d?.kind === 'dir' ? `${d.name || baseName(c.path)}.zip` : d?.name || baseName(c.path));
     }
   }
   function fvBack() { const prev = FV.hist.pop(); if (prev) viewPath(prev.path, { ...prev, push: false }); }
@@ -833,21 +850,50 @@
   window.openPath = async function (p, mode = 'auto', rel = '', base = '') {
     const inFv = FV.open && UI.lastTarget && FV.el?.contains(UI.lastTarget);
     // 원격에서 결과 HTML 링크는 새 탭에 페이지로 (따로 게시하지 않아도 된다)
-    if (remote() && !inFv && isPage(p)) return void openPage(p);
-    if (inFv || remote()) return viewPath(p, { rel, base });
+    const fed = inFv ? undefined : fedOf(UI.lastTarget);
+    if (remote() && !inFv && !fed && isPage(p)) return void openPage(p);
+    if (inFv || remote() || fed) return viewPath(p, { rel, base, fed });
     return baseOpenPath.call(this, p, mode, rel, base);
   };
-  // 경로 링크 오른쪽 클릭: 허브에서 보기 · 탐색기 · 경로 복사 (app.js 의 복사 동작을 대신한다)
+  // 경로 링크 오른쪽 클릭(폰은 길게 누르기): 허브에서 보기 · 새 탭 · 내려받기(폴더는 ZIP) · 탐색기 · 경로 복사 (app.js 의 복사 동작을 대신한다)
+  const INLINE_RE = /\.(pdf|png|jpe?g|gif|webp|bmp|avif|mp4|m4v|webm|mov|mp3|wav|m4a|ogg|flac|aac|txt|md|csv|srt|vtt|log)$/i;
+  async function pathMenu(el, x, y) {
+    const inList = el.dataset.fvOpen != null; // 보기 창 목록의 파일·폴더는 그 창이 보던 PC 기준
+    const p = (el.dataset.open ?? el.dataset.fvOpen ?? '').replace(/&amp;/g, '&'), rel = el.dataset.rel || '', base = el.dataset.base || '', fed = inList ? FV.fed || '' : fedOf(el);
+    const q = `path=${encodeURIComponent(p)}${rel ? `&rel=${encodeURIComponent(rel)}&base=${encodeURIComponent(base)}` : ''}${fed}`;
+    const anchor = pointAnchor(x, y);
+    openPop(anchor, [{ header: '확인하는 중…' }], { below: true });
+    let info = null, err = '';
+    try { info = await api(`/api/stat?${q}`); } catch (e) { err = e.message; }
+    const name = info?.name || baseName(p), dir = info?.kind === 'dir';
+    const items = [{ header: info ? `${dir ? '폴더' : '파일'} · ${name}${dir ? (info.count != null ? ` · ${info.count}개` : '') : ` · ${fmtSize(info.size)}`}${fed ? ' · 다른 PC' : ''}` : `${name} · ${err || '찾지 못했어요'}` }];
+    if (info) {
+      items.push({ label: '허브에서 보기', desc: '이 화면 안에서 내용 보기 · 원격에서도', icon: 'eye', run: () => { closePop(); viewPath(info.path, { fed }); } });
+      if (!dir && isPage(info.path) && !fed) items.push({ label: '페이지로 열기', desc: '새 탭에서 결과 페이지 보기 · 원격에서도', icon: 'browser', run: () => { closePop(); openPage(info.path); } });
+      else if (!dir && INLINE_RE.test(info.path)) items.push({ label: '새 탭에서 열기', desc: 'PDF·그림·영상을 브라우저로', icon: 'open', run: () => { closePop(); window.open(dlUrl(q, true), '_blank', 'noopener'); } });
+      items.push({ label: dir ? '폴더를 ZIP으로 내려받기' : '내려받기', desc: dir ? '안의 파일을 한 파일로 묶어 받아요' : '이 기기에 파일로 저장', icon: 'download', run: () => { closePop(); download(q, dir ? `${name}.zip` : name); } });
+      if (!remote() && !fed) items.push({ label: dir ? '탐색기로 열기' : '이 PC에서 열기', desc: dir ? '' : '기본 프로그램으로', icon: 'folder', run: () => { closePop(); baseOpenPath(p, 'auto', rel, base); } }, ...(dir ? [] : [{ label: '탐색기에서 위치 보기', icon: 'folderOpen', run: () => { closePop(); baseOpenPath(p, 'reveal', rel, base); } }]));
+    }
+    items.push({ sep: true }, { label: '경로 복사', desc: fed ? '그 PC의 경로' : '', icon: 'copy', run: () => { closePop(); copyText(info?.path || p, '경로를 복사했어요'); } });
+    openPop(anchor, items, { below: true });
+  }
+  window.hubPathMenu = pathMenu;
   document.addEventListener('contextmenu', (e) => {
-    const el = e.target.closest?.('[data-open]'); if (!el) return;
+    const el = e.target.closest?.('[data-open], [data-fv-open]'); if (!el) return;
     e.preventDefault(); e.stopPropagation();
-    const p = el.dataset.open.replace(/&amp;/g, '&'), rel = el.dataset.rel || '', base = el.dataset.base || '';
-    const items = [{ label: '허브에서 보기', desc: '이 화면 안에서 내용 보기', icon: 'eye', run: () => { closePop(); viewPath(p, { rel, base }); } }];
-    if (isPage(p)) items.unshift({ label: '페이지로 열기', desc: '새 탭에서 결과 페이지 보기 · 원격에서도', icon: 'browser', run: () => { closePop(); openPage(p); } });
-    if (!remote()) items.push({ label: '열기', desc: '탐색기·기본 프로그램 (이 PC)', icon: 'folder', run: () => { closePop(); baseOpenPath(p, 'auto', rel, base); } }, { label: '탐색기에서 위치 보기', icon: 'folderOpen', run: () => { closePop(); baseOpenPath(p, 'reveal', rel, base); } });
-    items.push({ sep: true }, { label: '경로 복사', icon: 'copy', run: async () => { closePop(); let v = p; if (rel && !remote()) { try { v = (await api('/api/open', { method: 'POST', body: JSON.stringify({ path: p, rel, base, mode: 'resolve' }) })).path || p; } catch {} } copyText(v, '경로를 복사했어요'); } });
-    openPop(pointAnchor(e.clientX, e.clientY), items, { below: true });
+    pathMenu(el, e.clientX, e.clientY);
   }, true);
+  // 폰·태블릿: 길게 누르면 같은 메뉴 (아이폰 사파리는 오른쪽 클릭이 없다). 메뉴를 띄웠으면 이어지는 누르기는 무시
+  let press = null, swallow = false;
+  document.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    const el = e.target.closest?.('[data-open], [data-fv-open]'); if (!el) return;
+    const x = e.clientX, y = e.clientY;
+    press = { x, y, t: setTimeout(() => { press = null; swallow = true; navigator.vibrate?.(10); pathMenu(el, x, y); }, 550) };
+  }, true);
+  const cancelPress = (e) => { if (press && (!e || e.type !== 'pointermove' || Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10)) { clearTimeout(press.t); press = null; } };
+  for (const t of ['pointerup', 'pointercancel', 'pointermove', 'scroll']) document.addEventListener(t, cancelPress, true);
+  document.addEventListener('click', (e) => { if (swallow && e.target.closest?.('[data-open], [data-fv-open]')) { e.preventDefault(); e.stopImmediatePropagation(); } swallow = false; }, true);
   // 상단 바 버튼
   const tb = document.createElement('div'); tb.className = 'tool-btns';
   tb.innerHTML = `<button type="button" class="icon-btn" id="btnTerm" title="터미널 (Ctrl+\`)" aria-pressed="false">${icon('terminal')}<i class="busy-dot"></i></button><button type="button" class="icon-btn" id="btnFiles" title="세션 폴더 보기 (허브 안에서)">${icon('folderOpen')}</button><button type="button" class="icon-btn" id="btnPreview" title="개발 서버 미리보기">${icon('browser')}</button>`;

@@ -44,3 +44,6 @@ html,body{height:100dvh}
   #pFolder .v{max-width:104px}
   .bar .grow{flex:1 0 0}
 }
+
+/* 파일·폴더 링크: 폰에서 길게 누르면 ODDIN 메뉴(보기·내려받기)가 뜨게 사파리 기본 말풍선은 끈다 (tools-ui.js pathMenu) */
+[data-open]{-webkit-touch-callout:none}
