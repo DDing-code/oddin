@@ -6,42 +6,101 @@
 #app.split.collapsed.insp-off,#app.split.collapsed.insp-float{grid-template-columns:0 minmax(0,var(--mf,1fr)) minmax(0,1fr) 0}
 #app.split #insp{grid-column:4}
 #split{grid-column:3;grid-row:1;position:relative;min-width:0;min-height:0;display:flex;border-left:1px solid var(--line);background:var(--bg)}
-.sp-resizer{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:5}
-.sp-resizer:hover{background:linear-gradient(90deg,transparent 3px,var(--line2) 3px,var(--line2) 5px,transparent 5px)}
-.sp-panes{flex:1;min-width:0;display:flex}
-.sp-pane{position:relative;flex:1;min-width:0;display:flex;flex-direction:column}
-.sp-pane + .sp-pane{border-left:1px solid var(--line)}
-.sp-head{display:flex;align-items:center;gap:2px;height:40px;padding:0 6px 0 14px;border-bottom:1px solid var(--line);font-size:13px;color:var(--fg2);flex:none}
-.sp-head .grow{flex:1}
-.sp-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--fg)}
-.sp-head .icon-btn{width:28px;height:28px}
+.sp-resizer{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:6}
+.sp-resizer:hover,#app.sp-resizing .sp-resizer{background:linear-gradient(90deg,transparent 3px,var(--run) 3px,var(--run) 5px,transparent 5px)}
+.sp-panes{flex:1;min-width:0;min-height:0;display:flex}
+.sp-panes.rows{flex-direction:column}
+.sp-pane{position:relative;flex:1 1 0;min-width:0;min-height:0;display:flex;flex-direction:column}
+.sp-panes:not(.rows) > .sp-pane + .sp-pane{border-left:1px solid var(--line)}
+.sp-panes.rows > .sp-pane + .sp-pane{border-top:1px solid var(--line)}
+.sp-panes.has-max > .sp-pane:not(.max){display:none}
+.sp-panes.has-max > .sp-pane.max{flex:1 1 0!important;border:0}
+
+/* 칸 사이 경계(앞 칸과 크기를 주고받음) */
+.sp-rz{display:none;position:absolute;z-index:6}
+.sp-pane + .sp-pane > .sp-rz{display:block}
+.sp-panes:not(.rows) .sp-rz{left:-4px;top:0;bottom:0;width:8px;cursor:col-resize}
+.sp-panes.rows .sp-rz{top:-4px;left:0;right:0;height:8px;cursor:row-resize}
+.sp-panes:not(.rows) .sp-rz:hover{background:linear-gradient(90deg,transparent 3px,var(--run) 3px,var(--run) 5px,transparent 5px)}
+.sp-panes.rows .sp-rz:hover{background:linear-gradient(180deg,transparent 3px,var(--run) 3px,var(--run) 5px,transparent 5px)}
+.sp-panes.has-max .sp-rz{display:none!important}
+
+/* 칸 머리: 상태 · 제목(누르면 바꾸기) · 버튼 */
+.sp-head{display:flex;align-items:center;gap:2px;height:42px;padding:0 6px 0 10px;border-bottom:1px solid var(--line);font-size:13px;color:var(--fg2);flex:none;cursor:grab;background:var(--bg);position:relative}
+.sp-head::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:transparent;transition:background .15s}
+.sp-pane.focus .sp-head::after{background:var(--run)}
+.sp-pane:not(.focus) .sp-head{color:var(--muted)}
+.sp-head .grow{flex:1;min-width:6px}
+.sp-st{width:16px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.sp-st .sp-idle{width:6px;height:6px;border-radius:50%;background:var(--faint)}
+.sp-st .sp-wait{width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 3px rgba(227,181,92,.18);animation:spWait 1.4s ease-in-out infinite}
+@keyframes spWait{50%{box-shadow:0 0 0 5px rgba(227,181,92,.05)}}
+.sp-pick{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%;padding:4px 6px;border:0;border-radius:7px;background:none;color:inherit;font:inherit;cursor:pointer}
+.sp-pick:hover{background:var(--hover);color:var(--fg)}
+.sp-pick .sp-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--fg)}
+.sp-pane:not(.focus) .sp-pick .sp-title{color:var(--fg2)}
+.sp-pick .sp-pc{color:var(--muted);white-space:nowrap;flex:none}
+.sp-pick .ico{width:12px;height:12px;color:var(--faint);flex:none}
+.sp-head .icon-btn{width:28px;height:28px;flex:none}
+.sp-head .icon-btn .ico{width:15px;height:15px}
+.sp-pane.is-wait .sp-head{background:linear-gradient(180deg,rgba(227,181,92,.07),transparent)}
+/* 좁은 칸: 버튼 몇 개는 마우스를 올렸을 때만 */
+@container sppane (max-width:420px){
+  .sp-head [data-sp="window"],.sp-head [data-sp="main"]{display:none}
+  .sp-head:hover [data-sp="window"],.sp-head:hover [data-sp="main"]{display:inline-flex}
+}
+.sp-pane{container:sppane / inline-size}
+
+.sp-body{position:relative;flex:1;min-height:0;display:flex}
 .sp-pane iframe{flex:1;width:100%;border:0;background:var(--bg)}
-#app.sp-resizing,#app.sp-resizing *{user-select:none;cursor:col-resize}
+.sp-loading{display:none;position:absolute;inset:0;z-index:2;align-items:center;justify-content:center;gap:10px;color:var(--muted);font-size:13px;background:var(--bg)}
+.sp-pane.loading .sp-loading{display:flex}
+#app.sp-resizing,#app.sp-resizing *{user-select:none;cursor:col-resize!important}
+#app.sp-resizing-rows,#app.sp-resizing-rows *{cursor:row-resize!important}
 #app.sp-resizing iframe,#app.sp-dragging iframe{pointer-events:none}
 
+/* 가운데 대화가 포커스일 때(나눠 보는 중) */
+#app.split #main.sp-focus #top{box-shadow:inset 0 -2px 0 var(--run)}
+/* 나눠 보는 동안 가운데 위쪽 폴더 칩은 빼고 제목에 자리를 준다(입력창 아래 "폴더" 버튼이 같은 일) */
+#app.split #folderChip{display:none}
+#app.split #title{max-width:none}
+
+/* 위쪽 "나란히 보기" 버튼 */
+.sp-bar-btn{position:relative}
+.sp-bar-btn.on{color:var(--run)}
+.sp-bar-btn .sp-n{position:absolute;right:1px;bottom:1px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:var(--run);color:#141416;font-size:9.5px;font-weight:700;line-height:13px;text-align:center}
+
 /* 끌어다 놓을 자리 */
-#spZones{display:none;position:absolute;inset:0;z-index:30;padding:10px;gap:10px;background:rgba(0,0,0,.25)}
+#spZones{display:none;position:absolute;inset:0;z-index:30;padding:12px;gap:12px;background:rgba(0,0,0,.3)}
 #app.sp-dragging #spZones{display:flex}
-.spz,.sp-drop{flex:1;display:flex;align-items:center;justify-content:center;border:2px dashed var(--line2);border-radius:14px;color:var(--fg2);font-size:14px;font-weight:600;background:rgba(20,20,24,.55);transition:background .1s,border-color .1s}
+#app.sp-dragging-pane #spZones .spz[data-z="side"]{display:none}
+.spz,.sp-drop{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed var(--line2);border-radius:14px;color:var(--fg2);font-size:14px;background:rgba(20,20,24,.6);transition:background .1s,border-color .1s}
+.spz small{color:var(--muted);font-size:12px}
 .spz.on,.sp-pane.on .sp-drop{border-color:var(--run);background:rgba(164,139,242,.16);color:var(--fg)}
-.sp-drop{display:none;position:absolute;inset:48px 10px 10px;z-index:3}
+.sp-drop{display:none;position:absolute;inset:8px;z-index:3;font-weight:600}
 #app.sp-dragging .sp-drop{display:flex}
 
 /* 좁은 화면(휴대폰 원격 등)에서는 나눈 칸을 숨긴다 */
 @media (max-width:860px){
   #app.split,#app.split.collapsed,#app.split.insp-off,#app.split.insp-float{grid-template-columns:0 minmax(0,1fr) 0}
   #app.split #insp{grid-column:3}
-  #split{display:none}
+  #split,.sp-bar-btn{display:none!important}
 }
 
 /* 한 세션만 보기(나눈 칸 안·새 창): 사이드바·오른쪽 패널 없이 대화와 입력창만 */
 html.embed #app,html.embed #app.collapsed,html.embed #app.insp-off,html.embed #app.insp-float{grid-template-columns:0 minmax(0,1fr) 0!important}
-html.embed #side,html.embed #insp,html.embed #hubRemote,html.embed #btnSide,html.embed #btnInsp,html.embed .resizer,html.embed #spZones,html.embed #verBar{display:none!important}
+html.embed #side,html.embed #insp,html.embed #hubRemote,html.embed #btnSide,html.embed #btnInsp,html.embed .resizer,html.embed #spZones,html.embed #verBar,html.embed .sp-bar-btn{display:none!important}
 html.embed #top{padding-left:14px}
-/* 나눈 칸 안: 제목 줄·한도 경고 띠는 바깥 창(칸 제목·대화 화면)에 이미 있다 */
+/* 나눈 칸 안: 제목 줄·한도 경고 띠는 바깥 창(칸 머리·가운데 화면)에 이미 있다. 좁은 칸에 맞게 여백·안내를 줄인다 */
 html.embed-pane #top,html.embed-pane #connBar,html.embed-pane #warnBar{display:none!important}
+html.embed-pane #thread{padding:10px 16px 24px}
+html.embed-pane #composerWrap{padding:0 10px 10px}
+html.embed-pane .hero{padding:6vh 0 16px}
+html.embed-pane .sugg,html.embed-pane #hint{display:none}
+html.embed-pane #icBar .icb-sub{display:none}
+html.embed-pane #icBar .icb-target{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 /* 칸이 막혔을 때(예전 서버 등): 하얀 빈 칸 대신 안내 */
-.sp-blocked{display:none;position:absolute;inset:40px 0 0;z-index:2;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;background:var(--bg);color:var(--fg2);font-size:13px;line-height:1.6}
+.sp-blocked{display:none;position:absolute;inset:0;z-index:2;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;background:var(--bg);color:var(--fg2);font-size:13px;line-height:1.6}
 .sp-blocked > .ico{width:22px;height:22px;color:var(--warn)}
 .sp-blocked b{color:var(--fg)}
 .sp-pane.blocked .sp-blocked{display:flex}
