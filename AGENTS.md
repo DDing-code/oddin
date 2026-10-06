@@ -24,6 +24,7 @@
 - `public/` 데스크탑 앱형 화면. `app.js` = 대화·입력·작업 카드, `side.js` = 왼쪽 사이드바(고정·폴더별/날짜별·⋯/우클릭 메뉴·바로 이름 바꾸기·안 읽음 표시·계정/설정), 오른쪽 패널(작업·파일·사용량·정보 탭), Ctrl+K 검색, 양쪽 너비 조절. `side.js`는 `app.js` 다음에 읽히고 시작은 DOMContentLoaded.
 - 기본 작업 폴더는 허브 저장소 밖 옆 폴더 `../oddin-workspace`(`config.defaultCwd`, 이 PC에서는 `F:/01_프로젝트/90_개발/oddin-workspace`, 2026-10-04 이동 — 저장소 안이면 작업자가 허브 개발 지침을 프로젝트 지침으로 받았다). 예전 `workspace/` 세션은 그대로 두고 기본 폴더로 친다(`jobs.isDefaultDir`)
 - `lib/projects.mjs` 알려진 프로젝트 폴더(`knownProjects`, 폴더 고르기·플래너 후보)와 작업 폴더 검사(`validWorkdir`)
+- 작업자 브라우저(2026-10-06 "오딘이 다른 두 AI에 비해 브라우저 컨트롤이 좀 약한 거 같아"): Claude 작업자(작업 단계만, 계획·보고·기억 정리 제외)는 `--chrome`으로 Claude in Chrome 도구(사용자 Chrome 을 직접 조작, 탭 묶음)를 받는다 — `jobs.browserOn`, 끄기 `config.browser.claudeChrome:false`. 한 번에 끝나는 `claude -p`에서는 "requires permission"으로 막히지만 허브 작업은 권한 요청이 허브 승인으로 오므로 자동 모드에서 그대로 진행된다. Codex 작업자는 원래 브라우저 플러그인(Chrome 확장)·컴퓨터 사용(node_repl·`@oai/sky`)을 쓴다(Codex 앱의 앱 안 브라우저만 없음). 플래너 지시문에 두 작업자의 브라우저 능력을 알린다(`router.catalogText`). 시험 `tests/browser.test.mjs`
 - `lib/prompts.mjs` 실행 중 승인·질문·계획 승인 요청 관리(권한 방식 auto·edits·ask·plan, 자동 응답 시간). 두 CLI 프로토콜 연결은 `workers.mjs`·`native-workers.mjs`. 규약 `docs/approvals.md`, 화면 `public/prompts.js`
 - `lib/checkpoints.mjs` 작업별 그림자 git 스냅샷·변경 비교·되돌리기(사용자 `.git`은 건드리지 않음). 시작 스냅샷은 계획 중에 찍고 작업자 실행 직전에만 기다린다. 규약 `docs/checkpoints.md`, 화면 `public/changes.js`
 - `lib/gitops.mjs`·`lib/session-tools.mjs` 세션 격리(worktree)·커밋·병합·push·PR·CI, 보관·갈래·내보내기. 규약 `docs/git-sessions.md`, 화면 `public/sessions-ui.js`
