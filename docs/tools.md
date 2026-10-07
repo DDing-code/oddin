@@ -185,6 +185,19 @@ UTF-8 BOM은 내용에서 제거하고 `bom: true`로 표시한다. UTF-16 BOM�
 
 허브 쿠키·Authorization·Tailscale 사용자 헤더·전달 헤더는 개발 서버로 넘기지 않는다. 개발 서버의 Set-Cookie도 제거한다. 프록시 응답에는 `Content-Security-Policy: sandbox allow-scripts allow-forms allow-modals allow-downloads`를 설정해 개발 서버 스크립트를 허브 출처에서 격리한다. 개발 서버가 인증 쿠키나 출처 저장소를 요구하면 작동하지 않을 수 있다.
 
+## ODDIN 브라우저 (2026-10-08)
+
+AI 작업자가 웹 페이지를 열고 읽고 누르고 입력하는 브라우저를 ODDIN 이 직접 띄우고 관리한다. 사용자는 ODDIN 화면(폰 포함)에서 실시간으로 보고 직접 거든다. 예전처럼 Claude 는 Claude in Chrome(사용자 Chrome, 권한 요청에 막힘), Codex 는 컴퓨터 사용(화면 전체 마우스)으로 따로 다루던 것을 하나로 합쳤다.
+
+- **브라우저**: `lib/browser.mjs`의 `BrowserManager`. Edge(없으면 Chrome, `config.browser.exe`로 지정 가능)를 `--headless=new`, 1280×860, 디버깅 포트 `127.0.0.1` 임의 번호로 띄운다. 프로필은 `data/browser-profile`(ODDIN 전용, 로그인 유지). 허브가 다시 켜졌는데 예전 브라우저가 살아 있으면(프로필의 `DevToolsActivePort`) 그걸 다시 쓰고 예전 탭은 닫는다. 대화 상자(alert·confirm)는 받아들이고 콘솔 기록에 남긴다. 화면을 보려면 `config.browser.headless:false`로 창을 띄울 수도 있다.
+- **탭**: 작업마다 자기 탭(`owner = 작업ID/하위작업ID`). 사용자가 화면에서 연 탭은 `user-<시각>`.
+- **작업자 도구**: `scripts/oddin-browser-mcp.mjs`(MCP, 표준 입출력 줄 단위 JSON-RPC). 도구 13개 `browser_open`·`browser_read`(제목·주소·보이는 글 8000자·누를 수 있는 것 200개에 번호 ref)·`browser_click`(ref 또는 x·y)·`browser_type`(ref·text·submit·clear)·`browser_press`(Enter·Tab·`Control+a` 같은 조합)·`browser_scroll`·`browser_screenshot`(PNG 그림 블록)·`browser_eval`·`browser_back`·`browser_reload`·`browser_wait`·`browser_console`·`browser_close`. 실제 일은 허브 `POST /api/browser/act { owner, action, … }`가 한다. Claude 는 `--mcp-config <실행 폴더>/oddin-browser-mcp.json`, Codex 는 `-c mcp_servers.oddin_browser.command/args/env.*`로 붙는다. 작업 단계에만 붙이고 계획·보고·기억 정리·바로 답하기에는 안 붙인다.
+- **주소**: 스킴이 없으면 `https://`(localhost·127.0.0.1 은 `http://`). `http(s)`·`file`·`about`·`data`만 열고 `chrome:`·`edge:`·`devtools:`·`javascript:` 등은 400.
+- **화면 API**: `GET /api/browser`(상태: 켜짐·탭·최근 동작 60개), `GET /api/browser/frame?tab=`(JPEG, 0.25초 안 다시 부르면 같은 그림), `POST /api/browser/input { tab | 'new', type: click·text·key·scroll·open·back·forward·reload·close, … }`, `POST /api/browser/start`·`/stop`. 바뀔 때마다 실시간 이벤트 `{ type: 'browser', running, tabs, log, last }`. 원격에서는 ODDIN 화면 쿠키가 있을 때만(`hub-auth.isControl`) — 다른 PC 허브의 AI 는 이 PC 브라우저를 직접 못 쓰고 handoff 로 넘긴다.
+- **화면**: `public/browser-ui.js`·`browser.css`. 오른쪽 패널 "브라우저" 탭과 크게 보기(검색 팔레트 "ODDIN 브라우저 보기", 작업 카드 "브라우저 사용 중 · 보기"). 보이는 동안만 그림을 다시 받는다(앞 그림을 다 받은 뒤 0.6초마다). 그림을 누르면 그 자리를 누르고, 굴리면 스크롤(폰은 위아래로 밀기), 그림을 누른 뒤 키보드로 바로 입력(한글 조합은 "글자 보내기" 칸). AI 가 새 탭을 열면 그 탭으로 바뀐다(크게 보기 중이면 그대로).
+- **끄기**: `config.browser.oddin:false` — 그러면 Claude 작업자에 예전처럼 `--chrome`. 둘 다 쓰려면 `browser.claudeChrome:true`.
+- **한계**: 그림을 반복해서 받는 방식이라 영상·애니메이션은 끊겨 보인다. 로그인·캡차·결제는 AI 가 하지 않고(지시문 `planner.BROWSER_RULE`) 사용자가 크게 보기에서 직접 한다. 일부 사이트는 자동화 브라우저의 로그인을 막는다.
+
 ## 화면 요구 사항
 
 - **터미널 탭**: 오른쪽 또는 아래쪽 패널에 여러 터미널 탭·새로 만들기·셸 선택·현재 폴더·입력줄·중지·닫기를 제공한다. 실행 중에는 입력을 막고 중지 버튼을 활성화한다. 출력은 ANSI 색을 표시하고 stderr를 구분한다. 종료 코드와 준비·실행·종료 상태를 표시한다. 재연결은 위 버퍼·순번 규칙을 따른다.

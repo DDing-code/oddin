@@ -38,6 +38,7 @@ import { FileAccess, fileRoots } from './lib/file-access.mjs';
 import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
 import { Push } from './lib/push.mjs';
+import { BrowserManager } from './lib/browser.mjs';
 import { HubAuth, controlGate, canonicalRoute } from './lib/hub-auth.mjs';
 import { SessionGroups, listDirs, makeDir, renameDir } from './lib/session-groups.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
@@ -129,6 +130,11 @@ const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: confi
 shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
 const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared?.status() || null });
 // 작업자 지시문에 넣을 PC 정보(planner.buildWorkerPrompt 의 [여러 PC]) — 연결된 PC가 있을 때만
+// ODDIN 브라우저(lib/browser.mjs): ODDIN 이 관리하는 브라우저 하나를 두 작업자가 같이 쓰고 사용자는 화면 "브라우저" 탭에서 본다
+const oddinBrowser = config.browser?.oddin === false ? null : new BrowserManager({ exe: config.browser?.exe || null, headless: config.browser?.headless !== false });
+oddinBrowser?.on('event', (ev) => broadcast(ev));
+process.on('exit', () => { try { oddinBrowser?.proc?.kill(); } catch {} });
+jobs.browserTool = (job, task) => oddinBrowser ? { command: process.execPath, args: [path.join(ROOT, 'scripts', 'oddin-browser-mcp.mjs')], env: { ODDIN_TASK: `${job.id}/${task.id}`, ODDIN_HUB: `http://127.0.0.1:${config.port}` } } : null;
 jobs.machines = () => { const list = peers.list(); return list.length ? { self: peers.self().name, peers: list.map((x) => x.name), handoff: path.join(ROOT, 'scripts', 'handoff.mjs') } : null; };
 /** 세션 실행 PC 옮기기: 대화 기록을 다른 PC(또는 이 PC)에 새 세션으로 가져오고 원래 세션은 보관함으로. machine = 'self' | PC id·이름 */
 async function moveSession(id, b) {
@@ -376,6 +382,17 @@ const server = http.createServer(async (req, res) => {
       if (gm && req.method === 'PATCH') { const g = groups.rename(gm[1], (await readBody(req)).name); groupsChanged(); return json(res, g); }
       if (gm && req.method === 'DELETE') { groups.remove(gm[1]); for (const x of jobs.listSessions({ archived: false }).concat(jobs.listSessions({ archived: true }))) if (x.group === gm[1]) jobs.updateSession(x.id, { group: null }); groupsChanged(); return json(res, { removed: true }); } }
     // 작업 폴더 고르기 창: 하위 폴더 이름만 (빈 경로면 드라이브 목록)
+    // ---- ODDIN 브라우저 (lib/browser.mjs). 원격은 ODDIN 화면에서만(lib/hub-auth.mjs isControl) ----
+    if (p.startsWith('/api/browser')) {
+      if (!oddinBrowser) return fail(res, 'ODDIN 브라우저가 꺼져 있어요(config.browser.oddin)', 404);
+      if (p === '/api/browser' && req.method === 'GET') return json(res, oddinBrowser.state());
+      if (p === '/api/browser/act' && req.method === 'POST') { const b = await readBody(req); return json(res, await oddinBrowser.act(String(b.owner || 'cli'), b)); }
+      if (p === '/api/browser/frame' && req.method === 'GET') return send(res, 200, await oddinBrowser.frame(url.searchParams.get('tab') || ''), 'image/jpeg');
+      if (p === '/api/browser/input' && req.method === 'POST') { const b = await readBody(req); return json(res, await oddinBrowser.input(String(b.tab || 'new'), b)); }
+      if (p === '/api/browser/start' && req.method === 'POST') { await readBody(req); await oddinBrowser.start(); return json(res, oddinBrowser.state()); }
+      if (p === '/api/browser/stop' && req.method === 'POST') { await readBody(req); await oddinBrowser.stop(); return json(res, oddinBrowser.state()); }
+      return fail(res, '없는 브라우저 기능이에요', 404);
+    }
     if (p === '/api/dirs' && req.method === 'GET') return json(res, listDirs(url.searchParams.get('path') || ''));
     // 폴더 찾아보기 창: 새 폴더·이름 바꾸기(원격에서는 ODDIN 화면에서만 — lib/hub-auth.mjs isControl). 이름을 바꾸면 그 안을 쓰던 세션 경로도 따라 바꾼다
     if (p === '/api/dirs' && req.method === 'POST') { const b = await readBody(req); return json(res, makeDir(b.parent, b.name), 201); }
