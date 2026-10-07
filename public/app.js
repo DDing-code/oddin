@@ -803,10 +803,21 @@ document.addEventListener('contextmenu', async (e) => {
   navigator.clipboard?.writeText(p).then(() => toast('경로를 복사했어요'), () => toast(p));
 });
 
+// 링크 대상 → 경로 단추·바깥 링크. file:/// 와 %20 같은 인코딩도 풀어 경로로 본다
+function mdLink(t, raw) {
+  let p = String(raw).trim().replace(/^file:\/\/\/?/i, '');
+  if (/%[0-9A-Fa-f]{2}/.test(p)) { try { p = decodeURI(p); } catch {} }
+  if (/^\/?[A-Za-z]:[\\/]/.test(p)) return pathLink(t, p);
+  const url = String(raw).trim().replace(/ /g, '%20');
+  if (/^(?:https?:\/\/|\/)\S+$/.test(url)) return `<a href="${url}" target="_blank">${t}</a>`;
+  return null;
+}
 function md(src, base = '') {
   const lines = esc(src).split('\n'); let out = '', inUl = false, inPre = false, inTbl = false;
   const inline = (s) => s
-    .replace(/\[([^\]]+)\]\(\/?([A-Za-z]:[\\/][^)]*)\)/g, (m, t, p) => pathLink(t, p))
+    // [글](<경로>) — 띄어쓰기·괄호가 든 경로를 꺾쇠로 감싼 마크다운 링크 (esc 뒤라 &lt; &gt;)
+    .replace(/\[([^\]]+)\]\(&lt;(.+?)&gt;\)/g, (m, t, p) => mdLink(t, p) ?? m)
+    .replace(/\[([^\]]+)\]\((?:file:\/\/\/?)?\/?([A-Za-z]:[\\/][^)]*)\)/gi, (m, t, p) => mdLink(t, p) ?? m)
     .replace(/`([^`]+)`/g, (m, c) => codeWithPath(c, base)).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
     .replace(/\[([^\]]+)\]\(((?:https?:|\/)[^)\s]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   const close = () => { if (inUl) { out += '</ul>'; inUl = false; } if (inTbl) { out += '</table>'; inTbl = false; } };
