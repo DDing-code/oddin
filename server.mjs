@@ -39,7 +39,7 @@ import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
 import { Push } from './lib/push.mjs';
 import { HubAuth, controlGate, canonicalRoute } from './lib/hub-auth.mjs';
-import { SessionGroups, listDirs } from './lib/session-groups.mjs';
+import { SessionGroups, listDirs, makeDir, renameDir } from './lib/session-groups.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
@@ -377,6 +377,13 @@ const server = http.createServer(async (req, res) => {
       if (gm && req.method === 'DELETE') { groups.remove(gm[1]); for (const x of jobs.listSessions({ archived: false }).concat(jobs.listSessions({ archived: true }))) if (x.group === gm[1]) jobs.updateSession(x.id, { group: null }); groupsChanged(); return json(res, { removed: true }); } }
     // 작업 폴더 고르기 창: 하위 폴더 이름만 (빈 경로면 드라이브 목록)
     if (p === '/api/dirs' && req.method === 'GET') return json(res, listDirs(url.searchParams.get('path') || ''));
+    // 폴더 찾아보기 창: 새 폴더·이름 바꾸기(원격에서는 ODDIN 화면에서만 — lib/hub-auth.mjs isControl). 이름을 바꾸면 그 안을 쓰던 세션 경로도 따라 바꾼다
+    if (p === '/api/dirs' && req.method === 'POST') { const b = await readBody(req); return json(res, makeDir(b.parent, b.name), 201); }
+    if (p === '/api/dirs/rename' && req.method === 'POST') {
+      const b = await readBody(req);
+      const r = renameDir(b.path, b.name, { protect: [ROOT, DATA_DIR, config.hubDir, config.defaultCwd, os.homedir()], busy: (dir) => jobs.folderBusy(dir) });
+      return json(res, { ...r, sessions: r.path === r.from ? 0 : jobs.renameFolderRefs(r.from, r.path) });
+    }
     // 프로필: 이름 { name } · 사진(본문이 그림 그대로, Content-Type 으로 종류)
     // ---- 폰 알림 (lib/push.mjs) ----
     if (p === '/api/push' && req.method === 'GET') return json(res, { key: push.publicKey(), devices: push.list() });

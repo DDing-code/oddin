@@ -21,10 +21,12 @@
       catch (e) { toast(e.message, true); if (p) return go(''); return; }
       cur = r.path;
       const quick = (S.projects || []).slice(0, 8);
+      const isRoot = !cur || path2parent(cur) === null;
       body.innerHTML = `<div class="fp">
         <form class="fp-bar" data-fp-go><button type="button" class="icon-btn" data-fp-up title="위 폴더" ${r.parent === null ? 'disabled' : ''}>${icon('up')}</button><input name="p" value="${esc(r.path)}" placeholder="드라이브 목록" aria-label="폴더 경로" autocomplete="off" spellcheck="false"><button type="submit" class="btn">이동</button></form>
-        ${quick.length ? `<div class="fp-quick">${quick.map((q) => `<button type="button" class="chip" data-fp-path="${esc(q.path)}" title="${esc(q.path)}">${icon('folder')}${esc(q.label || shortPath(q.path, 2))}</button>`).join('')}</div>` : ''}
-        <div class="fp-list" role="listbox" aria-label="하위 폴더">${r.dirs.length ? r.dirs.map((d) => `<button type="button" class="fp-item" data-fp-path="${esc(d.path)}" title="${esc(d.path)} · 두 번 누르면 바로 고름">${icon('folder')}<span>${esc(d.name)}</span></button>`).join('') : '<div class="empty-row">하위 폴더가 없어요</div>'}${r.truncated ? '<div class="empty-row">폴더가 많아 앞쪽 800개만 보여요. 위 칸에 경로를 적어 이동하세요</div>' : ''}</div>
+        <div class="fp-tools"><button type="button" class="btn" data-fp-new ${cur ? '' : 'disabled'} title="${cur ? '지금 폴더 안에 새 폴더 만들기' : '드라이브를 먼저 고르세요'}">${icon('plus')}새 폴더</button><button type="button" class="btn" data-fp-ren="${esc(cur)}" ${isRoot ? 'disabled' : ''} title="${isRoot ? '드라이브 이름은 바꿀 수 없어요' : '지금 폴더 이름 바꾸기'}">${icon('pencil')}이름 바꾸기</button>${quick.length ? `<span class="fp-sep"></span>${quick.map((q) => `<button type="button" class="chip" data-fp-path="${esc(q.path)}" title="${esc(q.path)}">${icon('folder')}${esc(q.label || shortPath(q.path, 2))}</button>`).join('')}` : ''}</div>
+        <form class="fp-edit" data-fp-edit hidden><span class="fp-edit-l"></span><input name="n" autocomplete="off" spellcheck="false" aria-label="폴더 이름"><button type="submit" class="btn primary"></button><button type="button" class="btn" data-fp-edit-cancel>취소</button></form>
+        <div class="fp-list" role="listbox" aria-label="하위 폴더">${r.dirs.length ? r.dirs.map((d) => `<div class="fp-row"><button type="button" class="fp-item" data-fp-path="${esc(d.path)}" title="${esc(d.path)} · 두 번 누르면 바로 고름">${icon('folder')}<span>${esc(d.name)}</span></button>${cur ? `<button type="button" class="icon-btn fp-row-ren" data-fp-ren="${esc(d.path)}" title="이름 바꾸기" aria-label="${esc(d.name)} 이름 바꾸기">${icon('pencil')}</button>` : ''}</div>`).join('') : '<div class="empty-row">하위 폴더가 없어요</div>'}${r.truncated ? '<div class="empty-row">폴더가 많아 앞쪽 800개만 보여요. 위 칸에 경로를 적어 이동하세요</div>' : ''}</div>
         <div class="fp-foot"><span class="fp-cur" title="${esc(cur)}">${cur ? esc(cur) : '드라이브를 고르세요'}</span><span class="grow"></span><button type="button" class="btn" data-fp-cancel>취소</button><button type="button" class="btn primary" data-fp-ok ${cur ? '' : 'disabled'}>${icon('check')}${esc(confirm)}</button></div></div>`;
       body.querySelector('[data-fp-up]').onclick = () => go(r.parent || '');
       body.querySelector('[data-fp-go]').onsubmit = (e) => { e.preventDefault(); go(e.target.p.value.trim()); };
@@ -34,7 +36,34 @@
         b.onclick = () => go(b.dataset.fpPath);
         if (b.classList.contains('fp-item')) b.ondblclick = () => finish(b.dataset.fpPath);
       });
+      // 새 폴더·이름 바꾸기: 창 안의 이름 칸으로 받는다(데스크탑 앱은 prompt 창이 없다)
+      const form = body.querySelector('[data-fp-edit]'), field = form.n;
+      const edit = (label, value, ok, run) => {
+        form.hidden = false; form.querySelector('.fp-edit-l').textContent = label; form.querySelector('[type=submit]').textContent = ok;
+        field.value = value; field.focus(); field.select();
+        form.onsubmit = async (e) => {
+          e.preventDefault(); const name = field.value.trim(); if (!name) return field.focus();
+          const btn = form.querySelector('[type=submit]'); btn.disabled = true;
+          try { await run(name); } catch (err) { toast(err.message, true); btn.disabled = false; field.focus(); }
+        };
+      };
+      const closeEdit = () => { form.hidden = true; form.onsubmit = null; };
+      form.querySelector('[data-fp-edit-cancel]').onclick = closeEdit;
+      field.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeEdit(); } });
+      body.querySelector('[data-fp-new]').onclick = () => edit('새 폴더 이름', '새 폴더', '만들기', async (name) => {
+        const made = await api('/api/dirs', { method: 'POST', body: JSON.stringify({ parent: cur, name }) });
+        toast(`"${name}" 폴더를 만들었어요`); go(made.path);
+      });
+      body.querySelectorAll('[data-fp-ren]').forEach((b) => { b.onclick = (e) => {
+        e.stopPropagation(); const target = b.dataset.fpRen, old = target.split(/[\\/]/).filter(Boolean).pop();
+        edit(`"${old}" 새 이름`, old, '바꾸기', async (name) => {
+          const res = await api('/api/dirs/rename', { method: 'POST', body: JSON.stringify({ path: target, name }) });
+          toast(`이름을 "${name}"(으)로 바꿨어요${res.sessions ? ` · 이 폴더를 쓰던 세션 ${res.sessions}개의 작업 폴더도 같이 바꿨어요` : ''}`);
+          go(target === cur ? res.path : cur); // 지금 폴더를 바꿨으면 새 이름으로, 목록의 폴더를 바꿨으면 그대로 다시 읽기
+        });
+      }; });
     }
+    const path2parent = (p) => { const t = String(p).replace(/[\\/]+$/, ''); return /^[A-Za-z]:$/.test(t) || t === '' ? null : t; };
     go(start);
   });
 

@@ -33,3 +33,23 @@
 .hero .hero-folder .go .ico{width:12px;height:12px;color:var(--muted)}
 #pFolder .ico:first-child{color:var(--run)}
 @container (max-width:420px){#pFolder .v{max-width:70px}}
+
+/* 폴더 찾아보기 창: 새 폴더·이름 바꾸기 (folders-ui.js) */
+.fp-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.fp-tools .btn{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;font-size:12.5px}
+.fp-tools .btn .ico{width:14px;height:14px}
+.fp-tools .btn:disabled{opacity:.4}
+.fp-tools .chip{display:inline-flex;align-items:center;gap:5px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-tools .chip .ico{width:13px;height:13px;flex:none}
+.fp-sep{width:1px;height:18px;background:var(--line2);margin:0 4px}
+.fp-edit{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid rgba(164,139,242,.35);border-radius:10px;background:rgba(164,139,242,.07)}
+.fp-edit-l{flex:none;font-size:12.5px;color:var(--fg2);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-edit input{flex:1;min-width:0;height:32px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--bg);color:var(--fg);font-size:13.5px}
+.fp-edit .btn{height:32px}
+.fp-row{display:flex;align-items:center;border-radius:7px}
+.fp-row .fp-item{flex:1;min-width:0}
+.fp-row-ren{width:28px;height:28px;flex:none;opacity:0;margin-right:4px}
+.fp-row:hover .fp-row-ren,.fp-row-ren:focus-visible{opacity:1}
+.fp-row-ren .ico{width:14px;height:14px}
+@media (hover:none){.fp-row-ren{opacity:.6}}
+.fp-foot .btn{flex:none;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
