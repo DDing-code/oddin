@@ -141,9 +141,16 @@ test('속도: high 보다 높은 강도는 근거가 있을 때만', () => {
 test('속도: 작은 요청 판정과 담당 AI', () => {
   const jm = Object.create(JobManager.prototype); jm.config = {};
   const small = (goal, extra = {}) => jm.isSmallRequest({ goal, ...extra });
-  assert.equal(small('사이드바 글자 크기 조금 키워줘'), false); // 기본은 꺼짐 (사용자 요구 2026-10-03)
+  assert.equal(small('사이드바 글자 크기 조금 키워줘'), false); // fastPath를 명시적으로 켠 설정만 적용
   jm.config = { fastPath: { enabled: true } };
   assert.equal(small('사이드바 글자 크기 조금 키워줘'), true);
+  assert.equal(small('/pt 명령어만 제거해줘'), true);
+  for (const text of ['쇼핑몰 만들어줘', '다시 만들어줘', '계속하기', '모든 문구를 일괄 수정해줘', '제목 수정하고 로그인도 만들어줘', '변경사항 커밋하고 배포해줘', '다시 복구해놓고 명령어만 제거']) assert.equal(small(text), false, text);
+  assert.equal(small('오타 수정해줘', { command: { kind: 'skill', name: 'review' } }), false, '스킬은 생략하지 않음');
+  assert.equal(small('오타 수정해줘', { attachments: [{ id: 'image' }] }), false, '첨부 요청은 기존 계획');
+  assert.equal(small('오타 수정해줘', { cwd: 'C:/hub/default' }), true, '명시된 프로젝트 폴더');
+  jm.config.defaultCwd = 'C:/hub/default';
+  assert.equal(small('오타 수정해줘', { cwd: 'C:/hub/default' }), false, '작업 폴더를 아직 고르지 않았으면 계획에서 결정');
   assert.equal(small('1) 로그인 고치고 2) 테스트 추가해줘'), false);
   assert.equal(small('둘 다 해서 비교해줘'), false);
   assert.equal(small('간헐적으로 서버가 죽는 원인 찾아줘'), false);
