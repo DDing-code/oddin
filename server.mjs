@@ -108,6 +108,9 @@ const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {})
 const hubAuth = new HubAuth({ selfId: () => peers.self().id });
 peers.auth = hubAuth;
 const knownPeerIds = () => peers.list().map((x) => x.remoteId).filter(Boolean);
+// 다른 PC 세션·작업(rm- id)에 대한 /api 요청은 그 PC로 넘긴다. 단 이 화면의 실시간 연결(/api/events?session=rm-…)은 이 PC 것이다 —
+// 넘기면 그 PC의 세션 목록(다른 id)이 와서 화면이 지금 세션을 잃고 새 세션으로 돌아갔다(2026-10-07 '세션을 누르면 0.1초 만에 새 세션 창으로')
+const toPeer = (p, url) => !!(fed && p.startsWith('/api/') && p !== '/api/events' && fed.remoteOf(p + url.search));
 runningCommit(ROOT); // 켜질 때의 버전을 기억한다(업데이트 뒤 재시작 전과 구분)
 // 구글 드라이브 ODDIN 폴더(공유 기억 사본·자산): 있으면 공유 기억을 드라이브로 맞추고 공유 폴더를 드라이브 자산으로 올린다 (lib/drive-hub.mjs)
 const driveHub = new DriveHub({ driveRoot: process.env.HUB_DRIVE_ROOT || null });
@@ -223,12 +226,12 @@ const server = http.createServer(async (req, res) => {
     const denial = remote.check(req);
     if (denial) return sendRemoteBlocked(res, denial, p, send);
     { // 이 PC를 조작하는 기능: 원격은 화면·연결된 허브만, 다른 PC로 넘기는 제어는 화면만
-      const proxied = !!(fed && p.startsWith('/api/') && fed.remoteOf(p + url.search));
+      const proxied = toPeer(p, url);
       const gate = controlGate(req, { pathname: p, route: canonicalRoute(p + url.search), method: req.method, remote: !!req.hubViewer?.remote, proxied, auth: hubAuth, knownIds: knownPeerIds() });
       if (gate) return fail(res, gate.error, gate.status);
     }
     // 다른 PC 세션·작업(rm-<PC>- id)에 대한 요청은 그 PC로 넘긴다
-    if (fed && p.startsWith('/api/') && fed.remoteOf(p + url.search)) { const raw = ['GET', 'HEAD'].includes(req.method) ? null : await readRaw(req, 8_000_000); return await fed.proxy(req, res, { pathname: p, search: url.search, raw }); }
+    if (toPeer(p, url)) { const raw = ['GET', 'HEAD'].includes(req.method) ? null : await readRaw(req, 8_000_000); return await fed.proxy(req, res, { pathname: p, search: url.search, raw }); }
     const checkpoint = await checkpointRoute({ pathname: p, method: req.method, query: url.searchParams, readBody: () => readBody(req), manager: jobs });
     if (checkpoint) return json(res, checkpoint.body);
     if (await tools.handle(req, res, url, { json, readBody })) return;

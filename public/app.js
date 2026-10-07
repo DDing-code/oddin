@@ -844,8 +844,10 @@ function connect() {
     try { window.dispatchEvent(new CustomEvent('hub:event', { detail: ev })); } catch {}
     if (ev.type === 'hello') {
       for (const j of ev.jobs) icMergeJob(S.jobs.get(j.id), j);
+      const prevCur = S.current ? S.sessions.get(S.current) : null;
       S.sessions = new Map(ev.sessions.map((s) => [s.id, s])); S.jobs = new Map(ev.jobs.map((j) => [j.id, j]));
-      if (S.current && !S.sessions.has(S.current)) S.current = null;
+      // 보던 세션이 잠깐 목록에 없을 수 있다(다른 PC 다시 연결 중 등) — 보던 것을 그대로 두고, 정말 지워졌으면 session_removed 가 온다
+      if (S.current && !S.sessions.has(S.current)) { if (prevCur) S.sessions.set(S.current, prevCur); else S.current = null; }
       initSeen(); renderTree(); renderThread(); loadPreviews();
     } else if (ev.type === 'session') {
       const was = S.sessions.get(ev.session.id); S.sessions.set(ev.session.id, ev.session); renderTree();
