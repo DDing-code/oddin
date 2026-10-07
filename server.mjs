@@ -36,6 +36,7 @@ import { FileAccess, fileRoots } from './lib/file-access.mjs';
 import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
 import { Push } from './lib/push.mjs';
+import { HubAuth, controlGate, canonicalRoute } from './lib/hub-auth.mjs';
 import { SessionGroups, listDirs } from './lib/session-groups.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
 
@@ -95,6 +96,10 @@ setInterval(async () => {
 
 // 연결된 PC(다른 ODDIN 허브)와 공유 기억(~/.ai-shared) 동기화 — 집·회사 PC 두 대를 한 대시보드로 (docs/peers.md)
 const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {}).version || '', commit: () => runningCommit(ROOT) });
+// 다른 PC 제어 막기(lib/hub-auth.mjs): 원격 제어는 ODDIN 화면 쿠키나 연결된 허브 서명이 있을 때만. 허브끼리 요청에는 서명을 붙인다
+const hubAuth = new HubAuth({ selfId: () => peers.self().id });
+peers.auth = hubAuth;
+const knownPeerIds = () => peers.list().map((x) => x.remoteId).filter(Boolean);
 runningCommit(ROOT); // 켜질 때의 버전을 기억한다(업데이트 뒤 재시작 전과 구분)
 // 구글 드라이브 ODDIN 폴더(공유 기억 사본·자산): 있으면 공유 기억을 드라이브로 맞추고 공유 폴더를 드라이브 자산으로 올린다 (lib/drive-hub.mjs)
 const driveHub = new DriveHub({ driveRoot: process.env.HUB_DRIVE_ROOT || null });
@@ -110,6 +115,27 @@ const sharedCfg = config.sharedSync || {};
 const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false, hub: hubInfo, driveIntervalMs: (sharedCfg.driveIntervalSeconds ?? 20) * 1000 });
 shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
 const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared?.status() || null });
+// 작업자 지시문에 넣을 PC 정보(planner.buildWorkerPrompt 의 [여러 PC]) — 연결된 PC가 있을 때만
+jobs.machines = () => { const list = peers.list(); return list.length ? { self: peers.self().name, peers: list.map((x) => x.name), handoff: path.join(ROOT, 'scripts', 'handoff.mjs') } : null; };
+/** 작업 넘기기(POST /api/handoff · scripts/handoff.mjs): 같은 세션이 그 PC로 넘긴 적이 있으면 그 세션에 이어서, 아니면 그 PC에 새 세션 */
+async function handoff(b) {
+  if (!fed) throw Object.assign(new Error('PC 연결 기능이 꺼져 있어요'), { status: 400 });
+  const list = peers.list(), want = String(b.pc || b.machine || '').trim();
+  const peer = list.find((x) => x.id === want || x.name === want) || (!want && list.length === 1 ? list[0] : null);
+  if (!peer) throw Object.assign(new Error(`넘길 PC를 찾지 못했어요. 연결된 PC: ${list.map((x) => x.name).join(', ') || '없음'}`), { status: 404 });
+  const goal = String(b.goal || '').trim();
+  if (!goal) throw Object.assign(new Error('그 PC에서 할 일을 적어 주세요'), { status: 400 });
+  const job = b.job ? jobs.jobs.get(String(b.job)) : null, session = job ? jobs.sessions.get(job.sessionId) : null;
+  const text = `[다른 PC에서 넘겨받은 작업] ${peers.self().name} PC${session ? `의 세션 "${session.title}"` : ''}에서 이 PC(${peer.name})에만 있는 것이 필요해 넘어왔어요.${job ? `\n(원래 요청) ${String(job.goal || '').slice(0, 800)}` : ''}\n(이 PC에서 할 일) ${goal}`;
+  const base = { goal: text, mode: job?.mode || 'auto', settings: job?.settings || {} };
+  const fresh = () => fed.createJob({ ...base, machine: peer.id, cwd: b.cwd || job?.cwd || '' });
+  const prev = session?.handoffs?.[peer.id];
+  let r;
+  if (prev) { try { r = await fed.createJob({ ...base, sessionId: prev }); } catch { r = await fresh(); } }
+  else r = await fresh();
+  if (job) jobs.recordHandoff(job.id, { peerId: peer.id, peer: peer.name, sessionId: r.sessionId, jobId: r.id, goal, task: b.task || null });
+  return { machine: peer.name, sessionId: r.sessionId, jobId: r.id, note: r.note || null };
+}
 // 공유 폴더(읽기용 사본): 이 PC가 공유하는 폴더를 연결된 PC가 ~/.ai-shared/peer-files 로 받아 간다 (lib/shared-folders.mjs)
 const folders = new SharedFolders({ hubDir: config.hubDir, peers, intervalMs: (config.sharedFolders?.intervalSeconds ?? 120) * 1000, hub: hubInfo });
 folders.on('status', (s) => broadcast({ type: 'shared-folders', ...s }));
@@ -199,6 +225,11 @@ const server = http.createServer(async (req, res) => {
     const m = (re) => p.match(re);
     const denial = remote.check(req);
     if (denial) return sendRemoteBlocked(res, denial, p, send);
+    { // 이 PC를 조작하는 기능: 원격은 화면·연결된 허브만, 다른 PC로 넘기는 제어는 화면만
+      const proxied = !!(fed && p.startsWith('/api/') && fed.remoteOf(p + url.search));
+      const gate = controlGate(req, { pathname: p, route: canonicalRoute(p + url.search), method: req.method, remote: !!req.hubViewer?.remote, proxied, auth: hubAuth, knownIds: knownPeerIds() });
+      if (gate) return fail(res, gate.error, gate.status);
+    }
     // 다른 PC 세션·작업(rm-<PC>- id)에 대한 요청은 그 PC로 넘긴다
     if (fed && p.startsWith('/api/') && fed.remoteOf(p + url.search)) { const raw = ['GET', 'HEAD'].includes(req.method) ? null : await readRaw(req, 8_000_000); return await fed.proxy(req, res, { pathname: p, search: url.search, raw }); }
     const checkpoint = await checkpointRoute({ pathname: p, method: req.method, query: url.searchParams, readBody: () => readBody(req), manager: jobs });
@@ -217,8 +248,12 @@ const server = http.createServer(async (req, res) => {
       return json(res, peer, 201);
     }
     if (p === '/api/peers/self' && req.method === 'POST') { const self = peers.setSelfName((await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, self); }
+    // 연결된 PC 허브가 서명 키를 맡긴다(처음 받은 키만 믿음, lib/hub-auth.mjs)
+    if (p === '/api/peers/pair-key' && req.method === 'POST') { const b = await readBody(req); if (!knownPeerIds().includes(String(b.from || ''))) return fail(res, '연결된 PC가 아니에요', 403); return json(res, hubAuth.accept(String(b.from), String(b.key || ''))); }
+    // 작업 넘기기: 이 PC의 AI 작업자가 다른 PC에만 있는 것이 필요할 때 그 PC로 작업을 넘긴다(그 PC 세션에 보이게 진행)
+    if (p === '/api/handoff' && req.method === 'POST') { if (req.hubViewer?.remote) return fail(res, '작업 넘기기는 이 PC 안에서만 부를 수 있어요', 403); return json(res, await handoff(await readBody(req)), 201); }
     const peerRoute = p.match(/^\/api\/peers\/([\w-]+)$/);
-    if (peerRoute && req.method === 'DELETE') { const r = peers.remove(peerRoute[1]); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
+    if (peerRoute && req.method === 'DELETE') { const gone = peers.get(peerRoute[1]); if (gone) hubAuth.forget(gone.id, gone.remoteId); const r = peers.remove(peerRoute[1]); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     if (peerRoute && req.method === 'POST') { const r = peers.rename(peerRoute[1], (await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     // 업데이트: 이 허브(/api/hub/…)와 연결된 PC(/api/peers/:id/update — 그 PC 허브에 대신 요청)
     if (p === '/api/hub/version' && req.method === 'GET') return json(res, url.searchParams.get('check') === '1' ? await checkUpdate(ROOT) : runningCommit(ROOT));
@@ -436,7 +471,9 @@ const server = http.createServer(async (req, res) => {
     const file = path.join(ROOT, 'public', p === '/' ? 'index.html' : p.replace(/^\/+/, ''));
     if (!file.startsWith(path.join(ROOT, 'public'))) return send(res, 403, 'forbidden', 'text/plain');
     if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'not found', 'text/plain');
-    return send(res, 200, fs.readFileSync(file), MIME[path.extname(file)] || 'application/octet-stream');
+    // ODDIN 화면을 열 때(문서 탐색) 화면 쿠키를 준다 — 원격 제어 기능은 이 쿠키가 있는 화면에서만(lib/hub-auth.mjs)
+    const cookie = path.basename(file) === 'index.html' ? hubAuth.cookieFor(req, { secure: !!req.hubViewer?.remote }) : null;
+    return send(res, 200, fs.readFileSync(file), MIME[path.extname(file)] || 'application/octet-stream', cookie ? { 'Set-Cookie': cookie } : {});
   } catch (e) {
     return fail(res, e, e?.status || (e instanceof SyntaxError ? 400 : 500));
   }

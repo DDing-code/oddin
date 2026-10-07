@@ -61,5 +61,13 @@
       if (S.current && String(S.current).startsWith('rm-') && typeof renderThread === 'function') renderThread();
     }
   });
+  // 작업 넘기기(server.mjs handoff, 2026-10-06): 이 작업에서 다른 PC로 넘긴 일 — 누르면 그 PC 세션이 열린다
+  window.hubJobExtras = window.hubJobExtras || [];
+  const sessionFor = (sid) => { if (S.sessions.has(sid)) return sid; const m = String(sid || '').match(/^rm-[A-Za-z0-9]+-(.+)$/); return m && S.sessions.has(m[1]) ? m[1] : null; };
+  window.hubJobExtras.push((j) => (j.handoffs || []).map((h) => {
+    const sid = sessionFor(h.sessionId);
+    return `<div class="handoff-row">${icon('monitor')}<span class="t"><b>${esc(h.peer)} PC로 넘김</b> · ${esc(String(h.goal || '').slice(0, 100))}</span>${sid ? `<button type="button" class="btn" data-handoff-open="${esc(sid)}">그 세션 열기</button>` : ''}</div>`;
+  }).join(''));
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-handoff-open]'); if (b) { e.preventDefault(); openSession(b.dataset.handoffOpen); } });
   load();
 })();

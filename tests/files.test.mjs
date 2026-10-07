@@ -137,9 +137,16 @@ test('파일·터미널·미리보기 API: 격리 서버', { timeout: 150000 }, 
     } finally { await new Promise((resolve) => upstream.close(resolve)); }
     assert.equal((await fetch(`${base}/preview/${port}/`)).status, 502);
   });
-  await t.test('인증된 원격 화면도 파일 읽기·터미널 실행·미리보기 선택 허용', async () => {
+  await t.test('인증된 원격 화면도 파일 읽기·터미널 실행·미리보기 선택 허용 (화면 쿠키 없는 원격 스크립트는 터미널 거절)', async () => {
     const host = 'tools-test.example.ts.net'; fs.writeFileSync(path.join(dir, 'data', 'remote.json'), JSON.stringify({ version: 1, provider: 'tailscale', enabled: true, url: `https://${host}/`, hosts: [host], logins: ['owner@example.com'], target: base }));
-    const headers = { host, 'x-forwarded-host': host, 'tailscale-user-login': 'owner@example.com', origin: `https://${host}` };
+    const bare = { host, 'x-forwarded-host': host, 'tailscale-user-login': 'owner@example.com', origin: `https://${host}` };
+    // 다른 PC의 AI 처럼 화면 없이 원격으로 터미널을 열면 막힌다(lib/hub-auth.mjs)
+    assert.equal((await fetch(base + '/api/terminals', { method: 'POST', headers: { ...bare, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'tools-session' }) })).status, 403);
+    // 원격 화면은 페이지를 열 때 쿠키를 받는다
+    const page = await fetch(base + '/', { headers: { host, 'x-forwarded-host': host, 'tailscale-user-login': 'owner@example.com', 'sec-fetch-dest': 'document', 'sec-fetch-mode': 'navigate' } });
+    const cookie = (page.headers.get('set-cookie') || '').split(';')[0]; await page.text();
+    assert.match(page.headers.get('set-cookie') || '', /Secure/);
+    const headers = { ...bare, cookie };
     assert.equal((await fetch(file('a.mjs'), { headers })).status, 200);
     const response = await fetch(base + '/api/terminals', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'tools-session' }) }); assert.equal(response.status, 201);
     const term = await response.json(); terminals.add(term.id);
