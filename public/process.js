@@ -124,6 +124,7 @@
   }
   const sectionOpen = (s, m, job) => !m.multi || openFor(`proc:${s.key}`, M.active(s.status) || s.waiting || s.status === 'failed' || s.counts.errors > 0 && M.active(job.status));
   const shownRows = (s) => M.groupItems(s.items.slice(-(limits.get(s.key) || 200)), s.key);
+  window.hubShowOlderLogs = (key, count) => { for (const k of [key, `${key}#th`]) limits.set(k, Math.min(1000, (limits.get(k) || 200) + count)); };
   function sectionHtml(s, model, job) {
     const key = `proc:${s.key}`, open = sectionOpen(s, model, job), detail = detailOn(job.id);
     const head = !model.multi ? '' : `<button type="button" class="proc-sec-h" id="${domId(s.key)}-h" data-proc-toggle="${esc(key)}" aria-expanded="${open}" aria-controls="${domId(s.key)}-b" aria-label="생각 과정 · ${esc(s.title)}">${stIcon(s.status)}${tag(s.assignee)}<span class="proc-title">${esc(s.title)}</span>${M.active(s.status) ? detail ? now(s.preview) : nowThink(s.thinkPreview) : `<span class="proc-sum">${detail ? summary(s.counts) : s.counts.thoughts ? `생각 ${s.counts.thoughts}` : ''}${detail || s.counts.thoughts ? ' · ' : ''}${duration(s.startedAt, s.finishedAt)}</span>`}${chev(open)}</button>`;
@@ -136,7 +137,7 @@
       const loading = !S.loadedLogs.has(s.key) && !S.logs.has(s.key);
       body = `${hidden ? `<button type="button" class="tc-more proc-previous" id="${domId(s.key)}-previous" data-proc-previous="${esc(s.key)}">이전 ${hidden}단계 보기</button>` : ''}<ol class="proc-tl">${s.items.length ? rowsHtml(shown, s) : `<li class="proc-empty">${loading ? '기록을 불러오는 중' : M.active(s.status) ? '시작하는 중' : '기록이 없어요'}</li>`}${endHtml(s)}</ol>`;
     }
-    return `<section class="proc-sec ${open ? 'open' : ''}" data-proc-sec="${esc(s.key)}">${head}<div id="${domId(s.key)}-b" ${open ? '' : 'hidden'}>${body}</div></section>`;
+    return `<section class="proc-sec ${open ? 'open' : ''}" data-proc-sec="${esc(s.key)}">${head}<div id="${domId(s.key)}-b" ${open ? '' : 'hidden'}>${olderLogButton(s.key)}${body}</div></section>`;
   }
   window.hubJobProcess = (job) => {
     const m = modelFor(job); if (!m.visible) return '';

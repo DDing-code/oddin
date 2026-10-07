@@ -124,13 +124,19 @@ test('빠른 처리 통합: 질문은 짧은 새 대화, 작은 화면 수정은
     return j;
   };
   try {
-    for (const mode of ['auto', 'codex']) {
+    for (const mode of ['auto', 'codex', 'claude']) {
       const q = await run('커밋 어디까지 했어', mode), prompt = fs.readFileSync(path.join(q.runDir, 't1/prompt.md'), 'utf8');
       assert.equal(q.answer, true); assert.equal(q.tasks.length, 1); assert.equal(q.tasks[0].effort, 'high');
       assert.equal(q.tasks[0].continuedFrom, undefined, '긴 구현 대화는 질문에서 재개하지 않음');
       for (const phase of ['plan', 'route', 'report', 'memory']) assert.equal(q.phaseRuns[phase], undefined, `${phase} AI 호출 생략`);
       assert.match(prompt, /기존 색상은 유지|설정 화면은 유지/); assert.ok(prompt.length < 14000, '이전 긴 출력 대신 제한된 맥락');
       assert.ok(prompt.includes(path.join(dir, 'REPORT.md')), '요약 밖 근거 접근');
+      if (mode === 'claude') {
+        const invocation = JSON.parse(fs.readFileSync(path.join(q.runDir, 't1/attempt-1/invocation.json')));
+        assert.ok(invocation.args.includes('--tools'));
+        assert.ok(invocation.args.includes('Read,Glob,Grep,WebFetch,WebSearch'));
+        assert.ok(!invocation.args.includes('--dangerously-skip-permissions'));
+      }
     }
     assert.equal(waits, 0); assert.equal(curations, 0);
     const edit = await run('버튼 문구 오타만 수정해줘');
@@ -139,7 +145,21 @@ test('빠른 처리 통합: 질문은 짧은 새 대화, 작은 화면 수정은
     assert.equal(edit.tasks[0].effort, 'high');
     assert.equal(edit.phaseRuns.plan, undefined); assert.equal(edit.phaseRuns.report, undefined);
     assert.match(fs.readFileSync(path.join(edit.runDir, 't1/prompt.md'), 'utf8'), /실제 화면도 확인/);
-    assert.equal(waits, 1); assert.equal(curations, 1); assert.equal(checkpoints, 3, '작은 수정도 변경 복원 기록은 유지');
+    assert.equal(waits, 1); assert.equal(curations, 1); assert.equal(checkpoints, 1, '읽기 전용 질문은 생략하고 작은 수정의 변경 복원 기록은 유지');
+    const calls = fs.readFileSync(capture, 'utf8').trim().split('\n').map((x) => JSON.parse(x));
+    const starts = calls.map((x) => x.message).filter((x) => x?.method === 'thread/start');
+    assert.ok(starts.length >= 2);
+    assert.ok(starts.slice(0, 2).every((x) => x.params?.sandbox === 'read-only' && x.params?.approvalPolicy === 'never'), '질문은 실제 읽기 전용 권한');
+    const steered = m.get(m.create({ goal: 'SLOW 커밋 어디까지 했어?', mode: 'codex', sessionId: s.id }).id);
+    const deadline = Date.now() + 20000;
+    while (!steered.tasks[0]?.sessionId && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(steered.answer, true);
+    m.acceptIntercept(steered.id, { sessionId: s.id, clientRequestId: 'question-follow-up', text: '그럼 빠진 부분을 고쳐줘' });
+    while (['queued', 'planning', 'running', 'reporting'].includes(steered.status) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(steered.status, 'done', steered.error);
+    assert.equal(steered.answer, false, '질문 뒤 추가된 구현 지시는 쓰기 가능한 보완 작업으로 실행');
+    assert.equal(checkpoints, 2);
+    assert.ok(steered.tasks.some((t) => t.id.startsWith('r1_') && t.status === 'done'));
   } finally {
     for (const j of m.jobs.values()) if (['queued', 'planning', 'running', 'reporting'].includes(j.status)) m.cancel(j.id);
     clearTimeout(m._saveTimer);

@@ -19,7 +19,7 @@ function fixture(t, repo = false) {
     fs.writeFileSync(path.join(root, '기준.txt'), '기준'); git(root, 'add', '.'); git(root, 'commit', '-m', '기준');
   }
   const config = { defaultCwd: root, hubDir: path.join(root, 'shared'), tools: { claude: { enabled: false }, codex: { enabled: false } }, defaults: {} };
-  const m = new JobManager(config); clearTimeout(m._saveTimer); m.sessions.clear(); m.jobs.clear();
+  const m = new JobManager(config); clearTimeout(m._saveTimer); m._saveTimer = null; m.sessions.clear(); m.jobs.clear();
   m.run = async (job) => { job.testHistory = m.historyContext(job); job.status = 'done'; };
   t.after(() => clearTimeout(m._saveTimer)); return { root, config, m };
 }

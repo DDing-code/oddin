@@ -57,6 +57,7 @@ test('두 네이티브 CLI: 현재 턴 전달·동일 세션·연속 지시·중
 });
 test('접수 영속 저장·중복 10회·실행 2개와 대기 2개·다른 세션 격리', async () => {
   const f = fixture(), j = seeded(f), other = seeded(f, ['SLOW OTHER_SESSION']);
+  f.manager.execution.limit = 3; // 이 검사는 두 작업 + 다른 세션 한 작업의 동시 전달을 확인한다.
   const run = f.manager.schedule(j), runOther = f.manager.schedule(other);
   await until(() => j.tasks.slice(0, 2).every((t) => t.sessionId) && other.tasks[0].sessionId);
   const body = request(j, 'BROADCAST_MARKER'), result = f.manager.acceptIntercept(j.id, body);
@@ -295,7 +296,7 @@ test('격리 HTTP: 202 저장·200 재전송·GET/SSE 복원·Origin 차단·첨
     let hello = ''; stream = http.get(base + '/api/events', (res) => res.on('data', (d) => { hello += d; })); await until(() => hello.includes(body.clientRequestId));
     assert(hello.includes('"instructionRevision":1'));
     for (const stop = Date.now() + 20000; Date.now() < stop;) { snapshot = (await api('/api/jobs/' + j.id)).value; if (snapshot.status === 'done') break; await delay(20); }
-    assert.equal(snapshot.status, 'done', JSON.stringify(snapshot)); assert.equal(snapshot.intercepts[0].status, 'delivered');
+    assert.equal(snapshot.status, 'done', JSON.stringify(snapshot)); assert.equal(snapshot.intercepts[0].status, 'delivered', JSON.stringify(snapshot.intercepts));
     const messages = f.rows().filter((r) => r.kind === 'input' && JSON.stringify(r.message).includes('HTTP_MARKER'));
     assert(messages.some((r) => r.message.params?.input?.some((c) => c.type === 'localImage'))); assert(messages.some((r) => r.message.message?.content?.some((c) => c.type === 'image')));
     assert.equal((await api(`/api/jobs/${j.id}/intercepts`, request(j, 'TOO_LATE'))).value.code, 'JOB_NOT_ACTIVE');

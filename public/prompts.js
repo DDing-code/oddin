@@ -423,7 +423,7 @@
       if (e.kind === 'tool' && e.callId) { if (at.has(e.callId)) { list[at.get(e.callId)] = e; continue; } at.set(e.callId, list.length); }
       list.push(e);
     }
-    return list.map((e) => (e.kind === 'tool' && e.callId ? toolCard(e, tool, key) : lineHtml(e, tool))).join('');
+    return olderLogButton(key) + list.map((e) => (e.kind === 'tool' && e.callId ? toolCard(e, tool, key) : lineHtml(e, tool))).join('');
   };
   $('#thread').addEventListener('click', (e) => {
     const f = e.target.closest('[data-tc-full]'); if (f) { const id = f.dataset.tcFull; P.toolFull.has(id) ? P.toolFull.delete(id) : P.toolFull.add(id); return rerenderJob(f.closest('[data-tc-job]').dataset.tcJob); }

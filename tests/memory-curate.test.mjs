@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { applyNoteOps, normalizeNotes, readBoard, boardText, boardFile, parseCuration, editableFrom, applyMemoryOps, undoMemory, buildCuratePrompt, looksSecret } from '../lib/memory-curate.mjs';
 import { SessionTools } from '../lib/session-tools.mjs';
 import { buildWorkerPrompt } from '../lib/planner.mjs';
@@ -59,6 +60,7 @@ function hub() {
     { file: path.join(g, 'user-profile.md') }, { file: path.join(p, 'old-decision.md') },
     { file: path.join(p, 'long-doc.md'), partial: true }, { file: path.join(hubDir, 'memory', 'projects', 'OTHER', 'x.md') },
   ] };
+  for (const entry of manifest.selected) if (fs.existsSync(entry.file)) entry.hash = createHash('sha256').update(fs.readFileSync(entry.file)).digest('hex');
   return { hubDir, g, p, editable: editableFrom(hubDir, 'P--proj', manifest) };
 }
 

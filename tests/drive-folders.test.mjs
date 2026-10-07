@@ -44,7 +44,10 @@ test('회사가 등록한 폴더를 집이 드라이브에서 찾고, 두 경로
 
     const r = home.resolve();
     const homePath = path.join(homeDrive, '다른 컴퓨터', '내 컴퓨터', 'Archive (1)');
-    assert.deepEqual(r.found.map((x) => x.path), [homePath], '이름이 비슷한 Archive(D쪽)가 아니라 내용이 같은 Archive (1)');
+    assert.deepEqual(r.found, [], '파일 이름만으로 자동 연결하지 않음');
+    assert.deepEqual(r.candidates.map((x) => x.path), [homePath]);
+    assert.equal(home.list()[0].here, null);
+    home.setPath(f.id, homePath);
     const lh = home.list()[0];
     assert.equal(lh.here, homePath); assert.deepEqual(lh.others, [{ id: 'office', name: '회사', path: officeLocal }]);
 
@@ -87,6 +90,7 @@ test('원본 PC는 자기 드라이브 백업("다른 컴퓨터")이 아니라 �
     const home = new DriveFolders({ hubDir: hub, self: () => ({ id: 'home', name: '집' }), projects: () => [], driveRoot: path.join(dir, 'home-drive') });
     const office = new DriveFolders({ hubDir: hub, self: () => ({ id: 'office', name: '회사' }), projects: () => [officeLocal], driveRoot: path.join(dir, 'office-drive') });
     home.add({ path: homeCopy, name: '보관함' });
-    assert.deepEqual(office.resolve().found.map((x) => x.path), [officeLocal]);
+    assert.deepEqual(office.resolve().candidates.map((x) => x.path), [officeLocal]);
+    assert.equal(office.list()[0].here, null, '순위가 높은 후보도 확인 전에는 연결하지 않음');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

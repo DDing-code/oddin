@@ -68,7 +68,7 @@ function paintIcons(root = document) { root.querySelectorAll('[data-i]').forEach
 
 /* ---------- 상태 ---------- */
 const S = {
-  sessions: new Map(), jobs: new Map(), logs: new Map(), loadedLogs: new Set(), open: new Set(),
+  sessions: new Map(), jobs: new Map(), logs: new Map(), logBefore: new Map(), loadedLogs: new Set(), open: new Set(),
   current: null, draftCwd: null,
   options: null, usage: null, tools: null, projects: [],
   atts: [], notes: new Map(), collapsedFolders: new Set(), cfg: null,
@@ -259,10 +259,14 @@ function lastLog(key) {
   }
   return '';
 }
+function olderLogButton(key) {
+  return S.logBefore.get(key) != null ? `<button type="button" class="btn sm" data-log-before="${esc(key)}">이전 기록 더 보기</button>` : '';
+}
 function logHtml(key, tool) {
   const list = (S.logs.get(key) || []).filter((e) => !['result', 'raw'].includes(e.kind));
-  if (!list.length) return '<span class="c-muted">기록 없음</span>';
-  return list.map((e) => {
+  const more = S.logBefore.get(key);
+  if (!list.length && more == null) return '<span class="c-muted">기록 없음</span>';
+  return olderLogButton(key) + list.map((e) => {
     const k = e.kind; let cls = 'lg', mark = '', text = e.text ?? '';
     if (k === 'tool') { cls += ` tool ${tool}`; mark = e.name || 'tool'; text = e.detail || ''; }
     else if (k === 'message') { cls += ' msg'; mark = '답변'; }
@@ -281,9 +285,11 @@ async function ensureLogs(j) {
   let changed = false;
   await Promise.all(keys.map(async (k) => {
     const id = `${j.id}/${k}`; if (S.loadedLogs.has(id)) return; S.loadedLogs.add(id);
-    const list = await api(`/api/jobs/${j.id}/log/${encodeURIComponent(k)}`).catch(() => []);
+    const page = await api(`/api/jobs/${j.id}/log/${encodeURIComponent(k)}?limit=200`).catch(() => ({ entries: [] }));
+    if (j.sessionId !== S.current) return;
+    const list = Array.isArray(page) ? page.slice(-200) : page.entries; S.logBefore.set(id, page.nextBefore ?? null);
     const live = S.logs.get(id) || []; const seen = new Set(list.map((e) => e.at + e.kind));
-    S.logs.set(id, [...list, ...live.filter((e) => !seen.has(e.at + e.kind))]); changed = true;
+    S.logs.set(id, [...list, ...live.filter((e) => !seen.has(e.at + e.kind))].slice(-1000)); changed = true;
   }));
   if (changed && j.sessionId === S.current) { rerenderJob(j.id); scheduleInspector(); }
 }
@@ -300,6 +306,18 @@ const rq = new Set(); let rt = null;
 function queueRerender(id) { rq.add(id); if (!rt) rt = setTimeout(() => { rt = null; for (const x of rq) rerenderJob(x); rq.clear(); }, 150); }
 
 $('#thread').addEventListener('click', async (e) => {
+  const older = e.target.closest('[data-log-before]');
+  if (older) {
+    const key = older.dataset.logBefore, [jid, phase] = key.split('/'), before = S.logBefore.get(key), sid = S.current;
+    older.disabled = true;
+    try {
+      const page = await api(`/api/jobs/${jid}/log/${encodeURIComponent(phase)}?limit=200&before=${before}`);
+      if (sid !== S.current) return;
+      S.logs.set(key, [...(page.entries || []), ...(S.logs.get(key) || [])].slice(0, 1000)); S.logBefore.set(key, page.nextBefore ?? null);
+      window.hubShowOlderLogs?.(key, (page.entries || []).length); rerenderJob(jid);
+    } catch (err) { toast(err.message, true); older.disabled = false; }
+    return;
+  }
   const sg = e.target.closest('[data-sugg]'); if (sg) { setInput(sg.dataset.sugg); return; }
   const hf = e.target.closest('[data-hero-folder]'); if (hf) { e.stopPropagation(); return openFolderPicker(hf); }
   const tg = e.target.closest('[data-toggle]'); if (tg) { const k = tg.dataset.toggle; S.open.has(k) ? S.open.delete(k) : S.open.add(k); return rerenderJob(k.split('/')[0]); }
@@ -492,15 +510,17 @@ async function submit() {
 function newSession(cwd, group = null) {
   S.current = null; S.draftCwd = cwd; S.draftGroup = group; S.prefs.cwd = cwd; savePrefs();
   history.replaceState(null, '', location.pathname);
-  renderTree(); renderThread(); input.focus();
+  S.logs.clear(); S.loadedLogs.clear(); S.logBefore.clear();
+  renderTree(); renderThread(); connect(); input.focus();
 }
 async function openSession(id) {
   if (!S.sessions.has(id)) { try { for (const x of await api('/api/sessions?all=1')) S.sessions.set(x.id, x); } catch {} }
   if (!S.sessions.has(id)) return newSession(currentCwd());
-  if (!sessionJobs(id).length) { try { for (const j of await api(`/api/sessions/${id}/jobs`)) S.jobs.set(j.id, j); } catch {} }
+  if (!sessionJobs(id).length || sessionJobs(id).some((j) => j.summaryOnly)) { try { for (const j of await api(`/api/sessions/${id}/jobs`)) S.jobs.set(j.id, j); } catch {} }
+  S.logs.clear(); S.loadedLogs.clear(); S.logBefore.clear();
   S.current = id; S.draftCwd = null; S.draftGroup = null; S.prefs.cwd = S.sessions.get(id).cwd; savePrefs();
   history.replaceState(null, '', `#s=${id}`);
-  renderTree(); renderThread(); input.focus();
+  renderTree(); renderThread(); connect(); input.focus();
   loadPreviews();
 }
 document.addEventListener('click', async (e) => {
@@ -812,9 +832,13 @@ function md(src, base = '') {
 }
 
 /* ================= 실시간 이벤트 ================= */
+let eventStream = null;
 function connect() {
-  const es = new EventSource('/api/events');
+  eventStream?.close();
+  const es = new EventSource(`/api/events?compact=1${S.current ? '&session=' + encodeURIComponent(S.current) : ''}`);
+  eventStream = es;
   es.onmessage = (m) => {
+    if (eventStream !== es) return;
     const ev = JSON.parse(m.data);
     // 확장: 기능 파일은 window.addEventListener('hub:event', (e) => e.detail)로 모든 실시간 이벤트를 받는다
     try { window.dispatchEvent(new CustomEvent('hub:event', { detail: ev })); } catch {}
@@ -841,16 +865,17 @@ function connect() {
     } else if (ev.type === 'job_removed') {
       S.jobs.delete(ev.jobId); if (ev.sessionId === S.current) renderThread();
     } else if (ev.type === 'log') {
+      const j = S.jobs.get(ev.jobId); if (!j || j.sessionId !== S.current) return;
       const key = `${ev.jobId}/${ev.taskId || ev.entry.phase || 'job'}`;
-      if (!S.logs.has(key)) S.logs.set(key, []); S.logs.get(key).push(ev.entry);
-      const j = S.jobs.get(ev.jobId); if (j && j.sessionId === S.current) { queueRerender(ev.jobId); if (ev.entry.kind === 'tool' || ev.entry.kind === 'init') scheduleInspector(); }
+      if (!S.logs.has(key)) S.logs.set(key, []); const rows = S.logs.get(key); rows.push(ev.entry); if (rows.length > 1000) rows.splice(0, rows.length - 1000); if (j && j.sessionId === S.current) { queueRerender(ev.jobId); if (ev.entry.kind === 'tool' || ev.entry.kind === 'init') scheduleInspector(); }
+    } else if (ev.type === 'persistence-error') { toast(`작업 기록을 저장하지 못했어요: ${ev.error}`, true);
     } else if (ev.type === 'intercept') { onInterceptEvent(ev);
     } else if (ev.type === 'usage') { S.usage = ev.usage; renderUsage(); }
     else if (ev.type === 'catalog') { if (typeof loadCatalog === 'function') loadCatalog(); }
   };
   // 연결 상태를 remote.js 의 안내 줄에 알린다 (원격이 꺼지거나 허브가 멈춘 경우)
   es.onopen = () => { if (typeof onHubConn === 'function') onHubConn(true); };
-  es.onerror = () => { es.close(); if (typeof onHubConn === 'function') onHubConn(false); setTimeout(connect, 2000); };
+  es.onerror = () => { es.close(); if (eventStream !== es) return; if (typeof onHubConn === 'function') onHubConn(false); setTimeout(() => { if (eventStream === es) connect(); }, 2000); };
 }
 function finished(job) {
   const s = S.sessions.get(job.sessionId);

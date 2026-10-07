@@ -9,10 +9,11 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { ROOT, DATA_DIR, readJson, readText } from './lib/util.mjs';
 import { JobManager, publicJob } from './lib/jobs.mjs';
+import { clientEvent, writeSse } from './lib/events.mjs';
 import { INTERCEPT_CAPABILITIES } from './lib/intercepts.mjs';
 import { sessionToolsRoute, SESSION_CAPABILITIES } from './lib/session-tools.mjs';
 import { PERMISSIONS, permissionSetting } from './lib/prompts.mjs';
-import { toolStatus, invalidateToolStatus } from './lib/tools.mjs';
+import { toolStatus } from './lib/tools.mjs';
 import { memoryOverview, memoryFiles, readMemoryFile, hubBoardDir } from './lib/memory.mjs';
 import { modelOptions } from './lib/options.mjs';
 import { usageStatus } from './lib/usage.mjs';
@@ -29,7 +30,7 @@ import { setupStatus, installSharedHooks, readLocalInstructions, writeLocalInstr
 import { listMemory, moveMemory, createBlock, renameBlock, setBlockRoot, deleteBlock, readBlockMemory } from './lib/memory-blocks.mjs';
 import { hubCommit, runningCommit, checkUpdate, applyUpdate } from './lib/hub-update.mjs';
 import { SharedFolders } from './lib/shared-folders.mjs';
-import { DriveFolders } from './lib/drive-folders.mjs';
+import { DriveFolders, guardDriveWrite } from './lib/drive-folders.mjs';
 import { DriveHub } from './lib/drive-hub.mjs';
 import { Federation } from './lib/federation.mjs';
 import { FileAccess, fileRoots } from './lib/file-access.mjs';
@@ -79,10 +80,17 @@ function checkClient(res, req) {
 }
 function broadcast(ev) {
   try { push.onEvent(ev, { titleOf: pushTitle, jobOf: (id) => jobs.jobs.get(id) || null }); } catch {}
-  const data = `data: ${JSON.stringify(ev)}\n\n`;
-  for (const [res, req] of clients) { if (checkClient(res, req)) { try { res.write(data); } catch {} } }
+  const packets = new Map();
+  for (const [res, req] of clients) if (checkClient(res, req)) {
+    const key = req.hubCompact ? req.hubSession || '' : '*';
+    if (!packets.has(key)) {
+      const selected = req.hubCompact ? clientEvent(ev, req.hubSession, (id) => jobs.get(id)?.sessionId || fed?.jobs().find((j) => j.id === id)?.sessionId) : ev;
+      packets.set(key, selected ? `data: ${JSON.stringify(selected)}\n\n` : null);
+    }
+    const data = packets.get(key); if (data) { try { writeSse(res, data); } catch { res.destroy(); } }
+  }
 }
-setInterval(() => { for (const [res, req] of clients) { if (checkClient(res, req)) { try { res.write(': ping\n\n'); } catch {} } } }, 25_000).unref();
+setInterval(() => { for (const [res, req] of clients) { if (checkClient(res, req)) { try { writeSse(res, ': ping\n\n'); } catch {} } } }, 25_000).unref();
 setInterval(() => { for (const [res, req] of clients) checkClient(res, req); }, 2000).unref();
 // 사용량: 작업이 도는 동안엔 1분 30초, 아니면 3분마다 갱신해서 화면·자동 분배에 반영
 let lastUsageAt = 0;
@@ -143,7 +151,7 @@ setTimeout(() => { if (peers.list().length || hubInfo()) folders.pullAll().catch
 // 드라이브 작업 폴더(구글 드라이브로 두 PC가 함께 쓰는 폴더): 다른 PC 경로 찾기·같은 메모리로 잇기·작업 순서 (lib/drive-folders.mjs)
 const drive = new DriveFolders({ hubDir: config.hubDir, self: () => peers.self(), projects: () => projectsList().map((x) => x.path) });
 const LIVE_JOB = new Set(['planning', 'running', 'reporting']);
-const driveBusy = () => { const out = {}; for (const j of jobs.list()) if (LIVE_JOB.has(j.status)) { const f = drive.folderOf(j.cwd); if (f) out[f.id] = { jobId: j.id, title: j.title || '', since: j.createdAt, machine: peers.self().name }; } return out; };
+const driveBusy = () => { const out = { _writerPolicy: 'registered-owner-v1' }; for (const j of jobs.list()) if (!j.answer && LIVE_JOB.has(j.status)) { const f = drive.folderOf(j.cwd); if (f) out[f.id] = { jobId: j.id, title: j.title || '', since: j.createdAt, machine: peers.self().name }; } return out; };
 const peerBusy = async () => {
   const out = {};
   await Promise.all(peers.list().map(async (x) => { try { Object.assign(out, await peers.call(x, '/api/drive-folders/busy', { timeoutMs: 5000 })); } catch {} }));
@@ -155,18 +163,7 @@ jobs.driveHub = () => hubInfo();
 // 실행 PC 고르기·다른 PC 작업 함께 보기: 연결된 PC의 세션·작업을 이 화면에 비추고, 그 세션 요청은 그 PC로 (lib/federation.mjs)
 const fed = config.federation?.enabled === false ? null : new Federation({ peers, broadcast, drive, hubInfo, isDefaultDir: (p) => jobs.isDefaultDir(p), uploadPath });
 jobs.machineName = () => peers.self().name;
-jobs.driveGuard = async (job, task) => {
-  const f = drive.folderOf(job.cwd); if (!f) return;
-  const wait = config.driveFolders?.waitMinutes ?? 30, until = Date.now() + wait * 60_000; let told = false;
-  while (Date.now() < until && job.status !== 'cancelled') {
-    const other = (await peerBusy())[f.id];
-    // 먼저 시작한 쪽이 먼저 한다(같은 시각이면 PC 이름순) — 두 PC가 서로를 기다리며 멈추지 않게
-    if (!other || other.since > job.createdAt || (other.since === job.createdAt && other.machine >= peers.self().name)) break;
-    if (!told) { told = true; job.notes = job.notes || []; job.notes.push(`${other.machine}에서 드라이브 작업 폴더 "${f.name}"로 작업 중이라 끝날 때까지 기다려요(같은 파일 동시 수정 방지)`); jobs.emitJob(job); }
-    await new Promise((r) => setTimeout(r, 20_000));
-  }
-  if (told) { if (Date.now() >= until) job.notes.push(`기다리는 시간(${wait}분)이 지나 그대로 시작해요`); jobs.emitJob(job); }
-};
+jobs.driveGuard = (job) => job.answer ? Promise.resolve() : guardDriveWrite(drive.folderOf(job.cwd), peers);
 const driveResolve = () => { try { const r = drive.resolve(); if (r.found.length) broadcast({ type: 'drive-folders' }); return r; } catch (e) { return { error: e.message }; } };
 setTimeout(driveResolve, 5000).unref();
 setInterval(driveResolve, 120_000).unref();
@@ -329,7 +326,9 @@ const server = http.createServer(async (req, res) => {
     // ---- 실시간 이벤트 ----
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS });
-      res.write(`data: ${JSON.stringify({ type: 'hello', sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])], groups: groups.list() })}\n\n`);
+      req.hubCompact = url.searchParams.get('compact') === '1'; req.hubSession = url.searchParams.get('session') || null;
+      const hello = { type: 'hello', sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])], groups: groups.list() };
+      writeSse(res, `data: ${JSON.stringify(req.hubCompact ? clientEvent(hello, req.hubSession) : hello)}\n\n`);
       clients.set(res, req); res.on('close', () => clients.delete(res)); return;
     }
     // ---- 상태·선택지·사용량 ----
@@ -412,7 +411,7 @@ const server = http.createServer(async (req, res) => {
     // ---- 작업 ----
     if (p === '/api/jobs' && req.method === 'GET') return json(res, jobs.list().map(publicJob));
     if (p === '/api/jobs' && req.method === 'POST') {
-      const body = await readBody(req); invalidateToolStatus();
+      const body = await readBody(req);
       // 실행 PC를 다른 PC로 골랐거나 다른 PC 세션에 이어서 하면 그 PC에 작업을 만든다
       if (fed && ((body.machine && body.machine !== peers.self().id) || /^rm-[A-Za-z0-9]+-/.test(String(body.sessionId || '')))) return json(res, await fed.createJob(body), 201);
       delete body.machine;
@@ -428,7 +427,7 @@ const server = http.createServer(async (req, res) => {
     }
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/cancel$/)) && req.method === 'POST') return json(res, jobs.cancel(r[1]));
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/tasks\/([\w-]+)\/retry$/)) && req.method === 'POST') return json(res, jobs.retryTask(r[1], r[2]));
-    if ((r = m(/^\/api\/jobs\/([\w-]+)\/log\/([\w-]+)$/))) return json(res, jobs.taskLog(r[1], r[2]));
+    if ((r = m(/^\/api\/jobs\/([\w-]+)\/log\/([\w-]+)$/))) return json(res, jobs.taskLog(r[1], r[2], url.searchParams.has('limit') ? { limit: url.searchParams.get('limit'), before: url.searchParams.get('before') } : null));
     // ---- 이미지 첨부 ----
     if (p === '/api/uploads' && req.method === 'POST') {
       const buf = await readRaw(req, LIMITS.maxBytes);

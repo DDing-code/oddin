@@ -197,13 +197,15 @@ test('전체 계산은 입력 기록·요청·작업을 변경하지 않는다',
 });
 
 function renderer() {
-  const events = {}, nodes = new Map(), state = { jobs: new Map(), logs: new Map(), loadedLogs: new Set(), open: new Set() };
+  const events = {}, nodes = new Map(), state = { jobs: new Map(), logs: new Map(), logBefore: new Map(), loadedLogs: new Set(), open: new Set() };
   const p = { map: new Map(), toolOpen: new Set(), toolFull: new Set() };
   const thread = { addEventListener: (kind, fn) => { events[kind] = fn; } };
   const document = { getElementById: (id) => nodes.get(id) || null, querySelectorAll: () => [], querySelector: () => null, addEventListener: (kind, fn) => { events[kind] = fn; } };
   const escape = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const scope = vm.createContext({ window: { ProcessModel: M, addEventListener() {} }, document, S: state, P: p, $: () => thread, esc: escape, icon: (name) => `<span class="ico" data-icon="${name}"></span>`, md: escape, hm: (s) => s ? '09:00' : '', dur: M.elapsed, stIcon: (s) => `<span class="st">${s}</span>`, ST_KO: { cancelled: '중지됨', interrupted: '중단됨' }, MutationObserver: class { observe() {} }, setInterval() {}, rerenderJob: (id) => { scope.lastRender = scope.window.hubJobProcess(state.jobs.get(id)); }, queueRerender() {}, CSS: { escape: (s) => s } });
   const helpers = fs.readFileSync(new URL('../public/prompts.js', import.meta.url), 'utf8');
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  vm.runInContext(app.slice(app.indexOf('function olderLogButton('), app.indexOf('function logHtml(')), scope);
   vm.runInContext(`const CAT_KO = { command:'명령 실행', file:'파일 변경', permission:'추가 권한', network:'네트워크 접근' }; const ACT_KO = { allow:'허용함', allow_session:'이 작업 동안 허용함', deny:'거절함', approve:'승인함', revise:'수정 요청함', reject:'거절함' };\n${helpers.slice(helpers.indexOf('  const baseName'), helpers.indexOf('  const headline'))}\n${helpers.slice(helpers.indexOf('  function answerText'), helpers.indexOf('  function rowHtml'))}\n${helpers.slice(helpers.indexOf('  const TOOL_KIND'), helpers.indexOf('  const baseLogHtml'))}\nwindow.hubPrompts = { P, toolCard, lineHtml, diffHtml, cutText, TOOL_KIND, rowSummary, answerText, kindOfPrompt, toolSummary, diffCounts };`, scope);
   vm.runInContext(fs.readFileSync(new URL('../public/process.js', import.meta.url), 'utf8'), scope);
   const render = (j, records = []) => { state.jobs.set(j.id, j); state.logs.set(`${j.id}/t1`, records); state.loadedLogs.add(`${j.id}/t1`); return scope.window.hubJobProcess(j); };
@@ -215,6 +217,15 @@ test('화면 렌더러는 기본 접힘과 머리 요약·단일 작업 타임�
   let html = r.render(j, [tool('a')]); assert.match(html, /생각 과정/); assert.doesNotMatch(html, /명령 1/); assert.doesNotMatch(html, /class="proc-body"/);
   r.state.open.add('proc:j'); html = r.render(j, [tool('a')]); assert.match(html, /class="proc-body"/); assert.doesNotMatch(html, /class="proc-sec-h"/); assert.match(html, /aria-controls=/);
   r.state.open.add('procdetail:j'); html = r.render(j, [tool('a')]); assert.match(html, /1단계/); assert.match(html, /명령 1/); assert.match(html, /aria-pressed="true"/);
+});
+
+test('서버에 이전 로그가 있으면 버튼을 표시하고 가져온 기록까지 펼친다', () => {
+  const r = renderer(), j = job(); r.state.open.add('proc:j'); r.state.logBefore.set('j/t1', 123);
+  const records = Array.from({ length: 400 }, (_, i) => ({ kind: 'thinking', at: at(i), text: `한글 생각 ${i}` }));
+  assert.match(r.render(j, records), /data-log-before="j\/t1"/);
+  r.scope.window.hubShowOlderLogs('j/t1', 200);
+  assert.match(r.render(j, records), /한글 생각 0/);
+  r.state.logBefore.set('j/t1', null); assert.doesNotMatch(r.render(j, records), /data-log-before=/);
 });
 
 test('생각만 보기(기본)는 생각·중간 설명만 보이고 명령·수정 원문은 숨긴다', () => {
