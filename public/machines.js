@@ -69,5 +69,36 @@
     return `<div class="handoff-row">${icon('monitor')}<span class="t"><b>${esc(h.peer)} PC로 넘김</b> · ${esc(String(h.goal || '').slice(0, 100))}</span>${sid ? `<button type="button" class="btn" data-handoff-open="${esc(sid)}">그 세션 열기</button>` : ''}</div>`;
   }).join(''));
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-handoff-open]'); if (b) { e.preventDefault(); openSession(b.dataset.handoffOpen); } });
+
+  // 세션 실행 PC 옮기기(server.mjs moveSession, 2026-10-07): 대화 기록을 가져가 다른 PC에서 이어서, 원래 세션은 보관함으로
+  window.hubJobExtras.push((j) => (j.imported ? `<div class="handoff-row">${icon('monitor')}<span class="t"><b>${esc(j.imported.machine || '다른')} PC에서 옮겨 온 기록</b> · 실행 기록·변경 비교는 그 PC 보관함의 원래 세션에 있어요</span></div>` : ''));
+  async function moveTo(s, target) {
+    let cwd = '';
+    if (target.self) {
+      cwd = await window.hubPickFolder?.({ title: `"${s.title}"을 이 PC에서 이어 갈 작업 폴더`, start: S.prefs.cwd || '', confirm: '이 폴더로 옮기기' });
+      if (!cwd) return;
+    } else {
+      const v = prompt(`${target.name} PC에서 쓸 작업 폴더 경로 (비우면 그 PC의 같은 드라이브 폴더나 기본 작업 폴더)`, '');
+      if (v === null) return; cwd = v.trim();
+    }
+    try {
+      toast(`${target.name}${target.self ? '(이 PC)' : ' PC'}로 옮기는 중…`);
+      const r = await api(`/api/sessions/${encodeURIComponent(s.id)}/move`, { method: 'POST', body: JSON.stringify({ machine: target.self ? 'self' : target.id, cwd }) });
+      toast(`${r.machine} PC로 옮겼어요 — 이전 기록 ${r.imported}건을 가져왔고${r.archived ? ' 원래 세션은 보관함으로 보냈어요' : ' 원래 세션은 그대로 있어요'}`);
+      setTimeout(() => { if (S.sessions.has(r.sessionId)) openSession(r.sessionId); }, 400);
+    } catch (e) { toast(`옮기지 못했어요: ${e.message}`, true); }
+  }
+  window.hubSessionMenuItems = window.hubSessionMenuItems || [];
+  window.hubSessionMenuItems.push((s) => {
+    if (!M.peers.length || s.archived) return [];
+    const owner = s.machine?.id || null; // 없으면 이 PC 세션
+    const targets = [...(owner ? [{ self: true, name: selfName() }] : []), ...M.peers.filter((p) => p.id !== owner).map((p) => ({ id: p.id, name: p.name }))];
+    if (!targets.length) return [];
+    const live = s.status === 'running';
+    return [{ label: '실행 PC 옮기기…', desc: live ? '진행 중인 작업이 끝난 뒤에 옮길 수 있어요' : '대화 기록을 가져가 다른 PC에서 이어서 · 원래 세션은 보관함으로', icon: 'monitor', run: () => {
+      if (live) { closePop(); return toast('진행 중인 작업이 끝난 뒤에 옮길 수 있어요', true); }
+      openPop(document.querySelector(`#tree [data-sid="${CSS.escape(s.id)}"]`) || document.getElementById('title'), [{ header: `"${s.title}" 어느 PC로 옮길까요?` }, ...targets.map((t) => ({ label: t.self ? `${t.name} (이 PC)` : t.name, icon: 'monitor', run: () => { closePop(); moveTo(s, t); } }))], { below: true });
+    } }];
+  });
   load();
 })();

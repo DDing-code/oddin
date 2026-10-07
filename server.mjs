@@ -32,7 +32,8 @@ import { hubCommit, runningCommit, checkUpdate, applyUpdate } from './lib/hub-up
 import { SharedFolders } from './lib/shared-folders.mjs';
 import { DriveFolders, guardDriveWrite } from './lib/drive-folders.mjs';
 import { DriveHub } from './lib/drive-hub.mjs';
-import { Federation } from './lib/federation.mjs';
+import { Federation, toRemote, peerKey } from './lib/federation.mjs';
+import { exportLocal, exportMirrored, importSession } from './lib/session-move.mjs';
 import { FileAccess, fileRoots } from './lib/file-access.mjs';
 import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
@@ -110,7 +111,8 @@ peers.auth = hubAuth;
 const knownPeerIds = () => peers.list().map((x) => x.remoteId).filter(Boolean);
 // 다른 PC 세션·작업(rm- id)에 대한 /api 요청은 그 PC로 넘긴다. 단 이 화면의 실시간 연결(/api/events?session=rm-…)은 이 PC 것이다 —
 // 넘기면 그 PC의 세션 목록(다른 id)이 와서 화면이 지금 세션을 잃고 새 세션으로 돌아갔다(2026-10-07 '세션을 누르면 0.1초 만에 새 세션 창으로')
-const toPeer = (p, url) => !!(fed && p.startsWith('/api/') && p !== '/api/events' && fed.remoteOf(p + url.search));
+// 세션 옮기기(/api/sessions/rm-…/move)도 이 PC가 처리한다(그 PC 세션을 이 PC로 가져오는 일)
+const toPeer = (p, url) => !!(fed && p.startsWith('/api/') && p !== '/api/events' && !/^\/api\/sessions\/[\w-]+\/move$/.test(p) && fed.remoteOf(p + url.search));
 runningCommit(ROOT); // 켜질 때의 버전을 기억한다(업데이트 뒤 재시작 전과 구분)
 // 구글 드라이브 ODDIN 폴더(공유 기억 사본·자산): 있으면 공유 기억을 드라이브로 맞추고 공유 폴더를 드라이브 자산으로 올린다 (lib/drive-hub.mjs)
 const driveHub = new DriveHub({ driveRoot: process.env.HUB_DRIVE_ROOT || null });
@@ -128,6 +130,31 @@ shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
 const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared?.status() || null });
 // 작업자 지시문에 넣을 PC 정보(planner.buildWorkerPrompt 의 [여러 PC]) — 연결된 PC가 있을 때만
 jobs.machines = () => { const list = peers.list(); return list.length ? { self: peers.self().name, peers: list.map((x) => x.name), handoff: path.join(ROOT, 'scripts', 'handoff.mjs') } : null; };
+/** 세션 실행 PC 옮기기: 대화 기록을 다른 PC(또는 이 PC)에 새 세션으로 가져오고 원래 세션은 보관함으로. machine = 'self' | PC id·이름 */
+async function moveSession(id, b) {
+  const httpErr = (status, message) => Object.assign(new Error(message), { status });
+  const want = String(b.machine || '').trim(), self = peers.self();
+  const srcPeer = fed?.remoteOf(id) || null;
+  const toSelf = !want || want === 'self' || want === self.id || want === self.name;
+  const target = toSelf ? null : peers.list().find((x) => x.id === want || x.name === want);
+  if (!toSelf && !target) throw httpErr(404, '옮길 PC를 찾지 못했어요');
+  if (toSelf && !srcPeer) throw httpErr(400, '이미 이 PC 세션이에요');
+  if (target && srcPeer && target.id === srcPeer.id) throw httpErr(400, '이미 그 PC 세션이에요');
+  const data = srcPeer ? exportMirrored(fed.entry(srcPeer), id, (v) => toRemote(srcPeer, v)) : exportLocal(jobs, id);
+  const from = { machine: srcPeer ? srcPeer.name : self.name, sessionId: srcPeer ? toRemote(srcPeer, id) : id, title: data.title };
+  let created, sessionId;
+  if (toSelf) { created = importSession(jobs, { ...data, cwd: b.cwd || config.defaultCwd, from }); sessionId = created.id; }
+  else {
+    let cwd = b.cwd || null;
+    if (!cwd) { const m = await fed.mapCwd(target, data.cwd); cwd = m.cwd || null; }
+    created = await peers.call(target, '/api/sessions/import', { method: 'POST', body: { ...data, cwd, from }, timeoutMs: 120_000 });
+    sessionId = `rm-${peerKey(target)}-${created.id}`;
+  }
+  // 원래 세션은 보관함으로(지우지 않음 — 보관함에서 되살릴 수 있음)
+  let archived = true;
+  try { if (srcPeer) await peers.call(srcPeer, `/api/sessions/${toRemote(srcPeer, id)}/archive`, { method: 'POST', body: {}, timeoutMs: 20_000 }); else await jobs.sessionTools.archive(id, {}, true); } catch { archived = false; }
+  return { sessionId, machine: toSelf ? self.name : target.name, imported: created.imported ?? data.jobs.length, archived };
+}
 /** 작업 넘기기(POST /api/handoff · scripts/handoff.mjs): 같은 세션이 그 PC로 넘긴 적이 있으면 그 세션에 이어서, 아니면 그 PC에 새 세션 */
 async function handoff(b) {
   if (!fed) throw Object.assign(new Error('PC 연결 기능이 꺼져 있어요'), { status: 400 });
@@ -396,6 +423,9 @@ const server = http.createServer(async (req, res) => {
     // 세션 목록: 기본은 이 PC 세션만(데스크탑 앱의 "원격 세션"이 다른 PC가 비춘 이 PC 세션까지 받아 가지 않게), ?all=1 이면 다른 PC 세션 사본도
     if (p === '/api/sessions' && req.method === 'GET') { const archived = url.searchParams.get('archived') === '1'; return json(res, [...jobs.listSessions({ archived }), ...(archived || url.searchParams.get('all') !== '1' ? [] : fed?.sessions() || [])]); }
     if (p === '/api/sessions' && req.method === 'POST') return json(res, jobs.createSession(await readBody(req)), 201);
+    // 세션 실행 PC 옮기기(lib/session-move.mjs): 가져오기는 연결된 PC 허브도 부른다, 옮기기는 이 화면에서
+    if (p === '/api/sessions/import' && req.method === 'POST') return json(res, importSession(jobs, await readBody(req, 30_000_000)), 201);
+    { const mv = p.match(/^\/api\/sessions\/([\w-]+)\/move$/); if (mv && req.method === 'POST') return json(res, await moveSession(mv[1], await readBody(req)), 201); }
     if (await sessionToolsRoute({ req, res, url, jobs, readBody, json, send })) return;
     let r;
     if ((r = m(/^\/api\/sessions\/([\w-]+)$/))) {
