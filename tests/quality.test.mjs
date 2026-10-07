@@ -18,7 +18,7 @@ test.after(() => fs.rmSync(home, { recursive: true, force: true }));
 
 const { raiseToStandalone } = await import('../lib/router.mjs');
 const { validWorkdir } = await import('../lib/projects.mjs');
-const { buildPlanPrompt, buildWorkerPrompt } = await import('../lib/planner.mjs');
+const { buildPlanPrompt, buildWorkerPrompt, buildReportPrompt } = await import('../lib/planner.mjs');
 const { SessionTools } = await import('../lib/session-tools.mjs');
 const { JobManager } = await import('../lib/jobs.mjs');
 const { ROOT } = await import('../lib/util.mjs');
@@ -169,12 +169,63 @@ test('계획 지시문: 기본 작업 1개·요청 원문 인용·비율 맞추�
   assert.match(b, /사용자가 고른 폴더 — workdir 는 빈 문자열로/); assert.doesNotMatch(b, /알려진 프로젝트 폴더/);
 });
 
-test('작업자 지시문: 이어 쓰는 대화는 [이어서] 안내와 노트만', () => {
+test('작업자 지시문: 이어 쓰는 대화는 [이어서] 안내와 전달된 맥락 포함', () => {
   const job = { id: 'J', cwd: project, goal: '이어서 해', summary: '', intercepts: [] };
   const task = { id: 't1', title: '이어서', assignee: 'codex', prompt: '이어서 해' };
   const p = buildWorkerPrompt({ job, task, depResults: [], siblings: [task], hubDir: 'C:/hub', memoryCtx: '', historyCtx: '## 세션 결정 노트\n- 다크 테마', continued: { jobId: 'J0' } });
   assert.match(p, /\[이어서\] 이 대화는 같은 세션의 직전 요청\(J0\)을 이어서/); assert.match(p, /- 다크 테마/);
   assert.doesNotMatch(buildWorkerPrompt({ job, task, depResults: [], siblings: [task], hubDir: 'C:/hub', memoryCtx: '' }), /\[이어서\]/);
+});
+
+test('하네스 범위: 플래너의 해석 요약을 실행·보고 지시에서 빼고 사용자 원문을 기준으로 전달', () => {
+  const task = { id: 't1', title: '명령어 수정', assignee: 'codex', prompt: '등록 위치를 확인하세요', status: 'done', resultText: '명령어만 제거' };
+  const job = { id: 'scope', cwd: project, goal: '/pt 명령어만 없애줘', summary: '파티트래커 기능 전체를 제거합니다', tasks: [task], intercepts: [{ revision: 1, seq: 1, text: '설정 화면은 유지해', status: 'delivered' }] };
+  const prompt = buildWorkerPrompt({ job, task, depResults: [], siblings: [task], hubDir: temp, memoryCtx: '' });
+  for (const p of [prompt, buildReportPrompt({ job })]) {
+    assert.ok(p.includes(job.goal)); assert.ok(p.includes('설정 화면은 유지해'));
+    assert.ok(!p.includes(job.summary), '플래너의 범위 확대가 실행·보고의 근거가 되지 않음');
+  }
+  assert.match(prompt, /플래너의 제안 — 원문과 대조/);
+  assert.match(prompt, /필요한 지침·스킬·참고 자료를 읽고/);
+  assert.doesNotMatch(prompt, /검증 스크립트·기록 파일을 만들지는 마세요|참고 자료를 다시 정독하는 일/);
+});
+
+test('하네스 전달: 잘린 결과의 마지막 근거를 작업자·보고 담당이 원문과 실행 기록으로 찾아갈 수 있음', () => {
+  const runDir = mk('runs', 'handoff'), dir = mk('runs', 'handoff', 't1');
+  const result = '앞부분\n' + '설명'.repeat(4000) + '\n마지막 근거: 아직 미검증';
+  const full = path.join(dir, 'result.md'), log = path.join(runDir, 't1.log.jsonl');
+  fs.writeFileSync(full, result); fs.writeFileSync(log, '{"kind":"tool","text":"실제 확인 기록"}\n');
+  const first = { id: 't1', title: '제작', assignee: 'codex', status: 'done', resultText: result };
+  const second = { id: 't2', title: '검수', assignee: 'codex', prompt: '직접 확인' };
+  const job = { id: 'handoff', runDir, cwd: project, goal: '결과 확인', tasks: [first, second] };
+  const worker = buildWorkerPrompt({ job, task: second, depResults: [{ ...first, text: result }], siblings: job.tasks, hubDir: temp, memoryCtx: '' });
+  for (const p of [worker, buildReportPrompt({ job })]) {
+    assert.ok(!p.includes('마지막 근거: 아직 미검증'), '본문은 예산 안에서 요약');
+    assert.ok(p.includes(full)); assert.ok(p.includes(log));
+    assert.match(fs.readFileSync(full, 'utf8'), /마지막 근거: 아직 미검증/);
+    assert.ok(!p.includes(path.join(runDir, 't2', 'result.md')), '없는 결과 파일을 안내하지 않음');
+  }
+});
+
+test('하네스 재개: 이전 담당의 최종 결과와 그 뒤 다른 AI에게 전달한 원문·수정 지시를 보존', () => {
+  const m = fakeManager(config()), s = { id: 'resume-s', jobIds: [] }; m.sessions.set(s.id, s);
+  for (let i = 0; i < 4; i++) {
+    const runDir = mk('runs', `resume-${i}`);
+    const j = { id: `resume-${i}`, sessionId: s.id, runDir, createdAt: `2026-10-01T0${i}:00:00Z`, status: 'done', goal: `사용자 요청 ${i}`, report: `담당 ${i} 결과` + '긴 결과'.repeat(1000), intercepts: [] };
+    if (i === 2) j.intercepts = [{ revision: 1, seq: 1, text: '다른 AI에게 보낸 수정: 파란색은 쓰지 마', status: 'delivered' }, { revision: 2, seq: 2, text: '취소된 수정', status: 'cancelled' }];
+    for (const name of ['GOAL.md', 'REPORT.md', 'intercepts.jsonl']) fs.writeFileSync(path.join(runDir, name), name === 'GOAL.md' ? j.goal : name === 'REPORT.md' ? j.report : JSON.stringify(j.intercepts));
+    m.jobs.set(j.id, j); s.jobIds.push(j.id);
+  }
+  const current = { id: 'next', sessionId: s.id, createdAt: '2026-10-01T04:00:00Z' };
+  const ctx = m.historyContext(current, 8000, { afterJobId: 'resume-1' });
+  assert.doesNotMatch(ctx, /사용자 요청 0|취소된 수정/);
+  for (const i of [1, 2, 3]) { assert.ok(ctx.includes(`사용자 요청 ${i}`)); assert.ok(ctx.includes(`담당 ${i} 결과`)); }
+  assert.match(ctx, /파란색은 쓰지 마/);
+  assert.ok(ctx.includes(path.join(m.get('resume-2').runDir, 'intercepts.jsonl')));
+  assert.ok(ctx.length < 8000, '긴 결과 전문은 반복하지 않음');
+  const fresh = m.workerHistory(current);
+  assert.match(fresh, /파란색은 쓰지 마/);
+  assert.ok(fresh.includes(path.join(m.get('resume-2').runDir, 'REPORT.md')), '새 담당자도 요약 밖의 원문을 찾아갈 수 있음');
 });
 
 // 공유 메모리 선택기(~/.ai-shared/sync/memory-context.cjs)가 없는 PC에서는 건너뛴다.

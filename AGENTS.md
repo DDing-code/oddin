@@ -44,6 +44,7 @@
 - `public/desktop.js` 프로그램 안에서만 동작(알림·진행 표시·경로 끌어놓기·트레이 명령), `public/hubs.js`·`hubs.css` 사이드바 허브 전환·원격 세션 목록(일반 브라우저에서는 아무것도 바꾸지 않음)
 
 ## 규칙
+- 하네스 품질(2026-10-07): 사용자 원문·최신 수정 지시를 범위 기준으로 삼고, 플래너의 해석 요약은 실행·보고 프롬프트에 넣지 않는다. 대화 재개에는 그 CLI의 마지막 요청부터 다른 담당자에게 전달한 요청·수정·최종 결과도 포함한다(`historyContext({ afterJobId })`). 결과 요약에는 기존 원문·실행 기록 경로를 붙이며, 필요한 자료 확인·최소 회귀 검사를 막지 않는다. **품질 우선의 자동 강도는 질문·디자인 기획·구현·검수에도 평소 설정까지(기본 상한 xhigh)** 적용한다. 아래 이전 날짜 규칙의 단계별 high 예외는 이를 따른다. 직접 선택한 강도·속도 우선·모델 배정·한도 안전장치는 유지. 규약 `docs/context.md`, 검사 `tests/quality.test.mjs`·`speed.test.mjs`·`visual-rule.test.mjs`.
 - 새 버전 "지금 바꾸기"(2026-10-05): `POST /api/hub/restart` → `jobs.prepareRestart`(진행 중 작업에 `resumeOnStart`, 작업자 CLI만 끔, 이후 저장·새 작업·마무리 멈춤 `jobs.frozen`) → 재시작 → `jobs.resumeAfterRestart`(같은 CLI 대화로 이어 함, 지시문 `buildWorkerPrompt({ resumed })`). 화면 `public/restart-ui.js`, 규약 `docs/peers.md`.
 - 시험 서버를 띄우는 시험은 고정 포트 대신 `tests/_port.mjs`의 `freePort()`를 쓴다(앞 실행이 남긴 서버·다른 시험과 부딪혀 가끔 실패했다).
 - host는 `127.0.0.1` 고정. 원격 접속은 Tailscale Serve로만 제공하며 `0.0.0.0` 바인딩·Funnel을 사용하지 않는다. 실행 중인 허브는 작업자가 재시작하지 않는다.

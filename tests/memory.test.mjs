@@ -147,8 +147,10 @@ test('새 자동 작업·의존 작업 분배·본문 갱신·보고·세션 후
   const next = await completed(manager, manager.create({ goal: 'probe 메모리 이어서', mode: 'codex', sessionId: first.sessionId }));
   // 이어 쓰는 대화에는 그 대화에 이미 넣은 메모리(내용 그대로)를 다시 넣지 않는다
   const nextPrompt = fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8');
-  assert.doesNotMatch(nextPrompt, /PROBE_NEW/); assert.match(nextPrompt, /이미 넣은 공유 메모리/);
-  // 같은 세션 후속 요청: 직전 Codex 대화를 이어 쓰므로 이전 명령 대신 [이어서] 안내 (이전 명령은 그 대화에 이미 있음)
+  const nextMemory = nextPrompt.match(/# 공유 메모리 요약\n([\s\S]*?)\n# 규칙/)?.[1];
+  assert.ok(nextMemory); assert.doesNotMatch(nextMemory, /PROBE_NEW/); assert.match(nextMemory, /이미 넣은 공유 메모리/);
+  assert.match(nextPrompt, /결과 요약: PROBE_NEW 확인/, '최종 결과는 공유 메모리 중복과 별도로 전달');
+  // 같은 CLI를 이어 쓰되, 마지막 요청의 최종 결과와 그 뒤의 수정 사항도 함께 전달한다.
   const nextTask = next.tasks[0];
   assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /\[이어서\]/);
   assert.equal(nextTask.continuedFrom?.jobId, first.id);

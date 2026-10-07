@@ -141,7 +141,8 @@ test('눈으로 확인 모델: Astra(한도 80%여도), 사용자가 고른 모�
   const m = manager(SPLIT_CHECK);
   const run = (settings, u = usage()) => { const t = { id: 't1v', title: '눈으로 확인: 썸네일', prompt: '확인', assignee: 'codex', visualCheck: true }; const job = { mode: 'auto', settings, tasks: [t], input: '' }; m.applyChoice(job, t, { reason: '눈으로 확인' }, u); return t; };
   const a = run(AUTO());
-  assert.deepEqual([a.settings.model, a.settings.effort], ['gpt-6-astra', 'high']); // 눈으로 확인은 강도를 올리지 않음(2026-10-05) assert.match(a.reason, /눈으로 확인 규칙: gpt-6-astra/);
+  assert.deepEqual([a.settings.model, a.settings.effort], ['gpt-6-astra', 'xhigh']);
+  assert.match(a.reason, /눈으로 확인 규칙: gpt-6-astra/);
   assert.equal(run(AUTO(), usage(80)).settings.model, 'gpt-6-astra');
   assert.equal(run({ claude: { model: 'auto', effort: 'auto' }, codex: { model: 'gpt-6.1-sol', effort: 'high' } }).settings.model, 'gpt-6.1-sol');
   const text = catalogText(SPLIT_CHECK, {});
@@ -179,10 +180,10 @@ test('디자인 진행 방식: 시안(draft)은 디자인 담당이 한 작업�
   assert.equal(j.tasks[0].designMake, true);
 });
 
-test('디자인 진행 방식 모델·강도: 시안 제작은 디자인 담당 모델(Fable/Astra), 명세대로 구현하는 단계는 강도를 올리지 않음', () => {
+test('디자인 진행 방식 모델·강도: 담당 모델은 유지하고 품질 우선 구현은 평소 강도까지', () => {
   const m = manager(ADAPTIVE);
   const pick = (task, u = fable(40)) => { const job = { mode: 'auto', settings: { ...AUTO(), pace: 'quality' }, tasks: [task], input: '' }; m.applyChoice(job, task, { model: task.assignee === 'codex' ? 'gpt-6.1-sol' : 'opus', effort: 'high' }, u); return task.settings; };
   assert.equal(pick({ id: 't1', title: '시안', prompt: '시안', assignee: 'claude', designMake: true, designTarget: { tool: 'claude', model: 'fable', switched: false } }).model, 'fable');
   assert.equal(pick({ id: 't1', title: '시안', prompt: '시안', assignee: 'codex', designMake: true, designTarget: { tool: 'codex', model: 'gpt-6-astra', switched: true } }, fable(84)).model, 'gpt-6-astra');
-  assert.equal(pick({ id: 't2', title: '설정 화면 UI 구현', prompt: '구현', assignee: 'codex', designImpl: true }).effort, 'high');
+  assert.equal(pick({ id: 't2', title: '설정 화면 UI 구현', prompt: '구현', assignee: 'codex', designImpl: true }).effort, 'xhigh');
 });
