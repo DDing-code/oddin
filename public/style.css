@@ -1,9 +1,4 @@
 :root{
-  --bg:#101010;--side:#151515;--panel:#191919;--panel2:#222;--hover:#2b2b2b;--line:#2b2b2b;--line2:#404040;
-  --fg:#e4e4e4;--fg2:#bcbcbc;--muted:#999;--faint:#858585;
-  --claude:#c7b8aa;--claude-bg:rgba(199,184,170,.07);
-  --codex:#bac4ce;--codex-bg:rgba(186,196,206,.07);
-  --accent:#d4d4d4;--ok:#91b89c;--err:#d98d89;--warn:#cbb58a;--run:#bcbcbc;
   --r:3px;--r2:2px;
   --font:var(--mono);
   --mono:"Cascadia Mono","D2Coding",Consolas,"Malgun Gothic",monospace;
@@ -15,7 +10,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--fg)}
 body{font:14px/1.6 var(--font);overflow:hidden;-webkit-font-smoothing:antialiased}
 button,input,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
-::selection{background:rgba(255,255,255,.2)}
+::selection{background:var(--accent-line)}
 .grow{flex:1}
 .ico{display:inline-flex;width:16px;height:16px;flex:none}
 .ico svg{width:100%;height:100%}
@@ -54,8 +49,8 @@ kbd{font:500 11px/1 var(--font);color:var(--muted);background:rgba(255,255,255,.
 .nav-item:hover{background:rgba(255,255,255,.05);color:var(--fg)}
 .nav-item:hover kbd,.nav-item:focus-visible kbd{opacity:1}
 .nav-item:hover .ico{color:var(--fg2)}
-.nav-item.primary{color:var(--fg);font-weight:600;background:var(--panel2);border:1px solid var(--line2);margin-bottom:5px}
-.nav-item.primary:hover{background:var(--hover);border-color:var(--muted)}
+.nav-item.primary{color:var(--fg);font-weight:600;background:var(--accent-soft);border:1px solid var(--accent-line);margin-bottom:5px}
+.nav-item.primary:hover{background:var(--hover);border-color:var(--accent)}
 .nav-item.primary .ico{color:var(--accent)}
 
 .side-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 8px 12px;scrollbar-width:thin}
@@ -100,7 +95,7 @@ kbd{font:500 11px/1 var(--font);color:var(--muted);background:rgba(255,255,255,.
 .sess:hover,.sess:focus-visible,.sess.menu-open{background:rgba(255,255,255,.05);color:var(--fg)}
 .sess:hover .meta,.sess.menu-open .meta,.sess:focus-visible .meta{display:none}
 .sess:hover .row-more,.sess.menu-open .row-more,.sess:focus-visible .row-more{display:inline-flex}
-.sess.on{background:rgba(255,255,255,.07);color:var(--fg)}
+.sess.on{background:var(--accent-soft);color:var(--fg)}
 .sess.on::before{content:"";position:absolute;left:-1px;top:6px;bottom:6px;width:2px;border-radius:2px;background:var(--accent)}
 .gbody .sess.on::before{left:-11px}
 .sess.unread .t{color:var(--fg);font-weight:600}
@@ -388,7 +383,7 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 /* ---------------- 입력창 ---------------- */
 #composerWrap{padding:0 32px 18px;max-width:1040px;width:100%;margin:0 auto}
 #composer{border:1px solid var(--line2);background:var(--side);border-radius:3px;padding:14px 12px 9px;transition:border-color .15s}
-#composer:focus-within{border-color:var(--muted)}
+#composer:focus-within{border-color:var(--accent)}
 .input-line{display:flex;align-items:flex-start;gap:12px}
 .input-prompt{color:var(--accent);font:600 16px/1.5 var(--mono);user-select:none;flex:none}
 #in{display:block;width:100%;min-width:0;resize:none;border:0;outline:0;background:none;min-height:52px;max-height:40vh;padding:0 0 12px;line-height:1.65}

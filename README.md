@@ -19,6 +19,7 @@ start-hub.cmd
 - 창 없이: `wscript start-hub-hidden.vbs` (로그 `logs\server.log`)
 - 로그온 시 자동 시작 등록: `powershell -ExecutionPolicy Bypass -File install-autostart.ps1` (해제는 `-Remove`)
 - CLI 상태 확인: `npm run check` · 테스트: `npm test`
+- 색상 테마: 왼쪽 아래 **테마** 또는 계정 메뉴 **색상 테마**에서 그래파이트·터미널 그린·앰버·바이올렛·오션·모노크롬을 고릅니다. `Ctrl+K`에서 테마 이름으로도 바꿀 수 있습니다. 선택은 브라우저·앱에 저장되고, 같은 주소의 다른 창과 분할 화면에도 바로 적용됩니다.
 
 ## 데스크탑 프로그램 (2026-10-03)
 허브 화면을 독립 창으로 쓰는 프로그램입니다. 시작 메뉴·바탕화면의 **ODDIN** 아이콘으로 켭니다. 자세한 내용: [docs/desktop.md](docs/desktop.md)

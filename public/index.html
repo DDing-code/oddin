@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101010">
+<script src="themes.js"></script>
 <!-- 폰 홈 화면 앱(아이폰: 사파리 공유 → 홈 화면에 추가) -->
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app/apple-touch-icon.png">
@@ -31,6 +32,7 @@
 <link rel="stylesheet" href="folders.css">
 <link rel="stylesheet" href="browser.css">
 <link rel="stylesheet" href="mobile.css">
+<link rel="stylesheet" href="themes.css">
 </head>
 <body>
 <div id="app">
@@ -51,6 +53,7 @@
     <!-- 데스크탑 프로그램 안에서만 hubs.js 가 채우는 원격 세션 자리 (renderTree 가 #tree 를 다시 그려도 남는다) -->
     <div id="hubRemote" hidden></div>
     <div class="side-bottom">
+      <button type="button" class="theme-toggle" id="btnTheme" title="색상 테마 고르기"><span class="theme-dot" aria-hidden="true"></span><span>테마</span><span id="themeName">그래파이트</span></button>
       <section id="usage" class="usage" title="남은 한도 · 눌러서 새로고침" aria-label="Claude·Codex 남은 구독 한도"></section>
       <button class="account" id="btnAccount" title="설정과 상태"></button>
     </div>
@@ -123,7 +126,7 @@
   </div>
 </div>
 <div id="modal" hidden>
-  <div class="modal-win">
+  <div class="modal-win" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-head"><b id="modalTitle"></b><span class="grow"></span><button class="icon-btn" id="modalClose" title="닫기"></button></div>
     <div id="modalBody"></div>
   </div>

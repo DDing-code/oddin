@@ -16,7 +16,7 @@ body.resizing-y *{pointer-events:none}
 /* 모든 도구 이름을 한눈에 찾을 수 있는 고정 탐색 영역. 본문만 스크롤한다. */
 #inspTabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:4px;flex:none;padding:10px;border-bottom:1px solid var(--line)}
 #inspTabs .tab{height:32px;padding:0 8px;border:1px solid transparent;border-radius:4px;font-size:12px;min-width:0}
-#inspTabs .tab.on{color:var(--fg);background:rgba(255,255,255,.06);border-color:var(--line2)}
+#inspTabs .tab.on{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-line)}
 #inspTabs .tab span:not(.ico){overflow:hidden;text-overflow:ellipsis}
 
 /* ---------------- 터미널 패널 ---------------- */

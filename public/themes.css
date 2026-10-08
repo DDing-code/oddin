@@ -1,0 +1,61 @@
+/* 테마 색은 여기서만 정의한다. 선택 카드도 같은 변수를 써서 실제 색을 보여 준다. */
+:root,[data-theme="graphite"]{
+  --bg:#101010;--side:#151515;--panel:#191919;--panel2:#222;--hover:#2b2b2b;--line:#2b2b2b;--line2:#404040;
+  --fg:#e4e4e4;--fg2:#bcbcbc;--muted:#999;--faint:#858585;
+  --accent:#78aaff;--ok:#7bd6a0;--err:#f08888;--warn:#edc16f;
+  --claude:#e2a17b;--codex:#82b2ff;
+}
+[data-theme="forest"]{
+  --bg:#0c1310;--side:#101a14;--panel:#142219;--panel2:#1d2d22;--hover:#26372b;--line:#293d30;--line2:#3d5545;
+  --fg:#d9e9dd;--fg2:#b8cebe;--muted:#91aa97;--faint:#809888;
+  --accent:#73d993;--ok:#a1e3a8;--err:#ef9393;--warn:#e0c17b;--claude:#d3b786;--codex:#a1cced;
+}
+[data-theme="amber"]{
+  --bg:#15120d;--side:#1c1811;--panel:#231e15;--panel2:#2d271b;--hover:#3a3122;--line:#393122;--line2:#534631;
+  --fg:#f0e1c6;--fg2:#cfc0a5;--muted:#af9f82;--faint:#9b8c73;
+  --accent:#f1bd66;--ok:#aecb81;--err:#e59887;--warn:#ffd38a;--claude:#e5a17a;--codex:#b4c9d8;
+}
+[data-theme="violet"]{
+  --bg:#121019;--side:#191620;--panel:#201c2a;--panel2:#2a2435;--hover:#352d43;--line:#362e43;--line2:#4d405c;
+  --fg:#ebe3f3;--fg2:#cabbd9;--muted:#a697b7;--faint:#9686a7;
+  --accent:#b69af7;--ok:#8bcdb3;--err:#ed91a6;--warn:#e8c47a;--claude:#efb290;--codex:#9dc1fa;
+}
+[data-theme="ocean"]{
+  --bg:#0c131b;--side:#101c27;--panel:#152432;--panel2:#1d2f40;--hover:#263d51;--line:#294053;--line2:#3b566b;
+  --fg:#dfebf4;--fg2:#b8cfdf;--muted:#92aebf;--faint:#829aab;
+  --accent:#67d6e8;--ok:#83d4ba;--err:#ef939c;--warn:#e3c484;--claude:#e6b18a;--codex:#8cc4ff;
+}
+[data-theme="mono"]{
+  --bg:#101010;--side:#151515;--panel:#191919;--panel2:#222;--hover:#2b2b2b;--line:#2b2b2b;--line2:#404040;
+  --fg:#e4e4e4;--fg2:#bcbcbc;--muted:#999;--faint:#858585;
+  --accent:#d4d4d4;--ok:#91b89c;--err:#d98d89;--warn:#cbb58a;--claude:#c7b8aa;--codex:#bac4ce;
+}
+:root,[data-theme]{
+  --run:var(--accent);
+  --accent-soft:color-mix(in srgb,var(--accent) 12%,transparent);
+  --accent-line:color-mix(in srgb,var(--accent) 45%,var(--line));
+  --claude-bg:color-mix(in srgb,var(--claude) 12%,transparent);
+  --codex-bg:color-mix(in srgb,var(--codex) 12%,transparent);
+}
+#term{--tbg:var(--bg);--tfg:var(--fg)}
+.tool-btns .icon-btn.on{color:var(--accent);background:var(--accent-soft)}
+.send.ic:disabled{background:var(--accent-soft);color:var(--muted)}
+.theme-toggle{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--fg2);font-size:12px;text-align:left}
+.theme-toggle:hover{background:var(--hover);color:var(--fg)}
+.theme-dot{width:8px;height:8px;background:var(--accent);flex:none}
+#themeName{margin-left:auto;color:var(--muted)}
+#modal:has(.theme-picker) .modal-win{width:min(640px,100%);height:auto;max-height:84dvh;border-radius:var(--r)}
+.theme-picker>p{margin:0 0 16px;color:var(--muted);font-size:12px}
+.theme-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;border:0;padding:0;margin:0}
+.theme-choice{display:flex;flex-direction:column;gap:10px;padding:14px;background:var(--bg);color:var(--fg);border:1px solid var(--line2);border-radius:var(--r);cursor:pointer;min-width:0}
+.theme-choice:hover,.theme-choice:has(input:checked){border-color:var(--accent)}
+.theme-choice:has(input:checked){box-shadow:inset 3px 0 var(--accent)}
+.theme-choice-head{display:flex;gap:8px;align-items:center;font-size:13px}
+.theme-choice-head input{margin:0;accent-color:var(--accent);width:16px;height:16px;flex:none}
+.theme-description{font-size:11px;color:var(--muted)}
+.theme-swatches{display:flex;gap:5px;margin-top:2px}
+.theme-swatches i{width:22px;height:5px;background:var(--accent)}
+.theme-swatches i:nth-child(2){background:var(--ok)}
+.theme-swatches i:nth-child(3){background:var(--warn)}
+.theme-swatches i:nth-child(4){background:var(--err)}
+@media(max-width:480px){.theme-grid{grid-template-columns:1fr}.theme-choice{padding:12px}.theme-picker>p{line-height:1.7}}

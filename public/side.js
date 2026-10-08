@@ -322,6 +322,7 @@ $('#btnAccount').addEventListener('click', (e) => {
     ...(S.cfg?.profile?.avatar ? [{ label: '프로필 사진 지우기', icon: 'x', run: () => { closePop(); setProfile(() => api('/api/profile/avatar', { method: 'DELETE' }), '프로필 사진을 지웠어요'); } }] : []),
     { sep: true },
     { label: '설정 및 상태', icon: 'gear', run: () => { closePop(); openSettings(); } },
+    { label: '색상 테마', desc: window.hubTheme?.current().name || '', icon: 'board', run: () => { closePop(); window.hubTheme?.open(); } },
     { label: '원격 접속', icon: 'globe', run: () => { closePop(); openSettings('remoteSec'); } },
     { label: '키보드 단축키', icon: 'keyboard', run: () => { closePop(); openSettings('keys'); } },
     { label: '알림음 (작업 끝·질문)', icon: 'bell', checked: window.hubSound?.on !== false, run: () => { const on = window.hubSound?.toggle(); closePop(); toast(on ? '알림음을 켰어요 — 작업이 끝나거나 질문이 오면 소리로 알려요' : '알림음을 껐어요'); } },
