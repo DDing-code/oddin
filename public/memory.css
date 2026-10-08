@@ -1,5 +1,5 @@
 /* 기억 화면 (public/memory-ui.js): 작업 카드의 공용 메모판·기억 정리 줄, 오른쪽 '기억' 탭 */
-.mem-board{margin-top:8px;border:1px solid var(--line2);border-radius:10px;background:rgba(255,255,255,.015)}
+.mem-board{margin-top:8px;border:1px solid var(--line2);border-radius:10px;background:color-mix(in srgb,var(--fg) 2%,transparent)}
 .mem-board summary{display:flex;align-items:center;gap:7px;padding:7px 11px;cursor:pointer;list-style:none;font-size:12.5px;color:var(--fg2)}
 .mem-board summary::-webkit-details-marker{display:none}
 .mem-board summary .ico{width:14px;height:14px;color:var(--muted)}
@@ -7,13 +7,13 @@
 .mem-board summary:hover{color:var(--fg)}
 .mem-board ul{margin:0;padding:2px 11px 9px;list-style:none;display:grid;gap:4px}
 .mem-board li{display:flex;gap:8px;font-size:12.5px;line-height:1.5;color:var(--fg2)}
-.mb-t{flex:none;min-width:24px;height:18px;padding:0 5px;border-radius:5px;font-size:10.5px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);color:var(--muted)}
-.mb-t.claude{color:var(--claude);background:rgba(217,119,87,.12)}.mb-t.codex{color:var(--codex);background:rgba(91,156,245,.12)}
+.mb-t{flex:none;min-width:24px;height:18px;padding:0 5px;border-radius:5px;font-size:10.5px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--fg) 7%,transparent);color:var(--muted)}
+.mb-t.claude{color:var(--claude);background:color-mix(in srgb,var(--claude) 12%,transparent)}.mb-t.codex{color:var(--codex);background:color-mix(in srgb,var(--codex) 12%,transparent)}
 
-.mem-cur{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:8px;padding:7px 11px;border-radius:10px;background:rgba(255,255,255,.025);font-size:12.5px;color:var(--fg2)}
+.mem-cur{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:8px;padding:7px 11px;border-radius:10px;background:color-mix(in srgb,var(--fg) 3%,transparent);font-size:12.5px;color:var(--fg2)}
 .mem-cur>.ico{width:14px;height:14px;color:var(--muted);flex:none}
 .mem-cur.run{color:var(--muted)}
-.mem-cur.err{color:var(--err);background:rgba(239,107,103,.07)}
+.mem-cur.err{color:var(--err);background:color-mix(in srgb,var(--err) 7%,transparent)}
 .mem-k{font-weight:600;color:var(--fg)}
 .mem-sep{color:var(--faint)}
 .mem-l{color:var(--muted)}
@@ -31,7 +31,7 @@
 .mem-notes{margin:0 0 10px;padding:0;list-style:none;counter-reset:mn;display:grid;gap:2px}
 .mem-notes li{counter-increment:mn;display:grid;grid-template-columns:22px 1fr auto;gap:2px 6px;align-items:start;padding:6px 4px 6px 2px;border-radius:8px;font-size:12.5px;line-height:1.55;color:var(--fg)}
 .mem-notes li::before{content:counter(mn);font-size:11px;color:var(--faint);text-align:right;padding-top:1px;font-variant-numeric:tabular-nums}
-.mem-notes li:hover{background:rgba(255,255,255,.035)}
+.mem-notes li:hover{background:color-mix(in srgb,var(--fg) 4%,transparent)}
 .mn-m{grid-column:2;font-size:11px;color:var(--faint)}
 .mn-m:empty{display:none}
 .mn-x{grid-column:3;grid-row:1;width:22px;height:22px;opacity:0;transition:opacity .12s}
@@ -43,5 +43,5 @@
 .mem-saved{margin:0;padding:0;list-style:none;display:grid;gap:4px}
 .mem-saved li{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 2px}
 .mem-saved b{font-weight:550;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-.ms-op{flex:none;font-size:10.5px;padding:1px 6px;border-radius:5px;background:rgba(255,255,255,.07);color:var(--muted)}
+.ms-op{flex:none;font-size:10.5px;padding:1px 6px;border-radius:5px;background:color-mix(in srgb,var(--fg) 7%,transparent);color:var(--muted)}
 .ms-s{flex:none;font-size:11.5px;color:var(--faint)}

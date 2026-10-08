@@ -6,7 +6,7 @@
 .pc-add input[name=u]{flex-basis:100%}
 .pc-add input[name=n]{flex:1}
 .pc-self input:focus,.pc-add input:focus{outline:2px solid var(--codex);outline-offset:-1px}
-.pc-peer{margin-top:6px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:rgba(255,255,255,.015)}
+.pc-peer{margin-top:6px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:color-mix(in srgb,var(--fg) 2%,transparent)}
 .pc-row{display:flex;align-items:center;gap:7px;min-width:0}
 .pc-row b{font-size:13px;font-weight:600;color:var(--fg);white-space:nowrap}
 .pc-row .grow{flex:1}
@@ -35,16 +35,16 @@
 .pc-assets li{display:flex;gap:8px;min-width:0;font-size:12px;line-height:1.5;color:var(--muted)}
 .pc-assets b{font-weight:600;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%}
 .pc-assets span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11.5px var(--mono);color:var(--faint)}
-.pc-local{margin-top:8px;border:1px solid var(--line2);border-radius:10px;padding:6px 10px;background:rgba(255,255,255,.015)}
+.pc-local{margin-top:8px;border:1px solid var(--line2);border-radius:10px;padding:6px 10px;background:color-mix(in srgb,var(--fg) 2%,transparent)}
 .pc-local summary{cursor:pointer;font-size:12.5px;color:var(--fg2);display:flex;gap:8px;align-items:center}
 .pc-local textarea{width:100%;box-sizing:border-box;margin-top:8px;min-height:180px;resize:vertical;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font:12px/1.5 var(--mono);padding:8px}
 /* 실행 PC 고르기(machines.js): 사이드바 세션 줄의 PC 이름, 입력창 아래 실행 PC 버튼 */
-.sess .s-pc{flex:none;font-size:10.5px;line-height:1.5;padding:0 6px;border-radius:999px;border:1px solid var(--line2);color:var(--fg2);background:rgba(255,255,255,.04);margin-left:4px;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess .s-pc{flex:none;font-size:10.5px;line-height:1.5;padding:0 6px;border-radius:999px;border:1px solid var(--line2);color:var(--fg2);background:color-mix(in srgb,var(--fg) 4%,transparent);margin-left:4px;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sess .s-pc.off{opacity:.5}
 #pMachine.off{opacity:.6}
 
 /* 작업 넘기기(machines.js): 작업 카드 끝의 "○○ PC로 넘김" 줄 */
-.handoff-row{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:rgba(164,139,242,.06);font-size:13px;color:var(--fg2)}
+.handoff-row{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:color-mix(in srgb,var(--accent) 6%,transparent);font-size:13px;color:var(--fg2)}
 .handoff-row .ico{width:15px;height:15px;color:var(--run);flex:none}
 .handoff-row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .handoff-row b{color:var(--fg)}

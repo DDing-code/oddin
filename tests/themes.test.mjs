@@ -41,7 +41,7 @@ test('테마 선택을 복원하고 다른 창의 변경을 반영하며 잘못�
   const before = initial.writes();
   initial.listeners.storage({ key: 'oddin.theme' });
   assert.equal(initial.root.dataset.theme, 'amber');
-  assert.equal(initial.label.textContent, '앰버');
+  assert.equal(initial.label.textContent, '앰버 · 터미널');
   assert.equal(initial.writes(), before, '동기화 이벤트를 다시 저장하지 않는다');
   initial.data.set('oddin.theme', 'forest');
   initial.listeners.storage({ key: 'hub.prefs' });
@@ -54,4 +54,29 @@ test('테마 선택을 복원하고 다른 창의 변경을 반영하며 잘못�
   unavailable.api.select('forest');
   assert.equal(unavailable.root.dataset.theme, 'forest');
   assert.equal(unavailable.notices.length, 1);
+});
+
+test('모양(스타일)은 색과 따로 저장·복원되고, 밝은 팔레트도 같은 방식으로 고른다', () => {
+  const b = boot();
+  assert.equal(b.root.dataset.style, 'terminal', '기본 모양은 터미널');
+  assert.equal(b.label.textContent, '그래파이트 · 터미널');
+  for (const id of ['soft', 'glass', 'flat', 'crt', 'terminal']) {
+    b.api.selectStyle(id);
+    assert.equal(b.root.dataset.style, id);
+    assert.equal(b.data.get('oddin.style'), id);
+    assert.equal(b.root.dataset.theme, 'graphite', '모양을 바꿔도 색은 그대로');
+  }
+  b.api.selectStyle('__proto__'); assert.equal(b.root.dataset.style, 'terminal');
+  b.api.select('paper'); assert.equal(b.root.dataset.theme, 'paper');
+  assert.ok(b.api.themes.some(t => t.id === 'paper' && t.dark === false), '밝은 팔레트가 목록에 있다');
+  assert.ok(b.api.themes.filter(t => !t.dark).length >= 4 && b.api.themes.filter(t => t.dark).length >= 10);
+  // 다른 창에서 모양을 바꾸면 따라간다
+  b.data.set('oddin.style', 'glass'); const before = b.writes();
+  b.listeners.storage({ key: 'oddin.style' });
+  assert.equal(b.root.dataset.style, 'glass'); assert.equal(b.root.dataset.theme, 'paper');
+  assert.equal(b.writes(), before);
+  assert.equal(b.label.textContent, '페이퍼 · 글래스');
+  // 저장값이 둘 다 있으면 시작할 때 둘 다 복원
+  const again = boot('sand'); again.data.set('oddin.style', 'crt'); again.listeners.storage({ key: null });
+  assert.equal(again.root.dataset.theme, 'sand'); assert.equal(again.root.dataset.style, 'crt');
 });

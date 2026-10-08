@@ -6,7 +6,7 @@
 body.hub-desktop .side-top .brand{flex:1 1 auto;min-width:0;gap:0}
 body.hub-desktop .brand > .remote-badge{display:none}
 .hub-btn{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%;height:36px;margin-left:-8px;padding:0 6px 0 8px;border:0;border-radius:9px;background:none;color:var(--fg);font:inherit;font-weight:650;letter-spacing:-.01em;text-align:left;white-space:nowrap}
-.hub-btn:hover,.hub-btn.on{background:rgba(255,255,255,.05)}
+.hub-btn:hover,.hub-btn.on{background:color-mix(in srgb,var(--fg) 5%,transparent)}
 .hub-btn .mark{flex:none}
 .hub-st{position:absolute;right:-4px;bottom:-4px;width:11px;height:11px;border-radius:50%;border:2px solid var(--side);background:var(--faint);transition:background .2s,border-color .12s}
 .hub-btn:hover .hub-st,.hub-btn.on .hub-st{border-color:#262629}
@@ -14,7 +14,7 @@ body.hub-desktop .brand > .remote-badge{display:none}
 .hub-st.offline{background:var(--err)}
 .hub-st.checking{background:var(--warn);animation:hubpulse 1.2s ease-in-out infinite}
 .hub-name{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:15px}
-.hub-tag{display:inline-flex;align-items:center;gap:4px;flex:none;padding:1px 7px 1px 5px;border-radius:999px;border:1px solid rgba(95,191,127,.35);background:rgba(95,191,127,.1);color:var(--ok);font:600 11px/1.4 var(--font);letter-spacing:0}
+.hub-tag{display:inline-flex;align-items:center;gap:4px;flex:none;padding:1px 7px 1px 5px;border-radius:999px;border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);background:color-mix(in srgb,var(--ok) 10%,transparent);color:var(--ok);font:600 11px/1.4 var(--font);letter-spacing:0}
 .hub-tag .ico{width:11px;height:11px}
 .hub-btn > .ico{width:14px;height:14px;flex:none;color:var(--faint);transition:transform .15s}
 .hub-btn.on > .ico{transform:rotate(180deg)}
@@ -22,12 +22,12 @@ body.hub-desktop .brand > .remote-badge{display:none}
 
 /* 상태 점 (팝오버·허브 머리줄·관리 창 공용) */
 .hub-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
-.hub-dot.online{background:var(--ok);box-shadow:0 0 0 3px rgba(95,191,127,.16)}
+.hub-dot.online{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 16%,transparent)}
 .hub-dot.offline{background:var(--err)}
 .hub-dot.checking{background:var(--warn);animation:hubpulse 1.2s ease-in-out infinite}
 
 /* ---------------- 허브 팝오버 (#pop 과 같은 외형) ---------------- */
-.hub-pop{position:fixed;z-index:30;min-width:264px;max-width:340px;max-height:min(70vh,560px);overflow:auto;background:#222227;border:1px solid var(--line2);border-radius:12px;padding:6px;box-shadow:0 18px 50px rgba(0,0,0,.5);scrollbar-width:thin}
+.hub-pop{position:fixed;z-index:30;min-width:264px;max-width:340px;max-height:min(70vh,560px);overflow:auto;background:#222227;border:1px solid var(--line2);border-radius:12px;padding:6px;box-shadow:0 18px 50px color-mix(in srgb,var(--shadow) 50%,transparent);scrollbar-width:thin}
 .hub-pop .ph{padding:8px 10px 4px;font-size:11.5px;font-weight:600;color:var(--faint);letter-spacing:.04em}
 .hub-pop .psep{height:1px;background:var(--line);margin:5px 4px}
 .hub-pi{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;outline:none}
@@ -75,14 +75,14 @@ body.hub-desktop .brand > .remote-badge{display:none}
 .hub-sess:hover .meta,.hub-sess:focus-visible .meta{display:inline}
 .hub-sess .s-ic .c-muted .ico{width:13px;height:13px}
 .hub-sess.busy .s-ic > *{display:none}
-.hub-sess.busy .s-ic::after{content:"";width:12px;height:12px;border-radius:50%;border:1.6px solid rgba(164,139,242,.28);border-top-color:var(--run);animation:spin .8s linear infinite}
+.hub-sess.busy .s-ic::after{content:"";width:12px;height:12px;border-radius:50%;border:1.6px solid color-mix(in srgb,var(--accent) 28%,transparent);border-top-color:var(--run);animation:spin .8s linear infinite}
 .hub-offrow{display:flex;align-items:center;gap:6px;min-height:30px;padding:0 4px 0 8px;font-size:12.5px;color:var(--faint)}
 .hub-offrow > .ico{width:13px;height:13px;flex:none}
 .hub-offrow > span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hub-offrow .rm-link{flex:none;padding:2px 6px;font-size:12px}
 .hub-more{display:block;width:100%;height:28px;padding:0 8px;border:0;border-radius:8px;background:none;color:var(--muted);font:inherit;font-size:12px;text-align:left}
-.hub-more:hover{background:rgba(255,255,255,.05);color:var(--fg)}
-.hub-note{display:flex;align-items:flex-start;gap:7px;margin:4px 2px 6px;padding:7px 10px;border-radius:9px;font-size:12px;line-height:1.5;color:#f6aaa7;background:rgba(239,107,103,.08)}
+.hub-more:hover{background:color-mix(in srgb,var(--fg) 5%,transparent);color:var(--fg)}
+.hub-note{display:flex;align-items:flex-start;gap:7px;margin:4px 2px 6px;padding:7px 10px;border-radius:9px;font-size:12px;line-height:1.5;color:var(--err);background:color-mix(in srgb,var(--err) 8%,transparent)}
 .hub-note > .ico{width:13px;height:13px;margin-top:3px;flex:none}
 .hub-note > span{flex:1;min-width:0}
 .hub-note .rm-link{flex:none;padding:0 5px;color:inherit;font-size:12px}
@@ -94,11 +94,11 @@ body.hub-desktop .brand > .remote-badge{display:none}
 .hub-empty{display:flex;align-items:center;gap:9px;width:100%;height:34px;padding:0 10px;border:1px dashed var(--line2);border-radius:9px;background:none;color:var(--muted);font:inherit;font-size:12.5px;text-align:left;white-space:nowrap}
 .hub-empty .ico{width:15px;height:15px;color:var(--faint);flex:none}
 .hub-empty span{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.hub-empty:hover{color:var(--fg);border-color:var(--faint);background:rgba(255,255,255,.03)}
+.hub-empty:hover{color:var(--fg);border-color:var(--faint);background:color-mix(in srgb,var(--fg) 3%,transparent)}
 .hub-empty:hover .ico{color:var(--fg2)}
 
 /* ---------------- 창: 원격 허브 추가 · 허브 관리 (.modal-win 과 같은 외형, 작은 크기) ---------------- */
-.hub-dlg{width:min(460px,calc(100vw - 32px));max-height:calc(100vh - 48px);margin:auto;padding:0;border:1px solid var(--line2);border-radius:16px;background:var(--panel);color:var(--fg);box-shadow:0 30px 80px rgba(0,0,0,.5);overflow:hidden;display:flex;flex-direction:column}
+.hub-dlg{width:min(460px,calc(100vw - 32px));max-height:calc(100vh - 48px);margin:auto;padding:0;border:1px solid var(--line2);border-radius:16px;background:var(--panel);color:var(--fg);box-shadow:0 30px 80px color-mix(in srgb,var(--shadow) 50%,transparent);overflow:hidden;display:flex;flex-direction:column}
 .hub-dlg:not([open]){display:none}
 .hub-dlg::backdrop{background:rgba(0,0,0,.55)}
 .hub-dlg.wide{width:min(600px,calc(100vw - 32px))}
@@ -108,11 +108,11 @@ body.hub-desktop .brand > .remote-badge{display:none}
 .hub-dlg-b{padding:16px 20px 4px;overflow:auto;min-height:0;scrollbar-width:thin}
 .hub-dlg-f{display:flex;align-items:center;gap:8px;padding:12px 20px 16px;flex:none}
 .hub-dlg-f .grow{flex:1}
-.hub-dlg .btn.primary{background:var(--fg);color:#141416;border-color:transparent;font-weight:600}
-.hub-dlg .btn.primary:hover:not(:disabled){background:#fff;color:#141416}
+.hub-dlg .btn.primary{background:var(--fg);color:var(--bg);border-color:transparent;font-weight:600}
+.hub-dlg .btn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--fg) 82%,var(--accent));color:var(--bg)}
 .hub-dlg .btn:disabled{opacity:.5;cursor:default}
-.hub-dlg .btn.primary .spinner{width:13px;height:13px;border-color:rgba(20,20,22,.25);border-top-color:#141416}
-.hub-dlg .btn.danger:hover:not(:disabled){color:var(--err);border-color:rgba(239,107,103,.5)}
+.hub-dlg .btn.primary .spinner{width:13px;height:13px;border-color:color-mix(in srgb,var(--bg) 25%,transparent);border-top-color:var(--bg)}
+.hub-dlg .btn.danger:hover:not(:disabled){color:var(--err);border-color:color-mix(in srgb,var(--err) 50%,transparent)}
 
 .hub-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
 .hub-field label{font-size:12.5px;font-weight:550;color:var(--fg2)}
@@ -125,10 +125,10 @@ body.hub-desktop .brand > .remote-badge{display:none}
 .hub-ferr{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.5;color:var(--err)}
 .hub-ferr:empty{display:none}
 .hub-ferr .ico{width:14px;height:14px;margin-top:2px;flex:none}
-.hub-tips{list-style:none;margin:2px 0 12px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.035);display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.55;color:var(--fg2)}
+.hub-tips{list-style:none;margin:2px 0 12px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--fg) 4%,transparent);display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.55;color:var(--fg2)}
 .hub-tips li{display:flex;align-items:flex-start;gap:8px;min-width:0}
 .hub-tips .ico{width:14px;height:14px;margin-top:3px;flex:none;color:var(--muted)}
-.hub-tips code{font:12px var(--mono);background:var(--panel2);padding:1px 6px;border-radius:5px;color:#f0c38e;word-break:break-all}
+.hub-tips code{font:12px var(--mono);background:var(--panel2);padding:1px 6px;border-radius:5px;color:var(--warn);word-break:break-all}
 .hub-tips b{font-weight:600;color:var(--fg)}
 
 /* 허브 관리 목록 */
@@ -139,8 +139,8 @@ body.hub-desktop .brand > .remote-badge{display:none}
 .hub-row-t{display:flex;align-items:center;gap:6px;min-width:0}
 .hub-row-t b{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hub-row-t .hub-in{height:30px;padding:0 9px;border-radius:8px;max-width:260px}
-.hub-chip{display:inline-flex;align-items:center;flex:none;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.06);color:var(--muted)}
-.hub-chip.cur{background:rgba(95,191,127,.13);color:var(--ok)}
+.hub-chip{display:inline-flex;align-items:center;flex:none;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--fg) 6%,transparent);color:var(--muted)}
+.hub-chip.cur{background:color-mix(in srgb,var(--ok) 13%,transparent);color:var(--ok)}
 .hub-row-s{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);min-width:0}
 .hub-row-s .mono{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg2)}
 .hub-row-s .c-err{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
