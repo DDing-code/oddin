@@ -97,6 +97,14 @@ $('#goalBar').addEventListener('click', async (e) => {
 /* ================= 한도 경고 ================= */
 // 기준은 사용률(서버 lib/usage.mjs 와 같음): 80% 이상 = 남은 20% 이하 주의, 95% 이상 = 남은 5% 이하 위험. 표시는 남은 비율
 const WARN = 80, CRIT = 95;
+const WARN_HIDDEN_KEY = 'oddin.usage-warnings-hidden';
+function readHiddenWarnings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WARN_HIDDEN_KEY));
+    return Object.fromEntries(Object.entries(saved || {}).filter(([, until]) => typeof until === 'number' && Number.isFinite(until) && until > Date.now()));
+  } catch { return {}; }
+}
+let hiddenWarnings = readHiddenWarnings();
 function usageWarnings(u) {
   const out = [];
   for (const tool of ['claude', 'codex']) for (const w of u?.[tool]?.windows || []) {
@@ -106,7 +114,8 @@ function usageWarnings(u) {
   return out.sort((a, b) => b.percent - a.percent);
 }
 function renderWarnings() {
-  const ws = usageWarnings(S.usage); const el = $('#warnBar');
+  const ws = usageWarnings(S.usage).filter(w => !(hiddenWarnings[w.key] === Date.parse(w.resetsAt) && hiddenWarnings[w.key] > Date.now()));
+  const el = $('#warnBar');
   // 단계가 올라가면 한 번 알림
   for (const w of ws) { const prev = S.warnLevel[w.key]; if (prev !== w.level && (prev !== 'crit')) toast(`${w.tool === 'claude' ? 'Claude' : 'Codex'} ${w.label} 한도 ${w.left}% 남음 — ${w.level === 'crit' ? '이쪽 작업은 다른 AI로 넘겨요' : '분배를 줄여요'}`, w.level === 'crit'); S.warnLevel[w.key] = w.level; }
   for (const k of Object.keys(S.warnLevel)) if (!ws.some((w) => w.key === k)) delete S.warnLevel[k];
@@ -114,9 +123,24 @@ function renderWarnings() {
   const crit = ws.some((w) => w.level === 'crit');
   const what = (w) => w.model ? `${w.label} 한도 — 자동 선택이 ${w.model === 'fable' ? 'Opus로 바꿔요' : '다른 모델로 바꿔요'}` : w.level === 'crit' ? '한도 거의 소진 — 새 작업은 다른 AI로 보내요' : '자동 분배가 이쪽 비중을 줄여요';
   el.hidden = false; el.className = crit ? 'crit' : 'warn';
-  el.innerHTML = `${icon('alert')}<div class="wb-list">${ws.slice(0, 3).map((w) => `<span><b>${w.tool === 'claude' ? 'Claude' : 'Codex'} ${esc(w.label)} ${w.left}% 남음</b> ${esc(what(w))}${w.resetsAt ? ` · ${esc(resetPhrase(w.resetsAt))}` : ''}</span>`).join('')}</div><button class="icon-btn" data-wb-close title="숨기기">${icon('x')}</button>`;
+  const canHideUntilReset = ws.every(w => Date.parse(w.resetsAt) > Date.now());
+  el.innerHTML = `${icon('alert')}<div class="wb-list">${ws.slice(0, 3).map((w) => `<span><b>${w.tool === 'claude' ? 'Claude' : 'Codex'} ${esc(w.label)} ${w.left}% 남음</b> ${esc(what(w))}${w.resetsAt ? ` · ${esc(resetPhrase(w.resetsAt))}` : ''}</span>`).join('')}${canHideUntilReset ? '<button type="button" class="wb-hide" data-wb-hide title="현재 경고를 각 한도의 초기화 시각까지 숨깁니다">다음 초기화까지 숨기기</button>' : ''}</div><button type="button" class="icon-btn" data-wb-close title="잠시 숨기기" aria-label="한도 경고 잠시 숨기기">${icon('x')}</button>`;
 }
-$('#warnBar').addEventListener('click', (e) => { if (e.target.closest('[data-wb-close]')) $('#warnBar').hidden = true; });
+$('#warnBar').addEventListener('click', (e) => {
+  if (e.target.closest('[data-wb-hide]')) {
+    hiddenWarnings = { ...readHiddenWarnings(), ...hiddenWarnings };
+    for (const w of usageWarnings(S.usage)) {
+      const until = Date.parse(w.resetsAt);
+      if (until > Date.now()) hiddenWarnings[w.key] = until;
+    }
+    try { localStorage.setItem(WARN_HIDDEN_KEY, JSON.stringify(hiddenWarnings)); }
+    catch { toast('이 창에서는 숨겼지만 저장하지 못했어요. 새로고침하면 다시 표시될 수 있어요'); }
+    renderWarnings(); input.focus();
+  } else if (e.target.closest('[data-wb-close]')) $('#warnBar').hidden = true;
+});
+window.addEventListener('storage', e => {
+  if (e.key === WARN_HIDDEN_KEY || e.key === null) { hiddenWarnings = readHiddenWarnings(); renderWarnings(); }
+});
 
 /* ================= 연결 ================= */
 // 사용량이 바뀔 때마다 경고 갱신 (side.js 의 renderUsage 뒤에 붙인다)
