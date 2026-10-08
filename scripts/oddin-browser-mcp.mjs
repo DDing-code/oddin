@@ -15,7 +15,7 @@ const OWNER = process.env.ODDIN_TASK || `cli-${process.pid}`;
 
 const S = (props = {}, required = []) => ({ type: 'object', properties: props, required, additionalProperties: false });
 const TOOLS = [
-  ['browser_open', '주소를 연다(이 작업 전용 탭). 사용자가 ODDIN 화면에서 함께 본다. Open a URL in this task\'s tab.', S({ url: { type: 'string', description: '열 주소(https:// 생략 가능, 로컬 파일은 file:///)' } }, ['url'])],
+  ['browser_open', '주소를 연다(이 작업 전용 탭). 사용자가 ODDIN 화면에서 함께 본다. chrome:true 면 사용자의 크롬(로그인된 상태, ODDIN 크롬 확장)에서 연다 — 사용자 계정으로 로그인해야 보이는 페이지나 ODDIN 브라우저를 막는 사이트일 때만. 다음 동작들은 마지막으로 연 곳에서 한다. Open a URL in this task\'s tab (chrome:true = the user\'s logged-in Chrome).', S({ url: { type: 'string', description: '열 주소(https:// 생략 가능, 로컬 파일은 file:///)' }, chrome: { type: 'boolean', description: 'true = 사용자 크롬(로그인됨)에서, false·생략 = ODDIN 브라우저에서' } }, ['url'])],
   ['browser_read', '지금 페이지를 읽는다: 제목·주소·보이는 글(앞부분)·누를 수 있는 것 목록(번호 ref). 누르거나 입력하기 전에 먼저 부른다. Read page text and numbered interactive elements.', S()],
   ['browser_click', 'ref 번호(또는 x·y 좌표)를 누른다. Click element by ref (from browser_read) or coordinates.', S({ ref: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, double: { type: 'boolean' } })],
   ['browser_type', '입력 칸(ref)에 글자를 넣는다. submit 이면 Enter. clear 면 기존 글을 지우고. Type text into an input.', S({ ref: { type: 'string' }, text: { type: 'string' }, submit: { type: 'boolean' }, clear: { type: 'boolean' } }, ['text'])],
@@ -57,7 +57,7 @@ rl.on('line', async (line) => {
   const reply = (result) => out({ jsonrpc: '2.0', id: msg.id, result });
   const fail = (code, message) => out({ jsonrpc: '2.0', id: msg.id, error: { code, message } });
   try {
-    if (msg.method === 'initialize') return reply({ protocolVersion: msg.params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'oddin-browser', version: '1.0.0' }, instructions: 'ODDIN 이 관리하는 브라우저. 사용자가 ODDIN 화면에서 실시간으로 본다. browser_open → browser_read(번호 확인) → browser_click/browser_type 순서로 쓴다.' });
+    if (msg.method === 'initialize') return reply({ protocolVersion: msg.params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'oddin-browser', version: '1.0.0' }, instructions: 'ODDIN 이 관리하는 브라우저. 사용자가 ODDIN 화면에서 실시간으로 본다. browser_open → browser_read(번호 확인) → browser_click/browser_type 순서로 쓴다. 사용자 계정으로 로그인된 화면이 필요하면 browser_open 에 chrome:true(사용자 크롬). 사용자 크롬에서는 보내기·게시·구매·삭제·설정 바꾸기를 사용자가 요청한 범위 밖에서 하지 않는다.' });
     if (msg.method === 'ping') return reply({});
     if (msg.method === 'tools/list') return reply({ tools: TOOLS.map(([name, description, inputSchema]) => ({ name, description, inputSchema })) });
     if (msg.method === 'tools/call') {

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ODDIN 크롬 연결</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1d1d1f; --muted: #6b6b70; --line: #e3e3e6; --ok: #2e7d32; --bad: #c0392b; --chip: #f2f2f4; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1e1e20; --fg: #ececee; --muted: #9a9aa0; --line: #333337; --chip: #2a2a2d; } }
+  body { margin: 0; width: 300px; background: var(--bg); color: var(--fg); font: 13px/1.5 "Pretendard", "Malgun Gothic", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  header img { width: 22px; height: 22px; border-radius: 6px; }
+  header b { flex: 1; font-size: 14px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); } .dot.bad { background: var(--bad); }
+  section { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .state { font-weight: 600; } .muted { color: var(--muted); font-size: 12px; }
+  label.sw { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+  ul { list-style: none; margin: 6px 0 0; padding: 0; max-height: 160px; overflow: auto; }
+  li { padding: 4px 8px; margin-top: 4px; border-radius: 6px; background: var(--chip); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); cursor: pointer; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  input[type=number] { width: 80px; font: inherit; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+</style>
+</head>
+<body>
+<header><img src="icon-128.png" alt=""><b>ODDIN 크롬 연결</b><span class="dot" id="dot"></span></header>
+<section>
+  <div class="state" id="state">확인 중…</div>
+  <div class="muted" id="detail"></div>
+</section>
+<section>
+  <label class="sw"><span>AI가 이 크롬을 쓰게 하기</span><input type="checkbox" id="on"></label>
+  <div class="muted">AI는 자기가 연 탭(따로 뜨는 ODDIN 창)만 다뤄요. 보던 탭은 건드리지 않아요. 크롬 위쪽 알림줄에서 [취소]를 누르면 바로 꺼져요.</div>
+</section>
+<section>
+  <div class="row"><b style="flex:1">AI가 연 탭</b><button id="closeAll" hidden>모두 닫기</button></div>
+  <ul id="tabs"></ul>
+  <div class="muted" id="none">아직 없어요.</div>
+</section>
+<section class="row">
+  <span class="muted" style="flex:1">ODDIN 포트</span><input type="number" id="port" min="1" max="65535"><button id="save">저장</button>
+</section>
+<script src="popup.js"></script>
+</body>
+</html>

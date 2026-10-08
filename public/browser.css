@@ -63,3 +63,7 @@
   .bw-bar input,.bw-keys .bw-text{font-size:16px}
   .bw.big .bw-img{max-height:none}
 }
+
+/* 크롬 연결 표시(서버 lib/chrome-ext.mjs) */
+.bw-chrome{margin-left:6px;padding:0 6px;border-radius:8px;font-size:11px;color:var(--muted);border:1px solid currentColor;opacity:.8;white-space:nowrap}
+.bw-chrome.on{color:var(--ok);opacity:1}

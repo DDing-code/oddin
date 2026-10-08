@@ -195,6 +195,7 @@ AI 작업자가 웹 페이지를 열고 읽고 누르고 입력하는 브라우�
 - **주소**: 스킴이 없으면 `https://`(localhost·127.0.0.1 은 `http://`). `http(s)`·`file`·`about`·`data`만 열고 `chrome:`·`edge:`·`devtools:`·`javascript:` 등은 400.
 - **화면 API**: `GET /api/browser`(상태: 켜짐·탭·최근 동작 60개), `GET /api/browser/frame?tab=`(JPEG, 0.25초 안 다시 부르면 같은 그림), `POST /api/browser/input { tab | 'new', type: click·text·key·scroll·open·back·forward·reload·close, … }`, `POST /api/browser/start`·`/stop`. 바뀔 때마다 실시간 이벤트 `{ type: 'browser', running, tabs, log, last }`. 원격에서는 ODDIN 화면 쿠키가 있을 때만(`hub-auth.isControl`) — 다른 PC 허브의 AI 는 이 PC 브라우저를 직접 못 쓰고 handoff 로 넘긴다.
 - **화면**: `public/browser-ui.js`·`browser.css`. 오른쪽 패널 "브라우저" 탭과 크게 보기(검색 팔레트 "ODDIN 브라우저 보기", 작업 카드 "브라우저 사용 중 · 보기"). 보이는 동안만 그림을 다시 받는다(앞 그림을 다 받은 뒤 0.6초마다). 그림을 누르면 그 자리를 누르고, 굴리면 스크롤(폰은 위아래로 밀기), 그림을 누른 뒤 키보드로 바로 입력(한글 조합은 "글자 보내기" 칸). AI 가 새 탭을 열면 그 탭으로 바뀐다(크게 보기 중이면 그대로).
+- **사용자 크롬(로그인된 상태)**: 크롬 확장 `chrome-extension/` + `lib/chrome-ext.mjs`. 작업자가 `browser_open` 에 `chrome:true` 를 주면 사용자 크롬의 따로 띄운 ODDIN 창에서 탭을 연다. 나머지 도구·화면 보기는 같다(탭마다 `where`). 설치·구조·지키는 것은 [chrome-extension.md](chrome-extension.md).
 - **끄기**: `config.browser.oddin:false` — 그러면 Claude 작업자에 예전처럼 `--chrome`. 둘 다 쓰려면 `browser.claudeChrome:true`.
 - **한계**: 그림을 반복해서 받는 방식이라 영상·애니메이션은 끊겨 보인다. 로그인·캡차·결제는 AI 가 하지 않고(지시문 `planner.BROWSER_RULE`) 사용자가 크게 보기에서 직접 한다. 일부 사이트는 자동화 브라우저의 로그인을 막는다.
 
