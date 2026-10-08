@@ -15,7 +15,7 @@
 .chip.su-branch.off .ico{color:var(--faint)}
 .su-mini{font-style:normal;font-size:10.5px;font-weight:600;padding:0 6px;border-radius:999px;background:rgba(227,181,92,.14);color:var(--warn);flex:none}
 .top-actions{align-items:center;min-width:0}
-@media (max-width:860px){.chip.su-branch{max-width:34vw}.chip.su-iso span{display:none}.chip.su-iso{padding:3px 8px}}
+@media (max-width:860px){.chip.su-branch{max-width:34vw}.chip.su-iso span:not(.ico){display:none}.chip.su-iso{padding:3px 8px}}
 
 /* ---------------- 대화 위 안내 줄 (갈래 · 보관 · 정리됨) ---------------- */
 #suBar{padding:0 20px 8px;flex:none;display:flex;flex-direction:column;gap:6px}

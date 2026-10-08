@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#141416">
+<meta name="theme-color" content="#101010">
 <!-- 폰 홈 화면 앱(아이폰: 사파리 공유 → 홈 화면에 추가) -->
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="app/apple-touch-icon.png">
@@ -80,7 +80,10 @@
       <div id="composer">
         <div id="icBar" hidden></div>
         <div id="atts"></div>
-        <textarea id="in" rows="1" placeholder="무엇을 할까요?  /커맨드 · @에이전트 · /goal 목표 · 이미지 붙여넣기" spellcheck="false"></textarea>
+        <div class="input-line">
+          <span class="input-prompt" aria-hidden="true">›</span>
+          <textarea id="in" rows="1" aria-label="작업 요청" placeholder="작업을 요청하세요.  /커맨드 · @에이전트 · 이미지 붙여넣기" spellcheck="false"></textarea>
+        </div>
         <div class="bar">
           <button class="icon-btn" id="btnAttach" title="이미지 첨부"></button>
           <button class="pill" id="pMode" title="분배 방식"></button>
@@ -102,9 +105,10 @@
   <aside id="insp" aria-label="세션 정보">
     <div class="resizer" data-edge="right" title="끌어서 너비 조절 · 두 번 눌러 원래대로"></div>
     <div class="insp-head">
-      <div class="tabs" role="tablist" id="inspTabs"></div>
+      <span class="insp-label">작업 도구</span>
       <button class="icon-btn" id="btnInspClose" title="닫기 (Ctrl+J)"></button>
     </div>
+    <div class="tabs" role="tablist" aria-label="작업 도구" id="inspTabs"></div>
     <div class="insp-body" id="inspBody"></div>
   </aside>
   <div id="scrim" hidden></div>

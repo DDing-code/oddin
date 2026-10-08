@@ -158,14 +158,14 @@ function heroHtml() {
   const t = S.tools;
   const tag = (n, label) => !t ? '' : t[n]?.ok ? `<span class="ai-tag"><i style="background:var(--${n})"></i>${label} 준비됨</span>` : `<span class="ai-tag bad"><i style="background:var(--err)"></i>${label} 사용 불가 · ${esc(t[n]?.fix || '')}</span>`;
   const sug = [
-    ['분석', '이 폴더의 구조를 파악하고 개선할 점 5가지를 정리해줘'],
-    ['버그 수정', '테스트를 돌려서 실패하는 것을 찾아 고치고, 다시 통과하는지 확인해줘'],
-    ['문서', 'README를 지금 코드에 맞게 한국어로 새로 써줘'],
-    ['비교', '같은 기능을 Claude와 Codex가 각각 구현하게 해서 비교해줘'],
+    ['분석', '프로젝트 구조와 개선점 파악', 'search', '이 폴더의 구조를 파악하고 개선할 점 5가지를 정리해줘'],
+    ['버그 수정', '실패한 테스트부터 원인 추적', 'check', '테스트를 돌려서 실패하는 것을 찾아 고치고, 다시 통과하는지 확인해줘'],
+    ['문서', '현재 코드에 맞게 README 정리', 'book', 'README를 지금 코드에 맞게 한국어로 새로 써줘'],
+    ['비교', '두 AI의 구현 결과 비교', 'scale', '같은 기능을 Claude와 Codex가 각각 구현하게 해서 비교해줘'],
   ];
-  return `<div class="hero"><span class="mark"><i></i><i></i></span><h2>무엇을 할까요?</h2><p>요청을 보내면 Claude와 Codex가 나눠서 처리하고 결과를 보고해요</p><div class="ais">${tag('claude', 'Claude Code')}${tag('codex', 'Codex')}</div><button type="button" class="hero-folder" data-hero-folder title="${esc(currentCwd())}
+  return `<div class="hero"><div class="hero-kicker">ODDIN / 작업 공간</div><h2>새 작업을 시작하세요.</h2><p>폴더를 선택하고 요청을 입력하세요.<br>실행 과정과 변경 내용을 한곳에서 확인할 수 있습니다.</p><div class="ais">${tag('claude', 'Claude Code')}${tag('codex', 'Codex')}</div><button type="button" class="hero-folder" data-hero-folder title="${esc(currentCwd())}
 눌러서 작업 폴더 고르기">${icon('folder')}<span class="k">작업 폴더</span><span class="v">${esc(shortPath(currentCwd(), 3))}</span><span class="go">바꾸기${icon('down')}</span></button></div>
-    <div class="sugg">${sug.map(([b, s]) => `<button data-sugg="${esc(s)}"><b>${b}</b>${esc(s)}</button>`).join('')}</div>`;
+    <div class="sugg">${sug.map(([b, desc, i, s]) => `<button data-sugg="${esc(s)}">${icon(i)}<span class="sugg-text"><b>${b}</b><span>${desc}</span></span>${icon('right')}</button>`).join('')}</div>`;
 }
 
 function stIcon(status) {
@@ -184,7 +184,7 @@ function jobHtml(j) {
   // 사용자 메시지
   let h = `<div class="user">${j.attachments?.length ? `<div class="thumbs">${j.attachments.map((a) => `<a href="/uploads/${esc(a.id)}" target="_blank" title="${esc(a.name)}"><img src="/uploads/${esc(a.id)}" alt="${esc(a.name)}"></a>`).join('')}</div>` : ''}${j.command ? `<span class="cmd-chip k-${j.command.kind}">${icon(j.command.kind === 'goal' ? 'target' : j.command.kind === 'agent' ? 'bot' : j.command.kind === 'skill' ? 'sparkle' : 'slash')}${esc(cmdLabel(j.command))}</span>` : ''}<div class="bubble">${esc(j.input || j.goal)}</div><div class="umeta">${j.goalRound ? `목표 ${j.goalRound}라운드 · ` : ''}${hm(j.createdAt)}</div></div>`;
   // AI 응답 카드
-  h += `<div class="ai"><div class="avatar"><span class="mark"><i></i><i></i></span></div><div class="ai-body">`;
+  h += `<div class="ai"><div class="ai-body">`;
   h += `<div class="chips"><span class="tag">${icon('split')}${MODES[j.mode]?.label || j.mode}</span>${uses.map((n) => `<span class="tag ${n}">${n === 'claude' ? 'Claude' : 'Codex'} · ${esc(prefLabel(n, set[n] || {}))}</span>`).join('')}${j.agent ? `<span class="tag">${icon('bot')}@${esc(j.agent)} ${esc(agentLabel(j.agent))}</span>` : ''}</div>${(j.notes || []).length ? `<div class="auto-notes">${j.notes.map((n) => `<div>${icon('scale')}<span>${esc(n)}</span></div>`).join('')}</div>` : ''}`;
 
   if (j.mode === 'auto') {

@@ -13,7 +13,9 @@ html,body{height:100dvh}
   #top{padding-left:12px;padding-right:12px}
   /* 위쪽 폴더 칩은 입력창 아래 "폴더" 버튼과 같은 일: 폰에서는 빼고 제목에 자리를 준다 */
   #folderChip{display:none}
-  #title{max-width:none}
+  #title{max-width:100%}
+  /* 도구는 오른쪽 "작업 도구"에서 열 수 있다. 좁은 상단은 세션 제목에 쓴다. */
+  #top .tool-btns{display:none}
   #toast{bottom:calc(28px + env(safe-area-inset-bottom));max-width:calc(100vw - 32px)}
 }
 /* 홈 화면 앱으로 열었을 때만: 브라우저 전용 동작(창 끌어 나눠 보기 등) 안내를 숨기고 누름 반응을 앱처럼 */
