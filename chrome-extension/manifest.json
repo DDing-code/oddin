@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "ODDIN 크롬 연결",
+  "description": "ODDIN 의 Claude·Codex 작업자가 이 크롬(로그인된 상태)에서 자기 탭을 열어 보고·누르고·입력합니다. 작업자는 자기가 연 탭만 다룹니다.",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA+BQXlvaVRXYdsUDpknZlp0qFl6zTTCZkofnUS+uO02XLfJ2KoHQnH/l+whN7Brtf3K0Aw25YDSZ/WTSRRG30Jp/zsb9xwYDPwRhQlhOHhzoPxGTf6okW2UZkNKE29kBXm+/PWD+LImrlJWf6QukwyBr/0KEzHEzFTeGt2wmFDzH84jkkLzplkDSJeDMX/zk7YcICCGq/RMSo4z6b6CAyoaZNXQvix/OOE+pEnm4mtKOkcYHGtZP5JcCCEr6ZM1Z7whF2OLMT2/hLE+hI07J11WOIoor+pT4mjip8Y1vZoY0ykUNJ7G//NNLWGPspXWfSVxk31T2T41I0fiXJY9T9LQIDAQAB",
+  "minimum_chrome_version": "118",
+  "permissions": ["debugger", "tabs", "storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "ODDIN 크롬 연결", "default_popup": "popup.html", "default_icon": { "128": "icon-128.png" } },
+  "icons": { "128": "icon-128.png" }
+}

@@ -57,6 +57,10 @@ GitHub 저장소 <https://github.com/DDing-code/oddin>에서 받아 그 PC에서
 ## 두 PC를 함께 쓰기 (연결된 PC · 공유 기억)
 두 PC 모두 ODDIN을 돌리고(원격 접속 켬) 한쪽 오른쪽 패널 **PC** 탭에서 상대 주소(`https://<기기>.<tailnet>.ts.net`)를 넣어 연결하면, 두 PC가 `~/.ai-shared`(지침·메모리·공통 커맨드·에이전트)를 1분마다·바뀔 때마다 맞춥니다. 새 PC는 같은 탭의 "빠진 것 설치"로 Claude·Codex 훅을 깝니다. 자세히: [docs/peers.md](docs/peers.md)
 
+## 내 크롬(로그인된 상태)을 AI가 쓰게 하기 (2026-10-08)
+
+크롬 `chrome://extensions` → 개발자 모드 → "압축해제된 확장 프로그램을 로드합니다" → ODDIN 폴더의 `chrome-extension`. 그 뒤 AI 작업자가 로그인이 필요한 화면을 크롬의 따로 띄운 ODDIN 창에서 연다. 자세한 것은 [docs/chrome-extension.md](docs/chrome-extension.md).
+
 ## 다른 컴퓨터에서 열기
 **Tailscale**(본인 기기끼리만 연결되는 비공개 망)로 `https://<PC이름>.<tailnet>.ts.net/` 주소를 엽니다. 같은 네트워크든 밖이든 방법은 같습니다. 자세한 안내·문제 해결: [docs/remote-access.md](docs/remote-access.md)
 

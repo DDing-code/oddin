@@ -39,6 +39,7 @@ import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
 import { Push } from './lib/push.mjs';
 import { BrowserManager } from './lib/browser.mjs';
+import { ChromeExtBrowser, isExtRequest } from './lib/chrome-ext.mjs';
 import { HubAuth, controlGate, canonicalRoute } from './lib/hub-auth.mjs';
 import { SessionGroups, listDirs, makeDir, renameDir } from './lib/session-groups.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
@@ -132,9 +133,32 @@ const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared
 // 작업자 지시문에 넣을 PC 정보(planner.buildWorkerPrompt 의 [여러 PC]) — 연결된 PC가 있을 때만
 // ODDIN 브라우저(lib/browser.mjs): ODDIN 이 관리하는 브라우저 하나를 두 작업자가 같이 쓰고 사용자는 화면 "브라우저" 탭에서 본다
 const oddinBrowser = config.browser?.oddin === false ? null : new BrowserManager({ exe: config.browser?.exe || null, headless: config.browser?.headless !== false });
-oddinBrowser?.on('event', (ev) => broadcast(ev));
+// 크롬 연결(lib/chrome-ext.mjs): 사용자 크롬(로그인된 상태)에 깐 ODDIN 확장. 작업자가 browser_open 에 chrome:true 를 주면 여기서 탭을 연다
+const chromeExt = config.browser?.chrome === false ? null : new ChromeExtBrowser();
+const browsers = () => [oddinBrowser, chromeExt].filter(Boolean);
+const browserWhere = new Map(); // 작업자(owner) → 'oddin' | 'chrome' (마지막으로 연 곳)
+/** 화면에 보낼 브라우저 상태: 두 곳의 탭을 합친다(탭마다 where) */
+function browserState() {
+  const a = oddinBrowser?.state(), c = chromeExt?.state();
+  return { running: !!(a?.running || c?.running), browser: a?.browser || null, headless: a?.headless ?? true,
+    tabs: [...(a?.tabs || []).map((t) => ({ ...t, where: 'oddin' })), ...(c?.tabs || []).map((t) => ({ ...t, where: 'chrome' }))],
+    log: [...(a?.log || []), ...(c?.log || [])].sort((x, y) => (x.at < y.at ? -1 : 1)).slice(-60),
+    oddin: !!oddinBrowser, chrome: c ? c.chrome : null };
+}
+for (const b of browsers()) b.on('event', (ev) => broadcast({ ...browserState(), type: 'browser', ...(ev.last ? { last: ev.last } : {}) }));
+const browserOfTab = (id) => (chromeExt?.tabs.has(String(id)) ? chromeExt : oddinBrowser) || chromeExt;
+/** 작업자 동작을 어느 브라우저로: open 의 chrome 값 → 전에 연 곳 → 그 작업자 탭이 있는 곳 → ODDIN 브라우저 */
+function browserFor(owner, b) {
+  const has = (m) => m && [...m.tabs.values()].some((t) => t.owner === owner);
+  const where = b.action === 'open' && typeof b.chrome === 'boolean' ? (b.chrome ? 'chrome' : 'oddin') : browserWhere.get(owner) || (has(oddinBrowser) ? 'oddin' : has(chromeExt) ? 'chrome' : oddinBrowser ? 'oddin' : 'chrome');
+  const m = where === 'chrome' ? chromeExt : oddinBrowser;
+  if (!m) throw Object.assign(new Error(where === 'chrome' ? '크롬 연결이 꺼져 있어요(config.browser.chrome)' : 'ODDIN 브라우저가 꺼져 있어요(config.browser.oddin) — chrome:true 로 크롬에서 여세요'), { status: 404 });
+  if (b.action === 'open') browserWhere.set(owner, where);
+  if (b.action === 'close') browserWhere.delete(owner);
+  return m;
+}
 process.on('exit', () => { try { oddinBrowser?.proc?.kill(); } catch {} });
-jobs.browserTool = (job, task) => oddinBrowser ? { command: process.execPath, args: [path.join(ROOT, 'scripts', 'oddin-browser-mcp.mjs')], env: { ODDIN_TASK: `${job.id}/${task.id}`, ODDIN_HUB: `http://127.0.0.1:${config.port}` } } : null;
+jobs.browserTool = (job, task) => browsers().length ?{ command: process.execPath, args: [path.join(ROOT, 'scripts', 'oddin-browser-mcp.mjs')], env: { ODDIN_TASK: `${job.id}/${task.id}`, ODDIN_HUB: `http://127.0.0.1:${config.port}` } } : null;
 jobs.machines = () => { const list = peers.list(); return list.length ? { self: peers.self().name, peers: list.map((x) => x.name), handoff: path.join(ROOT, 'scripts', 'handoff.mjs') } : null; };
 /** 세션 실행 PC 옮기기: 대화 기록을 다른 PC(또는 이 PC)에 새 세션으로 가져오고 원래 세션은 보관함으로. machine = 'self' | PC id·이름 */
 async function moveSession(id, b) {
@@ -383,14 +407,34 @@ const server = http.createServer(async (req, res) => {
       if (gm && req.method === 'DELETE') { groups.remove(gm[1]); for (const x of jobs.listSessions({ archived: false }).concat(jobs.listSessions({ archived: true }))) if (x.group === gm[1]) jobs.updateSession(x.id, { group: null }); groupsChanged(); return json(res, { removed: true }); } }
     // 작업 폴더 고르기 창: 하위 폴더 이름만 (빈 경로면 드라이브 목록)
     // ---- ODDIN 브라우저 (lib/browser.mjs). 원격은 ODDIN 화면에서만(lib/hub-auth.mjs isControl) ----
+    // ---- 크롬 확장 → 허브 (lib/chrome-ext.mjs). 이 PC 의 그 확장만(출처·머리 확인) ----
+    if (p.startsWith('/api/chrome-ext/')) {
+      if (!chromeExt) return fail(res, '크롬 연결이 꺼져 있어요(config.browser.chrome)', 404);
+      if (req.hubViewer?.remote || !isExtRequest(req)) return fail(res, 'ODDIN 크롬 확장만 쓸 수 있어요', 403);
+      if (req.method !== 'POST') return fail(res, 'POST 로 불러 주세요', 405);
+      const b = await readBody(req);
+      if (p === '/api/chrome-ext/hello') return json(res, chromeExt.hello(b));
+      if (p === '/api/chrome-ext/poll') return json(res, await chromeExt.poll(b, req));
+      if (p === '/api/chrome-ext/result') return json(res, chromeExt.result(b));
+      return fail(res, '없는 기능이에요', 404);
+    }
     if (p.startsWith('/api/browser')) {
-      if (!oddinBrowser) return fail(res, 'ODDIN 브라우저가 꺼져 있어요(config.browser.oddin)', 404);
-      if (p === '/api/browser' && req.method === 'GET') return json(res, oddinBrowser.state());
-      if (p === '/api/browser/act' && req.method === 'POST') { const b = await readBody(req); return json(res, await oddinBrowser.act(String(b.owner || 'cli'), b)); }
-      if (p === '/api/browser/frame' && req.method === 'GET') return send(res, 200, await oddinBrowser.frame(url.searchParams.get('tab') || ''), 'image/jpeg');
-      if (p === '/api/browser/input' && req.method === 'POST') { const b = await readBody(req); return json(res, await oddinBrowser.input(String(b.tab || 'new'), b)); }
-      if (p === '/api/browser/start' && req.method === 'POST') { await readBody(req); await oddinBrowser.start(); return json(res, oddinBrowser.state()); }
-      if (p === '/api/browser/stop' && req.method === 'POST') { await readBody(req); await oddinBrowser.stop(); return json(res, oddinBrowser.state()); }
+      if (!browsers().length) return fail(res, 'ODDIN 브라우저가 꺼져 있어요(config.browser.oddin)', 404);
+      if (p === '/api/browser' && req.method === 'GET') return json(res, browserState());
+      if (p === '/api/browser/act' && req.method === 'POST') {
+        const b = await readBody(req), owner = String(b.owner || 'cli');
+        if (b.action === 'tabs') return json(res, browserState());
+        return json(res, await browserFor(owner, b).act(owner, b));
+      }
+      if (p === '/api/browser/frame' && req.method === 'GET') { const id = url.searchParams.get('tab') || ''; return send(res, 200, await browserOfTab(id).frame(id), 'image/jpeg'); }
+      if (p === '/api/browser/input' && req.method === 'POST') {
+        const b = await readBody(req), id = String(b.tab || 'new');
+        const m = id === 'new' ? (b.where === 'chrome' ? chromeExt : oddinBrowser || chromeExt) : browserOfTab(id);
+        if (!m) return fail(res, '그 브라우저가 꺼져 있어요', 404);
+        return json(res, await m.input(id, b));
+      }
+      if (p === '/api/browser/start' && req.method === 'POST') { await readBody(req); if (oddinBrowser) await oddinBrowser.start(); return json(res, browserState()); }
+      if (p === '/api/browser/stop' && req.method === 'POST') { await readBody(req); await oddinBrowser?.stop(); return json(res, browserState()); }
       return fail(res, '없는 브라우저 기능이에요', 404);
     }
     if (p === '/api/dirs' && req.method === 'GET') return json(res, listDirs(url.searchParams.get('path') || ''));

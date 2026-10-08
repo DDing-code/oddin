@@ -18,8 +18,10 @@
     if (!j) return 'AI 작업';
     return `${t?.title || (j.goal || '').split('\n')[0] || '작업'}${t?.assignee ? ` · ${t.assignee === 'claude' ? 'Claude' : 'Codex'}` : ''}`;
   }
-  const whoShort = (owner) => (owner === '사용자' ? '나' : String(owner).startsWith('user') ? '나' : (jobOf(owner)?.tasks?.find((x) => x.id === String(owner).split('/')[1])?.assignee === 'codex' ? 'Codex' : jobOf(owner) ? 'Claude' : 'AI'));
-  const ACT_KO = { open: '열기', read: '읽기', snapshot: '읽기', click: '누르기', type: '입력', press: '키', scroll: '스크롤', screenshot: '화면 찍기', eval: '스크립트', back: '뒤로', forward: '앞으로', reload: '새로고침', wait: '기다리기', close: '닫기', text: '글자', key: '키' };
+  const whoShort = (owner) => (owner === '크롬' ? '크롬' : owner === '사용자' ? '나' : String(owner).startsWith('user') ? '나' : (jobOf(owner)?.tasks?.find((x) => x.id === String(owner).split('/')[1])?.assignee === 'codex' ? 'Codex' : jobOf(owner) ? 'Claude' : 'AI'));
+  const ACT_KO = { open: '열기', read: '읽기', snapshot: '읽기', click: '누르기', type: '입력', press: '키', scroll: '스크롤', screenshot: '화면 찍기', eval: '스크립트', back: '뒤로', forward: '앞으로', reload: '새로고침', wait: '기다리기', close: '닫기', text: '글자', key: '키', connect: '연결' };
+  // 크롬 연결(서버 lib/chrome-ext.mjs, 확장 chrome-extension/): 사용자 크롬(로그인된 상태)에 깐 ODDIN 확장이 붙어 있는지
+  const chromeChip = () => { const c = B.state?.chrome; if (!c) return ''; return `<small class="bw-chrome ${c.connected ? 'on' : ''}" title="${c.connected ? `${esc(c.browser || '크롬')}의 ODDIN 확장이 연결됐어요 — AI가 로그인된 크롬에서 탭을 열 수 있어요` : '크롬에 ODDIN 확장을 깔고 켜 두면 AI가 로그인된 크롬을 쓸 수 있어요(ODDIN 폴더 chrome-extension)'}">${c.connected ? '크롬 연결됨' : '크롬 연결 안 됨'}</small>`; };
 
   async function load() {
     try { B.state = await api('/api/browser'); B.enabled = true; } catch (e) { B.enabled = !/꺼져 있어요/.test(e.message); B.state = null; }
@@ -35,10 +37,10 @@
 
   /* ---------- 그리기: 뼈대 한 번 + 부분 고치기 ---------- */
   const shell = (big) => `<div class="bw ${big ? 'big' : ''}"><div class="bw-head"></div><div class="bw-tabs"></div><div class="bw-main"></div><ul class="bw-log"></ul></div>`;
-  const headHtml = (big) => `<span class="bw-dot ${B.state?.running ? 'on' : ''}"></span><b>ODDIN 브라우저</b><small class="c-muted">${B.state?.running ? `탭 ${tabs().length}개` : '꺼져 있어요 · AI가 쓰면 저절로 켜져요'}</small><span class="grow"></span>${B.state?.running ? '' : `<button type="button" class="btn sm" data-bw="start">켜기</button>`}${big ? '' : `<button type="button" class="icon-btn" data-bw="big" title="크게 보기">${icon('expand')}</button>`}`;
+  const headHtml = (big) => `<span class="bw-dot ${B.state?.running ? 'on' : ''}"></span><b>ODDIN 브라우저</b><small class="c-muted">${B.state?.running ? `탭 ${tabs().length}개` : '꺼져 있어요 · AI가 쓰면 저절로 켜져요'}</small>${chromeChip()}<span class="grow"></span>${B.state?.running ? '' : `<button type="button" class="btn sm" data-bw="start">켜기</button>`}${big ? '' : `<button type="button" class="icon-btn" data-bw="big" title="크게 보기">${icon('expand')}</button>`}`;
   const tabsHtml = () => {
     const t = cur();
-    return tabs().map((x) => `<button type="button" class="bw-tab ${x.id === t?.id ? 'on' : ''}" data-bw-tab="${esc(x.id)}" title="${esc(x.url)}"><b>${esc(x.title || x.url || '빈 탭')}</b><small>${esc(ownerLabel(x.owner))}</small></button>`).join('') + (B.state?.running ? `<button type="button" class="bw-tab add" data-bw="newtab" title="새 탭">${icon('plus')}</button>` : '');
+    return tabs().map((x) => `<button type="button" class="bw-tab ${x.id === t?.id ? 'on' : ''}" data-bw-tab="${esc(x.id)}" title="${esc(x.url)}"><b>${esc(x.title || x.url || '빈 탭')}</b><small>${x.where === 'chrome' ? '크롬 · ' : ''}${esc(ownerLabel(x.owner))}</small></button>`).join('') + (B.state?.running ? `<button type="button" class="bw-tab add" data-bw="newtab" title="새 탭">${icon('plus')}</button>` : '');
   };
   const KEYBTN = { Enter: '↵ Enter', Tab: 'Tab', Escape: 'Esc', Backspace: '⌫' };
   const mainHtml = (t) => t
@@ -159,7 +161,7 @@
     const ev = e.detail || {};
     if (ev.type === 'browser') {
       const before = new Set(tabs().map((t) => t.id));
-      B.state = { running: ev.running, browser: ev.browser, headless: ev.headless, tabs: ev.tabs || [], log: ev.log || [] };
+      B.state = { running: ev.running, browser: ev.browser, headless: ev.headless, tabs: ev.tabs || [], log: ev.log || [], oddin: ev.oddin, chrome: ev.chrome || null };
       const added = tabs().filter((t) => !before.has(t.id));
       if (added.length && !String(added.at(-1).owner).startsWith('user') && !document.getElementById('bwBig')?.matches(':not([hidden])')) { B.tab = added.at(-1).id; B.src = ''; } // AI가 새 탭을 열면 그 탭을 보여 준다(크게 보기 중이면 그대로)
       if (!cur() && tabs().length) B.tab = tabs().at(-1).id;
