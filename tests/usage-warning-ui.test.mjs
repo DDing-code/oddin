@@ -90,3 +90,20 @@ test('저장 실패·손상된 저장값·미확인 초기화 시각을 안전�
   assert.doesNotMatch(unknown.bar.innerHTML, /data-wb-hide/);
   assert.match(unknown.bar.innerHTML, /data-wb-close/);
 });
+
+test('초기화 시각의 조회 오차는 같은 주기로 보고 새로고침 후에도 숨긴다', () => {
+  const data = new Map(), page = boot(data);
+  // 실제 조회에서 같은 초기화가 xx:59.990 → xx:59.690으로 바뀐다.
+  for (const w of page.state.usage.claude.windows) w.resetsAt = new Date(Date.parse(w.resetsAt) - 10).toISOString();
+  page.render(); page.hide();
+  for (const delta of [-300, 300, -30_000, 30_000]) {
+    const reload = boot(data);
+    reload.state.usage.claude.windows.forEach((w, i) => { w.resetsAt = new Date(start + (i + 1) * hour - 10 + delta).toISOString(); });
+    reload.render();
+    assert.equal(reload.bar.hidden, true, `초기화 시각 ${delta}ms 오차`);
+    assert.equal(reload.notices.length, 0, '팝업 알림도 다시 띄우지 않는다');
+    reload.time(start + 2 * hour);
+    reload.render();
+    assert.equal(reload.bar.hidden, false, '저장한 숨김 기한이 끝나면 다시 표시한다');
+  }
+});

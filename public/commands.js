@@ -114,7 +114,8 @@ function usageWarnings(u) {
   return out.sort((a, b) => b.percent - a.percent);
 }
 function renderWarnings() {
-  const ws = usageWarnings(S.usage).filter(w => !(hiddenWarnings[w.key] === Date.parse(w.resetsAt) && hiddenWarnings[w.key] > Date.now()));
+  // CLI 조회마다 초기화 시각이 조금 흔들리므로 1분 미만 차이는 같은 주기로 본다.
+  const ws = usageWarnings(S.usage).filter(w => !(hiddenWarnings[w.key] > Date.now() && Math.abs(hiddenWarnings[w.key] - Date.parse(w.resetsAt)) < 60_000));
   const el = $('#warnBar');
   // 단계가 올라가면 한 번 알림
   for (const w of ws) { const prev = S.warnLevel[w.key]; if (prev !== w.level && (prev !== 'crit')) toast(`${w.tool === 'claude' ? 'Claude' : 'Codex'} ${w.label} 한도 ${w.left}% 남음 — ${w.level === 'crit' ? '이쪽 작업은 다른 AI로 넘겨요' : '분배를 줄여요'}`, w.level === 'crit'); S.warnLevel[w.key] = w.level; }
