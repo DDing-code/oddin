@@ -777,6 +777,7 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 .pi:active{background:var(--line2)}
 .pi.danger:hover,.pi.danger.sel{background:rgba(239,107,103,.14)}
 .pi:focus-visible{outline:2px solid var(--codex);outline-offset:-2px}
+.pi[aria-disabled="true"],.pi[aria-disabled="true"]:hover,.pi[aria-disabled="true"]:active{opacity:.5;cursor:not-allowed;background:none}
 /* 마우스가 메뉴 위에 있으면 마우스 아래 항목만 강조 (키보드 기본 선택과 겹쳐 두 줄이 밝아지지 않게) */
 #pop:hover .pi.sel:not(:hover){background:transparent}
 #pop:hover .pi.sel:not(:hover) .pic{color:var(--muted)}

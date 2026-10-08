@@ -384,7 +384,7 @@ function openPop(anchor, items, { sel = 0, kind = '', below = false, onClose = n
     if (it.header) return `<div class="ph">${esc(it.header)}</div>`;
     if (it.sep) return '<div class="psep"></div>';
     idx++;
-    return `<div class="pi ${idx === S.pop.sel ? 'sel' : ''} ${it.danger ? 'danger' : ''}" data-i="${idx}" role="option">${anyIcon ? `<span class="pic">${it.icon ? icon(it.icon) : ''}</span>` : ''}<div class="l"><b>${esc(it.label)}</b>${it.desc ? `<span>${esc(it.desc)}</span>` : ''}</div>${it.kbd ? `<kbd>${esc(it.kbd)}</kbd>` : ''}${it.checked ? `<span class="ck">${icon('check')}</span>` : ''}</div>`;
+    return `<div class="pi ${idx === S.pop.sel && !it.disabled ? 'sel' : ''} ${it.danger ? 'danger' : ''}" data-i="${idx}" role="option"${it.disabled ? ' aria-disabled="true"' : ''}>${anyIcon ? `<span class="pic">${it.icon ? icon(it.icon) : ''}</span>` : ''}<div class="l"><b>${esc(it.label)}</b>${it.desc ? `<span>${esc(it.desc)}</span>` : ''}</div>${it.kbd ? `<kbd>${esc(it.kbd)}</kbd>` : ''}${it.checked ? `<span class="ck">${icon('check')}</span>` : ''}</div>`;
   }).join('');
   el.classList.toggle('kbd', !!kbd); // 선택 줄은 방향키·명령 자동완성일 때만 보인다
   el.hidden = false;
@@ -401,10 +401,14 @@ function openPop(anchor, items, { sel = 0, kind = '', below = false, onClose = n
 }
 function closePop() { if (S.pop?.anchor?.classList) S.pop.anchor.classList.remove('on'); const cb = S.pop?.onClose; S.pop = null; $('#pop').hidden = true; if (cb) { try { cb(); } catch {} } }
 const popItems = () => (S.pop ? S.pop.items.filter((i) => !i.header && !i.sep) : []);
-function popPick(i = S.pop?.sel) { const it = popItems()[i]; if (it) it.run(); }
+function popPick(i = S.pop?.sel) { const it = popItems()[i]; if (it && !it.disabled) it.run(); }
 // 방향키: 마우스로 연 메뉴는 첫 입력에 현재 줄만 드러내고, 그다음부터 움직인다
-function popMove(d) { const n = popItems().length; if (!n) return; if (S.pop.kbd) S.pop.sel = (S.pop.sel + d + n) % n; S.pop.kbd = true; openPop(S.pop.anchor, S.pop.items, S.pop); }
-$('#pop').addEventListener('mousemove', (e) => { const p = e.target.closest('.pi'); if (p && S.pop) S.pop.sel = Number(p.dataset.i); });
+function popMove(d) {
+  const items = popItems(), n = items.length; if (!n || items.every(i => i.disabled)) return;
+  if (S.pop.kbd || items[S.pop.sel]?.disabled) do { S.pop.sel = (S.pop.sel + d + n) % n; } while (items[S.pop.sel]?.disabled);
+  S.pop.kbd = true; openPop(S.pop.anchor, S.pop.items, S.pop);
+}
+$('#pop').addEventListener('mousemove', (e) => { const p = e.target.closest('.pi'); if (p && S.pop && !popItems()[Number(p.dataset.i)]?.disabled) S.pop.sel = Number(p.dataset.i); });
 $('#pop').addEventListener('mousedown', (e) => { e.preventDefault(); const p = e.target.closest('.pi'); if (p) popPick(Number(p.dataset.i)); });
 document.addEventListener('mousedown', (e) => { if (S.pop && !e.target.closest('#pop') && e.target !== S.pop.anchor && !S.pop.anchor.contains?.(e.target)) closePop(); });
 document.addEventListener('keydown', (e) => {
