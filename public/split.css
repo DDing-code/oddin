@@ -35,7 +35,7 @@
 .sp-st .sp-idle{width:6px;height:6px;border-radius:50%;background:var(--faint)}
 .sp-st .sp-wait{width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 3px rgba(227,181,92,.18);animation:spWait 1.4s ease-in-out infinite}
 @keyframes spWait{50%{box-shadow:0 0 0 5px rgba(227,181,92,.05)}}
-.sp-pick{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%;padding:4px 6px;border:0;border-radius:7px;background:none;color:inherit;font:inherit;cursor:pointer}
+.sp-pick{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%;padding:4px 6px;border:0;border-radius:var(--r2);background:none;color:inherit;font:inherit;cursor:pointer}
 .sp-pick:hover{background:var(--hover);color:var(--fg)}
 .sp-pick .sp-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--fg)}
 .sp-pane:not(.focus) .sp-pick .sp-title{color:var(--fg2)}
@@ -68,13 +68,13 @@
 /* 위쪽 "나란히 보기" 버튼 */
 .sp-bar-btn{position:relative}
 .sp-bar-btn.on{color:var(--run)}
-.sp-bar-btn .sp-n{position:absolute;right:1px;bottom:1px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:var(--run);color:#141416;font-size:9.5px;font-weight:700;line-height:13px;text-align:center}
+.sp-bar-btn .sp-n{position:absolute;right:1px;bottom:1px;min-width:13px;height:13px;padding:0 3px;border-radius:var(--r2);background:var(--run);color:#141416;font-size:9.5px;font-weight:700;line-height:13px;text-align:center}
 
 /* 끌어다 놓을 자리 */
 #spZones{display:none;position:absolute;inset:0;z-index:30;padding:12px;gap:12px;background:rgba(0,0,0,.3)}
 #app.sp-dragging #spZones{display:flex}
 #app.sp-dragging-pane #spZones .spz[data-z="side"]{display:none}
-.spz,.sp-drop{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed var(--line2);border-radius:14px;color:var(--fg2);font-size:14px;background:rgba(20,20,24,.6);transition:background .1s,border-color .1s}
+.spz,.sp-drop{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed var(--line2);border-radius:var(--r2);color:var(--fg2);font-size:14px;background:rgba(20,20,24,.6);transition:background .1s,border-color .1s}
 .spz small{color:var(--muted);font-size:12px}
 .spz.on,.sp-pane.on .sp-drop{border-color:var(--run);background:rgba(164,139,242,.16);color:var(--fg)}
 .sp-drop{display:none;position:absolute;inset:8px;z-index:3;font-weight:600}
@@ -94,8 +94,8 @@ html.embed #top{padding-left:14px}
 /* 나눈 칸 안: 제목 줄·한도 경고 띠는 바깥 창(칸 머리·가운데 화면)에 이미 있다. 좁은 칸에 맞게 여백·안내를 줄인다 */
 html.embed-pane #top,html.embed-pane #connBar,html.embed-pane #warnBar{display:none!important}
 html.embed-pane #thread{padding:10px 16px 24px}
-html.embed-pane #composerWrap{padding:0 10px 10px}
-html.embed-pane .hero{padding:6vh 0 16px}
+html.embed-pane .input-line{padding-left:16px;padding-right:16px}
+html.embed-pane .hero{padding:12px 0 16px}
 html.embed-pane .sugg,html.embed-pane #hint{display:none}
 html.embed-pane #icBar .icb-sub{display:none}
 html.embed-pane #icBar .icb-target{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}

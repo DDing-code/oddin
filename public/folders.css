@@ -1,19 +1,19 @@
 /* ---------------- 세션 묶음 · 작업 폴더 고르기 (side.js · folders-ui.js) ---------------- */
 .sgroup > .ghead .g-ic{color:var(--run)}
-#tree .drop-on{outline:1px dashed var(--run);outline-offset:-2px;border-radius:10px;background:rgba(164,139,242,.08)}
+#tree .drop-on{outline:1px dashed var(--run);outline-offset:-2px;border-radius:var(--r2);background:rgba(164,139,242,.08)}
 #tree .sec-b.drop-on{outline-offset:2px}
 
 /* 폴더 찾아보기 창 */
 .fp{display:flex;flex-direction:column;gap:10px;min-height:min(62vh,560px)}
 .fp-skel{color:var(--muted);padding:20px 4px}
 .fp-bar{display:flex;align-items:center;gap:6px}
-.fp-bar input{flex:1;min-width:0;height:34px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--bg);color:var(--fg);font:13px var(--mono, monospace)}
+.fp-bar input{flex:1;min-width:0;height:34px;padding:0 10px;border:1px solid var(--line2);border-radius:var(--r2);background:var(--bg);color:var(--fg);font:13px var(--mono, monospace)}
 .fp-bar .icon-btn:disabled{opacity:.35}
 .fp-quick{display:flex;flex-wrap:wrap;gap:6px}
 .fp-quick .chip{display:inline-flex;align-items:center;gap:5px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fp-quick .chip .ico{width:13px;height:13px;flex:none}
-.fp-list{flex:1;min-height:200px;max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px;background:var(--bg)}
-.fp-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:0;border-radius:7px;background:none;color:var(--fg2);font-size:13.5px;text-align:left;cursor:pointer}
+.fp-list{flex:1;min-height:200px;max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r2);padding:4px;background:var(--bg)}
+.fp-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:0;border-radius:var(--r2);background:none;color:var(--fg2);font-size:13.5px;text-align:left;cursor:pointer}
 .fp-item:hover,.fp-item:focus-visible{background:var(--hover);color:var(--fg)}
 .fp-item .ico{width:15px;height:15px;color:var(--muted);flex:none}
 .fp-item span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -24,12 +24,12 @@
 .fp .btn.primary:disabled{opacity:.4}
 
 /* 새 세션 첫 화면의 작업 폴더 버튼 · 입력창 아래 폴더 버튼 */
-.hero .hero-folder{display:inline-flex;align-items:center;gap:8px;margin-top:24px;max-width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:5px;background:var(--side);color:var(--fg2);font-size:12px;cursor:pointer}
+.hero .hero-folder{display:inline-flex;align-items:center;gap:8px;margin-top:16px;max-width:100%;padding:6px 0;border:0;background:none;color:var(--fg2);font-size:12px;cursor:pointer}
 .hero .hero-folder:hover,.hero .hero-folder:focus-visible{background:var(--hover);color:var(--fg);border-color:var(--line3, var(--line2))}
 .hero .hero-folder .ico{width:15px;height:15px;color:var(--run);flex:none}
 .hero .hero-folder .k{color:var(--muted);flex:none}
 .hero .hero-folder .v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono, monospace);font-size:12.5px}
-.hero .hero-folder .go{display:inline-flex;align-items:center;gap:3px;flex:none;padding:3px 8px;border-radius:8px;background:var(--hover);color:var(--fg);font-size:12px}
+.hero .hero-folder .go{display:inline-flex;align-items:center;gap:3px;flex:none;padding:3px 8px;border-left:1px solid var(--line2);color:var(--accent);font-size:12px}
 .hero .hero-folder .go .ico{width:12px;height:12px;color:var(--muted)}
 #pFolder .ico:first-child{color:var(--run)}
 @container (max-width:420px){#pFolder .v{max-width:70px}}
@@ -42,11 +42,11 @@
 .fp-tools .chip{display:inline-flex;align-items:center;gap:5px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fp-tools .chip .ico{width:13px;height:13px;flex:none}
 .fp-sep{width:1px;height:18px;background:var(--line2);margin:0 4px}
-.fp-edit{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid rgba(164,139,242,.35);border-radius:10px;background:rgba(164,139,242,.07)}
+.fp-edit{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid rgba(164,139,242,.35);border-radius:var(--r2);background:rgba(164,139,242,.07)}
 .fp-edit-l{flex:none;font-size:12.5px;color:var(--fg2);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fp-edit input{flex:1;min-width:0;height:32px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--bg);color:var(--fg);font-size:13.5px}
+.fp-edit input{flex:1;min-width:0;height:32px;padding:0 10px;border:1px solid var(--line2);border-radius:var(--r2);background:var(--bg);color:var(--fg);font-size:13.5px}
 .fp-edit .btn{height:32px}
-.fp-row{display:flex;align-items:center;border-radius:7px}
+.fp-row{display:flex;align-items:center;border-radius:var(--r2)}
 .fp-row .fp-item{flex:1;min-width:0}
 .fp-row-ren{width:28px;height:28px;flex:none;opacity:0;margin-right:4px}
 .fp-row:hover .fp-row-ren,.fp-row-ren:focus-visible{opacity:1}

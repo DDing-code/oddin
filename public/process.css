@@ -1,7 +1,7 @@
 /* 추론 과정: 기존 색·글꼴·도구 본문을 사용한다 */
-.proc{--proc-rail:var(--line2);--proc-x:12px;--proc-ic:14px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);margin-top:10px;overflow:hidden;min-width:0}
+.proc{--proc-rail:var(--line2);--proc-x:12px;--proc-ic:14px;border-left:1px solid var(--line2);margin-top:6px;overflow:hidden;min-width:0}
 .proc-head{display:flex;align-items:center;gap:8px;padding-right:14px;min-width:0}
-.proc-h{display:flex;align-items:center;gap:10px;flex:1;min-width:0;min-height:38px;padding:0 0 0 14px;font:13px var(--font);color:var(--fg2);background:none;border:0;text-align:left}
+.proc-h{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:34px;padding:0 0 0 10px;font:12px var(--font);color:var(--fg2);background:none;border:0;text-align:left}
 .proc-h b{color:var(--fg);font-weight:600;white-space:nowrap}
 .proc-h>.st{width:18px;flex:none}
 .proc .chev{display:inline-flex;flex:none;width:14px;height:14px;color:var(--faint);transition:transform .15s;margin-left:auto}
@@ -20,7 +20,7 @@
 .proc-tl{list-style:none;margin:0;padding:4px 0;position:relative}
 .proc-tl::before{content:"";position:absolute;left:calc(var(--proc-x) + 9px);top:14px;bottom:14px;width:1px;background:var(--proc-rail)}
 .proc-i,.proc .tc-h,.pi-h{display:grid;grid-template-columns:20px minmax(0,1fr) auto;column-gap:8px;align-items:start;padding:5px 14px 5px var(--proc-x);min-height:28px;font:13px/1.5 var(--font);min-width:0}
-.pi-ic,.proc .tc-h>.ico{width:var(--proc-ic);height:var(--proc-ic);margin:3px;background:var(--panel);color:var(--muted);position:relative;z-index:1}
+.pi-ic,.proc .tc-h>.ico{width:var(--proc-ic);height:var(--proc-ic);margin:3px;background:var(--bg);color:var(--muted);position:relative;z-index:1}
 .pi-ic>.ico{width:14px;height:14px;display:block}
 .pi-c{min-width:0;overflow-wrap:anywhere}
 .pi-m{font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:2px}
@@ -65,7 +65,7 @@
 .pi-prompt-h span:not(.chev){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .proc-empty{padding:10px 14px 10px 40px;color:var(--faint);font-size:12.5px}
 .proc-previous{margin:4px 0 4px 34px}
-.proc-new{position:sticky;bottom:8px;margin:0 auto;display:block;background:var(--panel2);border:1px solid var(--line2);border-radius:999px;z-index:3}
+.proc-new{position:sticky;bottom:8px;margin:0 auto;display:block;background:var(--panel2);border:1px solid var(--line2);border-radius:var(--r2);z-index:3}
 .proc [hidden]{display:none!important}
 .proc button:focus-visible,.proc pre:focus-visible{outline:2px solid var(--codex);outline-offset:-2px}
 .proc .lg{padding:0;display:block;font:12.5px/1.5 var(--font)}.proc .lg .k{display:none}
