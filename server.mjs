@@ -39,6 +39,7 @@ import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
 import { Push } from './lib/push.mjs';
 import { BrowserManager } from './lib/browser.mjs';
+import { VideoEditor } from './lib/video-edit.mjs';
 import { ChromeExtBrowser, isExtRequest } from './lib/chrome-ext.mjs';
 import { HubAuth, controlGate, canonicalRoute } from './lib/hub-auth.mjs';
 import { SessionGroups, listDirs, makeDir, renameDir } from './lib/session-groups.mjs';
@@ -158,6 +159,9 @@ function browserFor(owner, b) {
   return m;
 }
 process.on('exit', () => { try { oddinBrowser?.proc?.kill(); } catch {} });
+// 영상 편집기(lib/video-edit.mjs, 2026-10-10): *.oddin-edit.json 읽기·저장·렌더. 렌더의 글자 레이어는 ODDIN 브라우저로 그린다
+const video = new VideoEditor({ config, getRoots: openRoots, browser: oddinBrowser, hubUrl: () => `http://127.0.0.1:${config.port}` });
+video.on('event', (ev) => broadcast(ev));
 jobs.browserTool = (job, task) => browsers().length ?{ command: process.execPath, args: [path.join(ROOT, 'scripts', 'oddin-browser-mcp.mjs')], env: { ODDIN_TASK: `${job.id}/${task.id}`, ODDIN_HUB: `http://127.0.0.1:${config.port}` } } : null;
 jobs.machines = () => { const list = peers.list(); return list.length ? { self: peers.self().name, peers: list.map((x) => x.name), handoff: path.join(ROOT, 'scripts', 'handoff.mjs') } : null; };
 /** 세션 실행 PC 옮기기: 대화 기록을 다른 PC(또는 이 PC)에 새 세션으로 가져오고 원래 세션은 보관함으로. machine = 'self' | PC id·이름 */
@@ -433,6 +437,8 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/chrome-ext/result') return json(res, chromeExt.result(b));
       return fail(res, '없는 기능이에요', 404);
     }
+    // ---- 영상 편집기 (lib/video-edit.mjs). 저장·렌더는 원격에서 ODDIN 화면에서만(lib/hub-auth.mjs isControl) ----
+    if (p.startsWith('/api/video/')) return await video.handle(req, res, p, url, { json, fail, readBody, send });
     if (p.startsWith('/api/browser')) {
       if (!browsers().length) return fail(res, 'ODDIN 브라우저가 꺼져 있어요(config.browser.oddin)', 404);
       if (p === '/api/browser' && req.method === 'GET') return json(res, browserState());

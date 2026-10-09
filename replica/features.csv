@@ -1,0 +1,65 @@
+feature,area,priority,original,clone,notes
+편집 파일 열기·저장(자동 저장),파일,must,yes,yes,*.oddin-edit.json · 다른 곳(AI)이 고치면 다시 읽기
+영상 파일로 새 편집 만들기(같은 이름 SRT 있으면 자막으로),파일,must,yes,yes,ODDIN 경로 메뉴에서
+미리보기 재생·멈춤·1프레임 이동·처음/끝,미리보기,must,yes,yes,Space ←→ Shift+←→ Home End
+여러 컷을 이어서 재생,미리보기,must,yes,yes,컷 경계에서 끊김 최소화 · 원본마다 A/B 재생기
+글자 레이어·자막을 화면 위에 그대로 보기,미리보기,must,yes,yes,렌더와 같은 그리는 코드 · video-core renderOverlay = 렌더
+타임라인: 시간자·재생 헤드·확대/축소·스크롤,타임라인,must,yes,yes,
+트랙: 영상·소리·자막/글자,타임라인,must,yes,yes,
+클립 끌어 옮기기,타임라인,must,yes,yes,
+클립·자막 앞뒤 가장자리 끌어 자르기(트림),타임라인,must,yes,yes,
+자석(스냅): 재생 헤드·다른 가장자리·마커·프레임,타임라인,must,yes,yes,
+재생 헤드에서 자르기(S),타임라인,must,yes,yes,
+지우기·리플 지우기(빈칸 닫기),타임라인,must,yes,yes,
+선택한 것 1프레임/10프레임 밀기,싱크,must,yes,yes,
+시작·끝을 재생 헤드로([ ]),싱크,must,yes,yes,
+소리 파형 보기,싱크,must,yes,yes,
+되돌리기·다시(Ctrl+Z/Y),편집,must,yes,yes,
+자막 글 고치기,디자인,must,yes,yes,
+글꼴·크기·두께·색·테두리·그림자·배경·자간·행간·정렬,디자인,must,yes,yes,
+스타일을 여러 자막이 같이 쓰기(스타일 고치면 모두 바뀜),디자인,must,yes,yes,
+위치·크기·회전·불투명도 숫자로 바꾸기,모션,must,yes,yes,
+화면 위에서 끌어 옮기기,모션,must,yes,yes,크기 손잡이는 아직(숫자·끌기 이름으로)
+키프레임 넣기·지우기·이전/다음 키로,모션,must,yes,yes,
+키프레임 이징(선형·부드럽게·들어오기·나가기·정지),모션,must,yes,yes,
+등장·퇴장 효과(페이드·팝·슬라이드),모션,must,yes,yes,
+MP4로 렌더(진행률·완료 뒤 재생),내보내기,must,yes,yes,
+자막 SRT 내보내기,내보내기,must,yes,yes,
+리플 모드(옮기거나 자르면 뒤 것이 따라옴),싱크,should,yes,yes,
+자막 붙여 두기(빈칸 없이: 하나 끝을 바꾸면 다음 시작이 따라옴),싱크,should,yes,yes,"사용자 기준 ""자막 사이 빈 프레임 없이"""
+마커 넣기(M),타임라인,should,yes,yes,
+구간 반복 재생,미리보기,should,yes,yes,
+시간을 프레임으로 표시(타임코드),타임라인,should,yes,yes,
+클립 음량(dB),소리,should,yes,yes,소리 페이드 들어오기·나가기 포함
+배경음·효과음 트랙,소리,should,yes,partial,"트랙·렌더는 됨, 원본 넣기는 AI·파일로(화면 끌어넣기 아직)"
+키프레임 마름모 끌어 시각 바꾸기,모션,should,yes,no,마름모는 보이지만 끌기는 아직
+안전 영역·가운데 안내선,미리보기,should,yes,yes,
+영상 클립 확대·위치 키프레임(펀치 인),모션,should,yes,yes,먹방 편집의 확대·포지션 · 펀치 인/아웃 단추
+글꼴 없음(대체) 경고,디자인,should,yes,yes,"사용자 기준 ""폰트 대체 즉시 문제"" · 윈도 등록 글꼴만 목록"
+자막 한 줄 넘침 경고,디자인,should,no,yes,ODDIN에서 더함
+자막 사이 빈칸·겹침 찾기,싱크,should,no,yes,ODDIN에서 더함 · 모두 붙이기·모두 고치기
+발화 시작에 맞추기(파형으로 가까운 시작점),싱크,should,no,yes,ODDIN에서 더함
+쫀득 이징(되튐·강한 감속),모션,should,yes,yes,AE 그래프 편집기로 하던 것을 사전 설정으로 · snap·expo 사전 설정
+AI에게 부탁(선택·시각을 같이 넘김),AI,should,no,yes,ODDIN에서 더함 · 진행 중이면 예약
+SRT 가져오기,파일,should,yes,partial,새 편집 때 자동·scripts/video.mjs import-srt
+썸네일 띠(클립 막대 안 장면),타임라인,could,yes,yes,
+가로 그라디언트 글자색,디자인,could,yes,yes,각도 지정
+스타일 복사·붙여넣기,디자인,could,yes,yes,
+여러 개 선택해 함께 옮기기,타임라인,could,yes,yes,
+열린 프리미어 시퀀스 가져오기(어도비 플러그인),연동,could,yes,no,다음 단계 · 다음 단계
+프리미어용 XML 내보내기,연동,could,yes,no,다음 단계 · 다음 단계
+폰에서 보기·간단 수정,ODDIN,could,no,partial,"보기·타임라인은 됨, 속성 패널은 넓은 화면에서"
+트랙 숨김·잠금,타임라인,could,yes,yes,
+값 그래프 편집기(베지어 손잡이),모션,could,yes,no,사전 설정 이징으로 대신 · 이징 사전 설정으로 대신
+색 보정(Lumetri),효과,could,yes,skip,이 편집기에서 하지 않는 일 — 프리미어로
+효과 플러그인·전환 효과 라이브러리,효과,could,yes,skip,무거운 일은 프리미어·AE로
+3D 레이어·카메라,효과,could,yes,skip,범위 밖
+로토·트래킹·마스크,효과,could,yes,skip,범위 밖
+멀티캠 편집,편집,could,yes,skip,범위 밖
+프록시·미디어 캐시 관리,파일,could,yes,skip,범위 밖
+Adobe Fonts·Adobe Stock,콘텐츠,could,yes,skip,Adobe가 가진 콘텐츠·구독
+모션 그래픽 템플릿 마켓,콘텐츠,could,yes,skip,Adobe가 가진 콘텐츠
+.prproj·.aep 파일 직접 읽고 쓰기,파일,could,yes,skip,공개되지 않은 형식 — SRT·플러그인으로 주고받기
+AI 음성 전사,AI,could,yes,skip,ODDIN 작업자·로컬 전사 도구가 맡음
+여러 사람 동시 편집(Team Projects),협업,could,yes,skip,범위 밖
+방송용 자막 형식(608/708·Teletext),내보내기,could,yes,skip,범위 밖

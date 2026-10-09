@@ -876,6 +876,8 @@
     const items = [{ header: info ? `${dir ? '폴더' : '파일'} · ${name}${dir ? (info.count != null ? ` · ${info.count}개` : '') : ` · ${fmtSize(info.size)}`}${fed ? ' · 다른 PC' : ''}` : `${name} · ${err || '찾지 못했어요'}` }];
     if (info) {
       items.push({ label: '허브에서 보기', desc: '이 화면 안에서 내용 보기 · 원격에서도', icon: 'eye', run: () => { closePop(); viewPath(info.path, { fed }); } });
+      // 확장: 기능 파일이 window.hubPathItems.push((info, { fed }) => [메뉴 항목]) 로 더한다(예: 영상 편집기 video-editor.js)
+      for (const fn of window.hubPathItems || []) { try { items.push(...(fn(info, { fed }) || [])); } catch {} }
       if (!dir && isPage(info.path) && !fed) items.push({ label: '페이지로 열기', desc: '새 탭에서 결과 페이지 보기 · 원격에서도', icon: 'browser', run: () => { closePop(); openPage(info.path); } });
       else if (!dir && INLINE_RE.test(info.path)) items.push({ label: '새 탭에서 열기', desc: 'PDF·그림·영상을 브라우저로', icon: 'open', run: () => { closePop(); window.open(dlUrl(q, true), '_blank', 'noopener'); } });
       items.push({ label: dir ? '폴더를 ZIP으로 내려받기' : '내려받기', desc: dir ? '안의 파일을 한 파일로 묶어 받아요' : '이 기기에 파일로 저장', icon: 'download', run: () => { closePop(); download(q, dir ? `${name}.zip` : name); } });

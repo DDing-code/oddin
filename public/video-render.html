@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ODDIN 영상 렌더</title>
+<!-- 렌더 전용(lib/video-edit.mjs 가 ODDIN 브라우저로 연다): 글자·자막 레이어만 투명 배경에 그린다. 편집기 미리보기와 같은 video-core.js 그리기 -->
+<style>
+  html,body{margin:0;padding:0;background:transparent;overflow:hidden}
+  #stage{position:absolute;left:0;top:0;overflow:hidden;background:transparent}
+  .ov-layer{position:absolute;transform-origin:50% 50%;will-change:transform}
+  .ov-box{box-sizing:border-box}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="video-core.js"></script>
+<script>
+(() => {
+  const V = window.OddinVideo, stage = document.getElementById('stage');
+  const path = new URLSearchParams(location.search).get('path') || '';
+  let doc = null;
+  window.__oddinReady = (async () => {
+    try {
+      const r = await fetch(`/api/video/edit?path=${encodeURIComponent(path)}`);
+      const j = await r.json();
+      if (!r.ok) return { error: j.error || `편집 파일을 읽지 못했어요(${r.status})` };
+      doc = j.doc;
+      stage.style.width = `${doc.width}px`; stage.style.height = `${doc.height}px`;
+      // 쓰는 글꼴을 미리 읽고, 이 PC에 없는 것은 알린다(다른 글꼴로 그려짐)
+      const fonts = V.fontsOf(doc), missing = [];
+      for (const f of fonts) {
+        try { await document.fonts.load(`800 64px "${f}"`, '가나다ABC'); } catch {}
+        if (!V.fontAvailable(f)) missing.push(f);
+      }
+      await document.fonts.ready;
+      return { ok: true, width: doc.width, height: doc.height, fps: doc.fps, missingFonts: missing };
+    } catch (e) { return { error: String(e && e.message || e) }; }
+  })();
+  window.__oddinFrame = (t) => (doc ? V.renderOverlay(stage, doc, t) : '');
+})();
+</script>
+</body>
+</html>

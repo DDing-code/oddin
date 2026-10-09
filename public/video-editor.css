@@ -1,0 +1,151 @@
+/* ODDIN 영상 편집기 (video-editor.js). 색은 테마 변수만 */
+#vedit{position:fixed;inset:0;z-index:41;display:grid;grid-template-rows:auto minmax(0,1fr) auto minmax(150px,var(--ve-tl,34vh));background:var(--bg);color:var(--fg);font-size:13px;outline:none}
+#vedit .grow{flex:1}
+#vedit .btn.sm{padding:4px 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+#vedit .btn.sm .ico{width:13px;height:13px}
+#vedit .btn.primary{background:var(--accent);color:var(--bg);border-color:transparent;font-weight:600}
+#vedit .btn.primary:hover{background:color-mix(in srgb,var(--accent) 85%,var(--fg))}
+#vedit .icon-btn{width:30px;height:30px}
+#vedit .icon-btn:disabled{opacity:.35;cursor:default}
+
+/* 위쪽 줄 */
+.ve-top{display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;height:48px;border-bottom:1px solid var(--line);background:var(--side);min-width:0}
+.ve-logo .ico{width:18px;height:18px;color:var(--accent)}
+.ve-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:32vw}
+.ve-st{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.ve-st.ok{color:var(--ok)}.ve-st.err{color:var(--err)}
+.ve-rend{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--fg2);white-space:nowrap}
+.ve-rend.ok{color:var(--ok)}.ve-rend.err{color:var(--err)}
+.ve-rend .ico{width:14px;height:14px}
+.ve-bar{display:inline-block}
+.ve-rend .ve-bar{width:120px;height:6px;border-radius:99px;background:var(--panel2);overflow:hidden}
+.ve-rend .ve-bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
+
+/* 가운데: 미리보기 | 속성 */
+.ve-mid{display:grid;grid-template-columns:minmax(0,1fr) 330px;min-height:0}
+.ve-view{position:relative;display:flex;align-items:center;justify-content:center;min-height:0;min-width:0;overflow:hidden;background:color-mix(in srgb,var(--bg) 70%,#000)}
+.ve-stage-wrap{position:relative;flex:none;overflow:hidden;box-shadow:0 0 0 1px var(--line2)}
+.ve-stage{position:absolute;left:0;top:0;transform-origin:0 0;overflow:hidden}
+.ve-vids,.ve-ov,.ve-guides{position:absolute;inset:0}
+.ve-v{position:absolute;display:none;pointer-events:auto;cursor:move}
+.ve-v.sel{outline:6px solid var(--accent);outline-offset:-6px}
+.ve-ov .ov-layer{position:absolute;cursor:move;transform-origin:50% 50%}
+.ve-ov .ov-layer.sel{outline:4px dashed var(--accent);outline-offset:8px}
+.ve-guides{pointer-events:none}
+.ve-guides i{position:absolute;display:block}
+.ve-safe{inset:5%;border:2px dashed color-mix(in srgb,var(--fg) 14%,transparent)}
+.ve-cx{left:50%;top:0;bottom:0;border-left:2px dashed color-mix(in srgb,var(--fg) 8%,transparent)}
+.ve-cy{top:50%;left:0;right:0;border-top:2px dashed color-mix(in srgb,var(--fg) 8%,transparent)}
+
+.ve-insp{border-left:1px solid var(--line);background:var(--side);overflow-y:auto;padding:12px 14px 40px;min-height:0;scrollbar-width:thin}
+.ve-insp h4{display:flex;align-items:center;gap:6px;margin:0 0 10px;font-size:13px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ve-insp h4 .ico{width:15px;height:15px;color:var(--accent);flex:none}
+.ve-insp h5{margin:0 0 8px;font-size:11.5px;font-weight:600;color:var(--muted)}
+.ve-sec{padding:10px 0;border-top:1px solid var(--line)}
+.ve-insp textarea{width:100%;resize:vertical;min-height:52px;padding:8px 10px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font:14px/1.5 var(--sans,var(--font))}
+.ve-f{display:grid;grid-template-columns:86px minmax(0,1fr) auto auto auto;align-items:center;gap:4px;margin:4px 0;min-width:0}
+.ve-fl{font-size:11.5px;color:var(--fg2);cursor:ew-resize;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ve-fl small{color:var(--faint)}
+.ve-f input,.ve-f select{width:100%;min-width:0;height:28px;padding:0 7px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font:12.5px var(--mono)}
+.ve-f input[type=color]{width:30px;height:26px;padding:1px;cursor:pointer}
+.ve-f:has(input[type=color]){grid-template-columns:86px 32px minmax(0,1fr)}
+.ve-f input:focus,.ve-f select:focus,.ve-insp textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.ve-row2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.ve-row2 .ve-f{grid-template-columns:auto minmax(0,1fr) auto}
+.ve-row2 .ve-f .ve-fl{max-width:76px}
+.ve-kb,.ve-kn{border:0;background:none;color:var(--faint);width:22px;height:24px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border-radius:var(--r2);padding:0}
+.ve-kb .ico{width:12px;height:12px}
+.ve-kb.has{color:var(--muted)}
+.ve-kb.on{color:var(--accent);background:var(--accent-soft)}
+.ve-kn{font-size:14px;width:16px}
+.ve-kb:hover,.ve-kn:hover{color:var(--fg);background:var(--hover)}
+.ve-chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg2);margin:6px 0}
+.ve-acts{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.ve-seg{display:flex;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden;margin:6px 0}
+.ve-seg button{flex:1;border:0;background:none;color:var(--muted);font:inherit;font-size:11.5px;padding:5px 6px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ve-seg button+button{border-left:1px solid var(--line2)}
+.ve-seg button.on{background:var(--panel2);color:var(--fg);font-weight:600}
+.ve-seg button:disabled{opacity:.4;cursor:default}
+.ve-ease{margin-top:6px}
+.ve-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.ve-chip{border:1px solid var(--line2);background:var(--panel);color:var(--fg2);font:inherit;font-size:11.5px;padding:3px 8px;border-radius:999px;cursor:pointer}
+.ve-chip.on{border-color:var(--accent);background:var(--accent-soft);color:var(--fg)}
+.ve-warn{display:flex;gap:6px;align-items:flex-start;color:var(--warn);font-size:12px;margin:6px 0;line-height:1.5}
+.ve-warn .ico,.ve-ok .ico{width:14px;height:14px;flex:none;margin-top:2px}
+.ve-ok{display:flex;gap:6px;color:var(--ok);font-size:12px;margin:4px 0}
+.ve-chk-row{margin:8px 0}
+.ve-chk-row>b{font-size:12px;margin-right:8px}
+.ve-chk-list{display:flex;flex-direction:column;gap:2px;margin-top:6px;max-height:160px;overflow:auto}
+.ve-chk-it{text-align:left;border:0;background:none;color:var(--fg2);font:12px var(--mono);padding:3px 6px;border-radius:var(--r2);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ve-chk-it:hover{background:var(--hover);color:var(--fg)}
+.ve-keys{line-height:1.8;font-size:11.5px}
+.ve-src{font-size:11.5px;margin:-4px 0 6px;font-family:var(--mono)}
+
+/* 재생 줄 */
+.ve-trans{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--side);flex-wrap:wrap;min-width:0}
+.ve-tg{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0}
+.ve-play{background:var(--accent-soft)!important;color:var(--accent)!important}
+.ve-time{font:600 13px var(--mono);margin:0 6px 0 8px;letter-spacing:.02em}
+.ve-sep{width:1px;height:20px;background:var(--line2);margin:0 4px}
+#vedit .btn.tog.on{border-color:var(--accent-line);background:var(--accent-soft);color:var(--fg)}
+#vedit .btn.on{border-color:var(--accent-line);color:var(--fg)}
+
+/* 타임라인 */
+.ve-tl{position:relative;min-height:0;background:var(--bg)}
+.ve-scroll{position:absolute;inset:0;overflow:auto;scrollbar-width:thin}
+.ve-grid{position:relative;min-height:100%}
+.ve-rul-row{position:sticky;top:0;z-index:5;display:flex;height:26px;background:var(--side);border-bottom:1px solid var(--line)}
+.ve-corner{position:sticky;left:0;z-index:6;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--side);border-right:1px solid var(--line);color:var(--muted);font-size:11px}
+.ve-corner .ico{width:13px;height:13px}
+.ve-ruler{position:relative;flex:1;cursor:text}
+.ve-rc,.ve-lc{position:absolute;top:0;pointer-events:none}
+.ve-row{position:relative;display:flex;border-bottom:1px solid var(--line)}
+.ve-row.hid .ve-lane{opacity:.45}
+.ve-head{position:sticky;left:0;z-index:4;flex:none;display:flex;align-items:center;gap:4px;padding:0 6px 0 10px;background:var(--side);border-right:1px solid var(--line);font-size:12px;color:var(--fg2);min-width:0}
+.ve-head>.ico{width:13px;height:13px;color:var(--muted);flex:none}
+.ve-tn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.ve-hb{border:0;background:none;color:var(--faint);width:20px;height:20px;padding:0;font:600 10px var(--mono);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;border-radius:var(--r2);flex:none}
+.ve-hb .ico{width:12px;height:12px}
+.ve-hb.on{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.ve-hb.x{visibility:hidden}
+.ve-lane{position:relative;flex:1;min-width:0}
+.ve-bar{position:absolute;top:3px;bottom:3px;border-radius:var(--r2);border:1px solid color-mix(in srgb,var(--fg) 18%,transparent);overflow:hidden;cursor:grab;display:flex;align-items:flex-start;min-width:2px;box-sizing:border-box}
+.ve-bar.k-text{background:color-mix(in srgb,var(--accent) 22%,var(--panel));align-items:center}
+.ve-bar.k-video{background:color-mix(in srgb,var(--codex) 12%,transparent)}
+.ve-bar.k-audio{background:color-mix(in srgb,var(--ok) 12%,transparent)}
+.ve-bar.sel{border:2px solid var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--bg) 60%,transparent)}
+.ve-bar.locked{cursor:not-allowed;opacity:.7}
+.ve-bl{position:relative;z-index:1;padding:2px 6px;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg);text-shadow:0 1px 2px color-mix(in srgb,var(--shadow) 60%,transparent);pointer-events:none}
+.ve-bar.k-video .ve-bl{font-size:10.5px;padding:1px 5px;background:color-mix(in srgb,var(--bg) 55%,transparent);border-radius:0 0 var(--r2) 0}
+.ve-eg{position:absolute;top:0;bottom:0;width:7px;z-index:2;cursor:ew-resize}
+.ve-eg.l{left:0}.ve-eg.r{right:0}
+.ve-bar:hover .ve-eg{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+.ve-kf{position:absolute;bottom:2px;width:8px;height:8px;margin-left:-4px;background:var(--warn);transform:rotate(45deg);z-index:2;pointer-events:none;border:1px solid var(--bg)}
+.ve-an{position:absolute;top:0;bottom:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 45%,transparent),transparent)}
+.ve-an.in{left:0}.ve-an.out{right:0;transform:scaleX(-1)}
+.ve-ph{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--err);z-index:7;pointer-events:none}
+.ve-ph::before{content:"";position:absolute;top:0;left:-5px;border:6px solid transparent;border-top:8px solid var(--err)}
+.ve-mk{position:absolute;top:2px;width:10px;height:12px;margin-left:-5px;background:var(--warn);clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%);z-index:7;cursor:pointer}
+.ve-add-row{display:flex;gap:6px;padding:6px 0 30px}
+.ve-add{border:1px dashed var(--line2);background:none;color:var(--muted);font:inherit;font-size:11.5px;padding:3px 10px;border-radius:var(--r2);cursor:pointer}
+.ve-add:hover{color:var(--fg);border-color:var(--accent-line)}
+.ve-job .btn{padding:3px 10px;font-size:12px}
+
+/* AI에게 */
+.ve-ai{position:absolute;inset:0;z-index:20;background:color-mix(in srgb,var(--shadow) 45%,transparent);display:flex;align-items:flex-start;justify-content:center;padding:70px 16px}
+.ve-ai-card{width:min(560px,100%);background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:16px;box-shadow:0 20px 60px color-mix(in srgb,var(--shadow) 45%,transparent)}
+.ve-ai-card p{margin:6px 0 10px;font-size:12px;line-height:1.6}
+.ve-ai-ctx{font:11.5px/1.6 var(--mono);color:var(--fg2);background:var(--bg);border:1px solid var(--line);border-radius:var(--r2);padding:8px 10px;margin-bottom:10px;max-height:120px;overflow:auto}
+.ve-ai-card textarea{width:100%;padding:9px 11px;border-radius:var(--r2);border:1px solid var(--line2);background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans,var(--font));resize:vertical}
+.ve-ai-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+
+/* 좁은 화면(폰·작은 창): 위아래로 쌓고 속성은 아래 */
+@media (max-width:860px){
+  #vedit{grid-template-rows:auto minmax(200px,42vh) auto minmax(0,1fr)}
+  .ve-mid{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr)}
+  .ve-insp{display:none}
+  .ve-title{max-width:30vw}
+  .ve-top .btn.sm:not(.primary){padding:4px 7px}
+  .ve-trans{gap:4px}
+  .ve-time{font-size:12px}
+}

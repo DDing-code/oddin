@@ -5,7 +5,8 @@
    판 표시가 없는 예전 서버면 아무것도 하지 않는다. */
 (() => {
   let base = null, bar = null;
-  const busy = () => !!(document.getElementById('in')?.value || '').trim() || !document.getElementById('pop')?.hidden || !document.getElementById('modal')?.hidden;
+  // 영상 편집기(#vedit)가 열려 있으면 작업 중으로 본다(조용히 새로고침하면 편집기가 닫혔다)
+  const busy = () => !!(document.getElementById('in')?.value || '').trim() || !document.getElementById('pop')?.hidden || !document.getElementById('modal')?.hidden || !!document.getElementById('vedit');
   function showBar() {
     if (bar) return;
     bar = document.createElement('div'); bar.className = 'ui-stale'; bar.setAttribute('role', 'status');
