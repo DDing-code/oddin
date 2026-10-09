@@ -714,6 +714,20 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 .icb-err .icon-btn .ico{width:13px;height:13px}
 .pill.ic-off{opacity:.45}
 .send.ic{background:var(--run);color:var(--bg)}
+/* 진행 중일 때 보내는 방식: 끼어들기 | 예약 (intercept.js) */
+#icBar.rs{background:color-mix(in srgb,var(--codex) 9%,transparent);border-bottom-color:color-mix(in srgb,var(--codex) 40%,var(--line))}
+#icBar.rs .icb-main > .ico{color:var(--codex)}
+#composer.rs-mode{border-color:color-mix(in srgb,var(--codex) 45%,var(--line))}
+#composer.rs-mode:focus-within{border-color:var(--codex)}
+.icb-seg{display:inline-flex;margin-left:auto;flex:none;border:1px solid var(--line2);border-radius:var(--r2);overflow:hidden;align-self:center}
+.icb-seg button{border:0;background:none;color:var(--muted);font:inherit;font-size:12px;line-height:1.3;padding:3px 10px;cursor:pointer;white-space:nowrap}
+.icb-seg button+button{border-left:1px solid var(--line2)}
+.icb-seg button:hover:not(:disabled){color:var(--fg);background:var(--hover)}
+.icb-seg button.on{background:var(--panel2);color:var(--fg);font-weight:600}
+.icb-seg button:disabled{opacity:.45;cursor:default}
+.send.rs{background:var(--codex);color:var(--bg)}
+.afoot .state .ico{width:14px;height:14px;color:var(--codex);margin-right:4px}
+@media(max-width:560px){.icb-seg{margin-left:0;order:9;flex-basis:100%}}
 .send.ic:disabled{background:color-mix(in srgb,var(--accent) 30%,transparent);color:var(--fg)}
 .send .spinner{width:15px;height:15px;border-color:color-mix(in srgb,var(--bg) 25%,transparent);border-top-color:var(--bg)}
 .stop-sm{width:30px;height:30px;border-radius:var(--r2);border:1px solid var(--line2);background:none;color:var(--fg2);display:inline-flex;align-items:center;justify-content:center;flex:none}

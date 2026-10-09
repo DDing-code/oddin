@@ -46,7 +46,16 @@ const IC_ERR = {
 /** 서버가 수정 지시를 지원하고, 이 작업이 지금 지시를 받는 구간인가 */
 function icSupported(j) { return !!(j && Number(S.caps?.intercept) >= 1 && isActive(j) && j.canIntercept !== false); }
 /** 지금 입력창이 수정 지시 모드인가 (commands.js 자동완성 끄기에 사용) */
-function icMode() { const l = liveJob(); return !!(l && icSupported(l)); }
+function icMode() { const l = liveJob(); return !!(l && icSupported(l) && icWant(l) === 'intercept'); }
+/** 진행 중일 때 보내는 방식(2026-10-10 "인터셉트할지 예약으로 할지"): 'intercept' = 지금 작업에 끼어들기, 'reserve' = 끝난 뒤 새 요청으로 시작.
+    설정 S.prefs.midJob(기본 끼어들기), flip 이면 이번만 반대로(Ctrl+Enter). 마무리 중이라 끼어들 수 없으면 예약, 서버가 예약을 모르면 예전처럼 끼어들기 */
+const rsSupported = () => Number(S.caps?.reserve) >= 1;
+function icWant(live, flip = false) {
+  if (!live || !rsSupported()) return 'intercept';
+  if (!icSupported(live)) return 'reserve';
+  const pref = S.prefs.midJob === 'reserve' ? 'reserve' : 'intercept';
+  return flip ? (pref === 'reserve' ? 'intercept' : 'reserve') : pref;
+}
 function icPhase(j) {
   if (j.activePhase) return j.activePhase;
   if (j.status === 'queued') return 'queued';
@@ -152,23 +161,30 @@ function icItemHtml(j, it) {
 /* ---------- 입력창 (renderSend 가 부른다) ---------- */
 const IC_PH = input.placeholder, IC_HINT = $('#hint').textContent;
 function renderIcComposer(live, has) {
-  const sup = !!(live && icSupported(live));
+  const sup = !!(live && icSupported(live)), rs = !!(live && rsSupported());
+  const want = live ? icWant(live) : null, ic = sup && want === 'intercept', rsv = rs && want === 'reserve';
   const err = INT.err && INT.err.sid === S.current ? INT.err : null;
-  if (INT.mode !== sup) { INT.mode = sup; if (sup && S.pop?.kind === 'slash') closePop(); renderCmdHint(); } // 커맨드 설명 줄도 모드에 맞춰 다시
-  $('#composer').classList.toggle('ic-mode', sup);
-  input.placeholder = sup ? '진행 중인 작업에 수정 지시를 보내세요' : (window.hubInputPh ? window.hubInputPh() : IC_PH); // 폰은 짧게(push.js)
-  $('#hint').textContent = sup ? 'Enter 수정 지시 · Shift+Enter 줄바꿈' : IC_HINT;
-  for (const p of ['#pMode', '#pClaude', '#pCodex']) $(p).classList.toggle('ic-off', sup);
-  // 입력이 있으면 전송 버튼이 "수정 지시 보내기"가 되므로 중지는 옆 버튼으로 계속 쓸 수 있게
-  const stop = $('#btnStop'); stop.hidden = !(sup && has); if (live) stop.dataset.job = live.id;
+  if (INT.mode !== ic) { INT.mode = ic; if (ic && S.pop?.kind === 'slash') closePop(); renderCmdHint(); } // 커맨드 설명 줄도 모드에 맞춰 다시
+  $('#composer').classList.toggle('ic-mode', ic); $('#composer').classList.toggle('rs-mode', rsv);
+  input.placeholder = ic ? '진행 중인 작업에 수정 지시를 보내세요' : rsv ? '지금 작업이 끝난 뒤 시작할 요청을 쓰세요' : (window.hubInputPh ? window.hubInputPh() : IC_PH); // 폰은 짧게(push.js)
+  $('#hint').textContent = ic ? `Enter 수정 지시${rs ? ' · Ctrl+Enter 예약' : ''} · Shift+Enter 줄바꿈` : rsv ? `Enter 예약${sup ? ' · Ctrl+Enter 바로 끼어들기' : ''} · Shift+Enter 줄바꿈` : IC_HINT;
+  for (const p of ['#pMode', '#pClaude', '#pCodex']) $(p).classList.toggle('ic-off', ic); // 예약은 새 요청이라 분배·모델 설정을 그대로 쓴다
+  // 입력이 있으면 전송 버튼이 "수정 지시/예약 보내기"가 되므로 중지는 옆 버튼으로 계속 쓸 수 있게
+  const stop = $('#btnStop'); stop.hidden = !((ic || rsv) && has); if (live) stop.dataset.job = live.id;
 
   let h = '', cls = '';
-  if (sup) {
-    const ph = icPhase(live); const run = live.tasks.filter((t) => t.status === 'running').length; const wait = live.tasks.filter((t) => t.status === 'pending').length;
-    const parts = [PHASE_KO[ph] || '진행 중', run ? `실행 중 ${run}개` : '', wait ? `대기 ${wait}개` : ''].filter(Boolean).join(' · ');
-    h = `<div class="icb-main">${icon('steer')}<b>수정 지시 모드</b><span class="icb-target">적용 대상: <em>${esc(titleOf(live.sessionId))}</em>의 진행 중 작업 · ${esc(parts)}</span></div>
+  // 방식 고르기(서버가 예약을 지원할 때): 끼어들기 | 예약 — 선택은 이 브라우저에 저장(S.prefs.midJob)
+  const seg = rs ? `<span class="icb-seg" role="group" aria-label="진행 중일 때 보내는 방식"><button type="button" data-ic-pref="intercept" class="${want === 'intercept' ? 'on' : ''}"${sup ? '' : ' disabled title="마무리 중이라 지금은 끼어들 수 없어요"'}>끼어들기</button><button type="button" data-ic-pref="reserve" class="${want === 'reserve' ? 'on' : ''}">예약</button></span>` : '';
+  const partsOf = () => { const ph = icPhase(live); const run = live.tasks.filter((t) => t.status === 'running').length; const wait = live.tasks.filter((t) => t.status === 'pending').length; return [PHASE_KO[ph] || '진행 중', run ? `실행 중 ${run}개` : '', wait ? `대기 ${wait}개` : ''].filter(Boolean).join(' · '); };
+  if (ic) {
+    h = `<div class="icb-main">${icon('steer')}<b>수정 지시 모드</b><span class="icb-target">적용 대상: <em>${esc(titleOf(live.sessionId))}</em>의 진행 중 작업 · ${esc(partsOf())}</span>${seg}</div>
       <div class="icb-sub">보내면 새 요청이 아니라 현재 작업과 대기 중인 작업에 이어서 전달해요<span class="icb-more"> · 모델·분배 설정은 그대로예요</span></div>`;
     cls = 'on';
+  } else if (rsv) {
+    const n = sessionJobs(live.sessionId).filter((j) => j.reserved).length;
+    h = `<div class="icb-main">${icon('clock')}<b>예약 모드</b><span class="icb-target">보내면 <em>${esc(titleOf(live.sessionId))}</em>의 지금 작업(${esc(partsOf())})이 끝난 뒤 새 요청으로 시작해요${n ? ` · 앞에 예약 ${n}개` : ''}</span>${seg}</div>
+      <div class="icb-sub">지금 작업은 건드리지 않아요 · 여러 개 예약하면 순서대로 이어서 해요${sup ? '<span class="icb-more"> · Ctrl+Enter 로 이번만 바로 끼어들기</span>' : ' · 마무리 중이라 지금은 끼어들 수 없어요'}</div>`;
+    cls = 'on rs';
   } else if (live && has) {
     const why = Number(S.caps?.intercept) >= 1 ? '작업을 마무리하는 중이라 지금은 수정 지시를 받을 수 없어요' : '이 허브는 아직 실행 중 수정 지시를 지원하지 않아요(서버 업데이트 필요)';
     h = `<div class="icb-main">${icon('alert')}<span class="icb-target">${why}. 입력은 그대로 두고, 작업이 끝나면 새 요청으로 보낼 수 있어요</span></div>`;
@@ -179,7 +195,10 @@ function renderIcComposer(live, has) {
   if (sig !== INT.barHtml) { INT.barHtml = sig; bar.innerHTML = h; bar.className = cls; bar.hidden = !h; }
   if (h) input.setAttribute('aria-describedby', 'icBar'); else input.removeAttribute('aria-describedby');
 }
-$('#icBar').addEventListener('click', (e) => { if (e.target.closest('[data-ic-dismiss]')) { INT.err = null; renderSend(); input.focus(); } });
+$('#icBar').addEventListener('click', (e) => {
+  if (e.target.closest('[data-ic-dismiss]')) { INT.err = null; renderSend(); input.focus(); }
+  const pref = e.target.closest('[data-ic-pref]'); if (pref && !pref.disabled) { S.prefs.midJob = pref.dataset.icPref; savePrefs(); renderSend(); input.focus(); }
+});
 $('#btnStop').innerHTML = icon('stop');
 $('#btnStop').addEventListener('click', () => { const id = $('#btnStop').dataset.job; if (id) stopJob(id); });
 

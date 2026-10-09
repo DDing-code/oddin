@@ -124,7 +124,7 @@ function currentCwd() { const s = S.sessions.get(S.current); return s ? (s.workd
 function sessionJobs(sid) { return [...S.jobs.values()].filter((j) => j.sessionId === sid).sort((a, b) => a.createdAt.localeCompare(b.createdAt)); }
 // 진행 중 = 실행 상태이거나, 목표 판정·라운드 전환처럼 서버가 수정 지시를 받는 구간(canIntercept)
 const isActive = (j) => LIVE.has(j.status) || j.canIntercept === true;
-function liveJob(sid = S.current) { return sid ? sessionJobs(sid).filter(isActive).at(-1) || null : null; }
+function liveJob(sid = S.current) { return sid ? sessionJobs(sid).filter((j) => isActive(j) && !j.reserved).at(-1) || null : null; } // 예약(시작 전)은 진행 중으로 치지 않는다
 function renderTop() {
   const s = S.sessions.get(S.current);
   $('#title').textContent = s ? s.title : '새 세션';
@@ -188,7 +188,7 @@ function jobHtml(j) {
   h += `<div class="chips"><span class="tag">${icon('split')}${MODES[j.mode]?.label || j.mode}</span>${uses.map((n) => `<span class="tag ${n}">${n === 'claude' ? 'Claude' : 'Codex'} · ${esc(prefLabel(n, set[n] || {}))}</span>`).join('')}${j.agent ? `<span class="tag">${icon('bot')}@${esc(j.agent)} ${esc(agentLabel(j.agent))}</span>` : ''}</div>${(j.notes || []).length ? `<div class="auto-notes">${j.notes.map((n) => `<div>${icon('scale')}<span>${esc(n)}</span></div>`).join('')}</div>` : ''}`;
 
   if (j.mode === 'auto') {
-    if (j.status === 'planning' || (j.status === 'queued')) {
+    if ((j.status === 'planning' || j.status === 'queued') && !j.reserved) {
       h += `<div class="working"><span class="spinner"></span><span>계획을 세우는 중${j.planner ? '' : ''} · <span class="live-dur" data-from="${j.startedAt || j.createdAt}"></span></span></div>`;
     } else if (j.summary) {
       h += `<div class="plan"><div class="lbl">${icon(j.fast ? 'bolt' : 'sparkle')}${j.fast ? '바로 처리' : '계획'}${j.planner ? ` · ${j.planner === 'claude' ? 'Claude' : 'Codex'}가 세움` : ''}</div>${esc(j.summary)}</div>`;
@@ -219,7 +219,7 @@ function jobHtml(j) {
   const retry = j.tasks.filter((t) => ['failed', 'cancelled', 'interrupted', 'skipped'].includes(t.status) && !live);
   const cost = j.tasks.reduce((a, t) => a + (t.costUsd || 0), 0);
   const stateCls = j.status === 'done' ? 'c-ok' : j.status === 'failed' ? 'c-err' : live ? '' : 'c-warn';
-  h += `<div class="afoot">${live ? `<span class="state"><span class="spinner"></span>${ST_KO[j.status]} · <span class="live-dur" data-from="${j.startedAt || j.createdAt}"></span></span><button class="btn danger" data-cancel="${j.id}">${icon('stop')}중지</button>`
+  h += `<div class="afoot">${live ? `<span class="state">${j.reserved ? `${icon('clock')}예약됨 · 앞 요청이 끝나면 시작해요` : `<span class="spinner"></span>${ST_KO[j.status]} · <span class="live-dur" data-from="${j.startedAt || j.createdAt}"></span>`}</span><button class="btn danger" data-cancel="${j.id}">${icon(j.reserved ? 'x' : 'stop')}${j.reserved ? '예약 취소' : '중지'}</button>`
     : `<span class="state ${stateCls}">${j.status === 'done' ? icon('check') : icon('alert')}${ST_KO[j.status] || j.status}</span><span class="sep">·</span><span>${dur(j.startedAt || j.createdAt, j.finishedAt)}</span>${cost ? `<span class="sep">·</span><span title="구독 로그인이라 실제 과금 아님 (API 환산)">≈ $${cost.toFixed(2)}</span>` : ''}`}
     ${retry.map((t) => `<button class="btn" data-retry="${j.id}/${t.id}">${icon('retry')}${esc(shortTitle(t))} 다시</button>`).join('')}
     ${!live ? `<button class="btn" data-reuse="${j.id}" title="이 요청을 입력창에 다시 넣기">${icon('reuse')}다시 보내기</button>` : ''}</div>`;
@@ -350,11 +350,13 @@ function renderBarPills() {
 function renderSend() {
   const b = $('#btnSend'); const live = liveJob();
   const has = !!($('#in').value.trim() || S.atts.some((a) => a.state === 'ok'));
-  const ic = live && has && icSupported(live);
+  const want = live && has ? icWant(live) : null; // 진행 중일 때 보내는 방식 (intercept.js)
+  const ic = want === 'intercept' && icSupported(live), rs = want === 'reserve';
   const sending = live && INT.inflight.has(live.id);
-  b.classList.toggle('ic', !!ic); b.removeAttribute('aria-busy');
+  b.classList.toggle('ic', !!ic); b.classList.toggle('rs', !!rs); b.removeAttribute('aria-busy');
   if (ic && sending) { b.innerHTML = '<span class="spinner"></span>'; b.title = '수정 지시를 보내는 중'; b.disabled = true; b.setAttribute('aria-busy', 'true'); delete b.dataset.stop; }
   else if (ic) { b.innerHTML = icon('up'); b.title = '수정 지시 보내기 (Enter)'; b.disabled = false; delete b.dataset.stop; }
+  else if (rs) { b.innerHTML = icon('clock'); b.title = '예약 보내기 (Enter) · 지금 작업이 끝난 뒤 새 요청으로 시작'; b.disabled = !!S.submitting; delete b.dataset.stop; }
   else if (live) { b.innerHTML = icon('stop'); b.title = '실행 중인 작업 중지'; b.disabled = false; b.dataset.stop = live.id; }
   else { b.innerHTML = icon('up'); b.title = '보내기 (Enter)'; b.disabled = !has; delete b.dataset.stop; }
   b.setAttribute('aria-label', b.title);
@@ -475,7 +477,7 @@ input.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); return closePop(); }
     if (e.key === 'Enter' && S.pop.kbd) { e.preventDefault(); return popPick(); }
   }
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); return submit(); }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); return submit({ flip: e.ctrlKey || e.metaKey }); } // Ctrl+Enter: 진행 중일 때 끼어들기↔예약을 이번만 반대로
   if (e.key === 'ArrowUp' && !input.value && S.history.length) { e.preventDefault(); S.histIdx = Math.min(S.histIdx + 1, S.history.length - 1); return setInput(S.history[S.history.length - 1 - S.histIdx]); }
 });
 document.addEventListener('keydown', (e) => {
@@ -483,16 +485,18 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); newSession(currentCwd()); }
 });
 
-async function submit() {
+async function submit({ flip = false } = {}) {
   const text = input.value.trim();
   if (S.atts.some((a) => a.state === 'up')) return toast('이미지 업로드가 끝나면 보낼 수 있어요');
   const atts = S.atts.filter((a) => a.state === 'ok');
   if (!text && !atts.length) return;
   const live = liveJob();
-  if (live) return icSubmit(live); // 진행 중이면 새 요청이 아니라 현재 작업에 수정 지시
+  // 진행 중이면 방식(intercept.js icWant)에 따라: 끼어들기 = 현재 작업에 수정 지시, 예약 = 끝난 뒤 시작할 새 요청(아래로)
+  if (live && icWant(live, flip) === 'intercept') return icSubmit(live);
   if (S.submitting) return; // 앞선 보내기가 아직 응답을 기다리는 중 (중복 Enter·클릭)
   const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission, pace: S.prefs.pace === 'speed' ? 'speed' : 'quality' }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
   if (S.current) body.sessionId = S.current; else { body.cwd = currentCwd(); if (S.draftGroup) body.group = S.draftGroup; }
+  if (live) body.reserve = true;
   // 실행 PC(machines.js): 새 세션을 다른 PC에서 시작하면 그 PC가 작업한다(다른 PC 세션은 sessionId 로 그 PC에 이어 감)
   const machine = !S.current && typeof window.hubMachine === 'function' ? window.hubMachine() : null;
   if (machine) body.machine = machine;
