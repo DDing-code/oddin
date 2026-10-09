@@ -514,6 +514,7 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 .goal-sub span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .goal-sub span:first-child,.goal-sub span:nth-child(2){flex:none}
 .gbadge{font-weight:600;color:var(--fg2)}
+.goal-acts{display:flex;gap:6px;flex:none}
 .goal-acts .btn{padding:5px 10px;font-size:12.5px}
 .goal-card .card-t{cursor:default}
 

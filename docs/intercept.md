@@ -14,8 +14,9 @@
 - **Ctrl+Enter**는 이번 한 번만 반대 방식으로 보냅니다(끼어들기 모드에서 예약, 예약 모드에서 끼어들기).
 - 예약한 요청은 앞 작업이 **중지·실패로 끝나도** 시작합니다. 허브가 재시작돼 앞 작업이 "중단됨"이 돼도 부팅 뒤 시작합니다. "지금 바꾸기"로 이어 하는 작업이 있으면 그 작업이 끝난 뒤에 시작합니다.
 - 예약은 카드의 **예약 취소**로 지웁니다. 취소한 예약 뒤의 예약은 건너뛰고 이어집니다.
+- 예약 카드의 **지금 보내기**(2026-10-10 "예약 메세지 지금 전송"): 기다리지 않고 그 글(입력한 원문·첨부 그대로)을 지금 작업에 **끼어들기(수정 지시)**로 보내고 예약 카드는 지웁니다. 그 사이 앞 작업이 끝나 진행 중인 작업이 없으면 그 예약을 다른 예약보다 먼저 바로 시작합니다. 지금 작업이 끼어들 수 없는 때면 알려 주고 예약은 그대로 둡니다. `/스킬`·`@에이전트`로 예약한 것도 입력한 글 그대로 수정 지시가 되고, 분배·모델은 지금 작업 것을 따릅니다.
 - 작업을 마무리하는 중(보고서 쓰기 등)이라 끼어들 수 없을 때는 자동으로 예약됩니다. `/goal`(목표)은 예약할 수 없습니다 — 끝난 뒤 보내세요.
-- 서버: `POST /api/jobs { …, reserve: true }` → 작업 `reserved:true`, `after:<앞 작업 id>`, `status:'queued'`. 시작은 `jobs.startReserved(sessionId)`(앞 작업 `finish`·예약 취소·`resumeAfterRestart` 가 부름). `/api/status` 의 `capabilities.reserve`. 시험 `tests/reserve.test.mjs`
+- 서버: `POST /api/jobs { …, reserve: true }` → 작업 `reserved:true`, `after:<앞 작업 id>`, `status:'queued'`. 시작은 `jobs.startReserved(sessionId, pickId)`(앞 작업 `finish`·예약 취소·`resumeAfterRestart` 가 부름, 지금 보내기는 `pickId`로 그 예약부터). 지금 보내기 `POST /api/jobs/:id/send-now` → `jobs.sendReservedNow`(`{ mode: 'intercept' | 'started' }`). `/api/status` 의 `capabilities.reserve`. 시험 `tests/reserve.test.mjs`
 
 > **먼저 알아 둘 것**
 > - 이 기능은 **허브 서버를 다시 시작해야 켜집니다**(아래 "적용하기"). 서버를 다시 시작하기 전에는 입력창에 "이 허브는 아직 실행 중 수정 지시를 지원하지 않아요"가 뜨고, 아무것도 보내지 않습니다.

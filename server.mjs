@@ -543,7 +543,7 @@ const server = http.createServer(async (req, res) => {
     }
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/memory\/undo$/)) && req.method === 'POST') return json(res, jobs.undoCuration(r[1]));
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/memory\/retry$/)) && req.method === 'POST') return json(res, jobs.recurate(r[1]));
-    if ((r = m(/^\/api\/sessions\/([\w-]+)\/goal\/(stop|resume)$/)) && req.method === 'POST') return json(res, r[2] === 'stop' ? jobs.stopGoal(r[1]) : await jobs.resumeGoal(r[1]));
+    if ((r = m(/^\/api\/sessions\/([\w-]+)\/goal\/(stop|resume|pause)$/)) && req.method === 'POST') return json(res, r[2] === 'stop' ? jobs.stopGoal(r[1]) : r[2] === 'pause' ? jobs.pauseGoal(r[1]) : await jobs.resumeGoal(r[1]));
     // ---- 작업 ----
     if (p === '/api/jobs' && req.method === 'GET') return json(res, jobs.list().map(publicJob));
     if (p === '/api/jobs' && req.method === 'POST') {
@@ -562,6 +562,8 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST') { const result = jobs.acceptIntercept(r[1], await readBody(req)); return json(res, result, result.duplicate ? 200 : 202); }
     }
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/cancel$/)) && req.method === 'POST') return json(res, jobs.cancel(r[1]));
+    if ((r = m(/^\/api\/jobs\/([\w-]+)\/send-now$/)) && req.method === 'POST') { await readBody(req); return json(res, jobs.sendReservedNow(r[1])); } // 예약한 요청 지금 보내기
+
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/tasks\/([\w-]+)\/retry$/)) && req.method === 'POST') return json(res, jobs.retryTask(r[1], r[2]));
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/log\/([\w-]+)$/))) return json(res, jobs.taskLog(r[1], r[2], url.searchParams.has('limit') ? { limit: url.searchParams.get('limit'), before: url.searchParams.get('before') } : null));
     // ---- 이미지 첨부 ----

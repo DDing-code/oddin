@@ -81,13 +81,13 @@ function renderGoalBar() {
   const s = S.sessions.get(S.current); const el = $('#goalBar'); const g = s?.goal;
   if (!g) { el.hidden = true; el.innerHTML = ''; return; }
   const pct = Math.max(0, Math.min(100, Number(g.progress) || 0));
-  const live = g.status === 'active';
-  el.hidden = false; el.className = `goal-${g.status}`;
+  const live = g.status === 'active', pausing = live && !!g.pauseRequested; // 일시정지 예정: 이번 라운드가 끝나면 멈춤
+  el.hidden = false; el.className = `goal-${pausing ? 'paused' : g.status}`;
   el.innerHTML = `<div class="goal-in"><span class="goal-ic">${live ? '<span class="spin-xs"></span>' : icon('target')}</span>
     <div class="goal-main"><div class="goal-t"><b>목표</b><span title="${esc(g.text)}">${esc(g.text)}</span></div>
-      <div class="goal-sub"><span class="gbadge">${GOAL_KO[g.status] || g.status}</span><span>${g.round || 0}/${g.maxRounds}라운드</span>${g.remaining && g.status !== 'done' ? `<span title="${esc(g.remaining)}">남은 일: ${esc(g.remaining)}</span>` : ''}${g.reason && g.status !== 'active' ? `<span title="${esc(g.reason)}">${esc(g.reason)}</span>` : ''}</div>
+      <div class="goal-sub"><span class="gbadge">${pausing ? '일시정지 예정' : GOAL_KO[g.status] || g.status}</span><span>${g.round || 0}/${g.maxRounds}라운드</span>${pausing ? '<span>이번 라운드와 달성 판정까지 하고 멈춰요</span>' : ''}${g.remaining && g.status !== 'done' ? `<span title="${esc(g.remaining)}">남은 일: ${esc(g.remaining)}</span>` : ''}${g.reason && g.status !== 'active' ? `<span title="${esc(g.reason)}">${esc(g.reason)}</span>` : ''}</div>
       <div class="prog"><i style="width:${pct}%"></i></div></div>
-    <div class="goal-acts">${live ? `<button class="btn danger" data-goal="stop">${icon('stop')}중지</button>` : ['stopped', 'paused', 'failed'].includes(g.status) ? `<button class="btn" data-goal="resume">${icon('retry')}이어서</button>` : ''}</div></div>`;
+    <div class="goal-acts">${live ? `${pausing ? `<button class="btn" data-goal="resume" title="일시정지를 거두고 다음 라운드도 이어서 해요">${icon('retry')}일시정지 취소</button>` : `<button class="btn" data-goal="pause" title="지금 라운드는 끝까지 하고, 다음 라운드를 시작하지 않고 멈춰요. &quot;이어서&quot;로 계속해요">${icon('pause')}일시정지</button>`}<button class="btn danger" data-goal="stop" title="지금 라운드도 바로 중지해요">${icon('stop')}중지</button>` : ['stopped', 'paused', 'failed'].includes(g.status) ? `<button class="btn" data-goal="resume">${icon('retry')}이어서</button>` : ''}</div></div>`;
 }
 $('#goalBar').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-goal]'); if (!b || !S.current) return;

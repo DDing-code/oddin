@@ -20,6 +20,7 @@ const IC = {
   clip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
   up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
   stop: '<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/>',
+  pause: '<rect x="7" y="6" width="3.5" height="12" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="6" width="3.5" height="12" rx="1" fill="currentColor" stroke="none"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
   right: '<path d="m9 18 6-6-6-6"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
@@ -246,7 +247,7 @@ function jobHtml(j) {
   const retry = j.tasks.filter((t) => ['failed', 'cancelled', 'interrupted', 'skipped'].includes(t.status) && !live);
   const cost = j.tasks.reduce((a, t) => a + (t.costUsd || 0), 0);
   const stateCls = j.status === 'done' ? 'c-ok' : j.status === 'failed' ? 'c-err' : live ? '' : 'c-warn';
-  h += `<div class="afoot">${live ? `<span class="state">${j.reserved ? `${icon('clock')}예약됨 · 앞 요청이 끝나면 시작해요` : `<span class="spinner"></span>${ST_KO[j.status]} · <span class="live-dur" data-from="${j.startedAt || j.createdAt}"></span>`}</span><button class="btn danger" data-cancel="${j.id}">${icon(j.reserved ? 'x' : 'stop')}${j.reserved ? '예약 취소' : '중지'}</button>`
+  h += `<div class="afoot">${live ? `<span class="state">${j.reserved ? `${icon('clock')}예약됨 · 앞 요청이 끝나면 시작해요` : `<span class="spinner"></span>${ST_KO[j.status]} · <span class="live-dur" data-from="${j.startedAt || j.createdAt}"></span>`}</span>${j.reserved ? `<button class="btn" data-send-now="${j.id}" title="기다리지 않고 지금 작업에 끼어들기(수정 지시)로 바로 보내요. 지금 작업이 없으면 바로 시작해요">${icon('steer')}지금 보내기</button>` : ''}<button class="btn danger" data-cancel="${j.id}">${icon(j.reserved ? 'x' : 'stop')}${j.reserved ? '예약 취소' : '중지'}</button>`
     : `<span class="state ${stateCls}">${j.status === 'done' ? icon('check') : icon('alert')}${ST_KO[j.status] || j.status}</span><span class="sep">·</span><span>${dur(j.startedAt || j.createdAt, j.finishedAt)}</span>${cost ? `<span class="sep">·</span><span title="구독 로그인이라 실제 과금 아님 (API 환산)">≈ $${cost.toFixed(2)}</span>` : ''}`}
     ${retry.map((t) => `<button class="btn" data-retry="${j.id}/${t.id}">${icon('retry')}${esc(shortTitle(t))} 다시</button>`).join('')}
     ${!live ? `<button class="btn" data-reuse="${j.id}" title="이 요청을 입력창에 다시 넣기">${icon('reuse')}다시 보내기</button>` : ''}</div>`;
@@ -349,6 +350,7 @@ $('#thread').addEventListener('click', async (e) => {
   const hf = e.target.closest('[data-hero-folder]'); if (hf) { e.stopPropagation(); return openFolderPicker(hf); }
   const tg = e.target.closest('[data-toggle]'); if (tg) { const k = tg.dataset.toggle; S.open.has(k) ? S.open.delete(k) : S.open.add(k); return rerenderJob(k.split('/')[0]); }
   const c = e.target.closest('[data-cancel]'); if (c) return stopJob(c.dataset.cancel);
+  const sn = e.target.closest('[data-send-now]'); if (sn) return sendReservedNow(sn.dataset.sendNow, sn);
   const it = e.target.closest('[data-ic-toggle]'); if (it) { const k = `ic:${it.dataset.icToggle}`; S.open.has(k) ? S.open.delete(k) : S.open.add(k); return rerenderJob(it.closest('.turn').id.slice(4)); }
   const r = e.target.closest('[data-retry]'); if (r) { const [jid, tid] = r.dataset.retry.split('/'); return api(`/api/jobs/${jid}/tasks/${tid}/retry`, { method: 'POST' }).catch((x) => toast(x.message, true)); }
   const u = e.target.closest('[data-reuse]'); if (u) { const j = S.jobs.get(u.dataset.reuse); if (j) setInput(j.goal); }
@@ -390,6 +392,14 @@ function renderSend() {
   renderIcComposer(live, has);
 }
 /** 작업 중지. 목표 판정·라운드 전환 구간(작업은 이미 끝남)이면 목표를 중지한다 */
+/** 예약한 요청 지금 보내기: 지금 작업에 끼어들기로 넘기거나(예약 카드는 사라짐), 지금 작업이 없으면 바로 시작 */
+async function sendReservedNow(id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api(`/api/jobs/${id}/send-now`, { method: 'POST', body: '{}' });
+    toast(r.mode === 'intercept' ? '예약한 요청을 지금 작업에 수정 지시로 보냈어요' : '예약한 요청을 바로 시작했어요');
+  } catch (x) { toast(/없는 API/.test(x.message) ? 'ODDIN 서버가 아직 새 버전이 아니에요. 재시작된 뒤 다시 눌러 주세요' : x.message, true); if (btn) btn.disabled = false; }
+}
 function stopJob(id) {
   const j = S.jobs.get(id);
   if (j && !LIVE.has(j.status) && S.sessions.get(j.sessionId)?.goal?.status === 'active') return api(`/api/sessions/${j.sessionId}/goal/stop`, { method: 'POST' }).catch((x) => toast(x.message, true));

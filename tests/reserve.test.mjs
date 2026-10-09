@@ -88,3 +88,33 @@ test('재시작: 예약은 중단 처리하지 않고, 이어 하는 작업이 �
 });
 
 test('서버 기능 표시에 reserve 가 있다', () => { assert.equal(INTERCEPT_CAPABILITIES.reserve, 1); });
+
+// 예약 메시지 지금 보내기(2026-10-10 "예약 메세지 지금 전송 기능도 넣어줘")
+test('지금 보내기: 진행 중 작업이 있으면 그 작업에 끼어들기(수정 지시)로 넘기고 예약 카드는 지운다', async (t) => {
+  const { m, root, started } = fresh(t);
+  const a = m.create({ goal: '첫', cwd: root }); await tick();
+  const b = m.create({ goal: '둘째 요청: 색을 파랗게', sessionId: a.sessionId, reserve: true });
+  const c = m.create({ goal: '셋', sessionId: a.sessionId, reserve: true });
+  const r = m.sendReservedNow(b.id);
+  assert.equal(r.mode, 'intercept'); assert.equal(r.target, a.id);
+  assert.equal(m.jobs.has(b.id), false, '예약 카드는 지운다');
+  assert.ok(!m.sessions.get(a.sessionId).jobIds.includes(b.id));
+  const ins = m.jobs.get(a.id).intercepts;
+  assert.equal(ins.length, 1); assert.equal(ins[0].text, '둘째 요청: 색을 파랗게');
+  assert.ok(isReserved(m, c.id), '다른 예약은 그대로 기다린다');
+  assert.deepEqual(started, [a.id], '새 작업을 시작하지 않는다');
+  assert.throws(() => m.sendReservedNow(a.id), /예약 중인 요청이 아니에요/);
+  assert.throws(() => m.sendReservedNow('없는-작업'), /작업 없음/);
+});
+
+test('지금 보내기: 진행 중 작업이 없으면 그 예약을 먼저(앞 예약보다 먼저) 바로 시작한다', async (t) => {
+  const { m, root, started } = fresh(t);
+  const a = m.create({ goal: '첫', cwd: root }); await tick();
+  const b = m.create({ goal: '둘', sessionId: a.sessionId, reserve: true });
+  const c = m.create({ goal: '셋', sessionId: a.sessionId, reserve: true });
+  m.jobs.get(a.id).status = 'done'; // 끝났지만 아직 예약을 이어 시작하기 전
+  const r = m.sendReservedNow(c.id); await tick();
+  assert.equal(r.mode, 'started'); assert.equal(r.job.id, c.id);
+  assert.deepEqual(started, [a.id, c.id], '고른 예약부터 시작');
+  assert.ok(isReserved(m, b.id), '앞 예약은 고른 것이 끝난 뒤');
+});
