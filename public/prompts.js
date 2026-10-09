@@ -34,6 +34,7 @@
   const ACT_KO = { allow: '허용함', allow_session: '이 작업 동안 허용함', deny: '거절함', approve: '승인함', revise: '수정 요청함', reject: '거절함' };
   const TOOL_KO = { claude: 'Claude', codex: 'Codex' };
   const P = { map: new Map(), loaded: false, busy: new Set(), toolOpen: new Set(), toolFull: new Set(), planOpen: new Set(), dockSig: '', seen: new Set() };
+  const PANE = document.documentElement.classList.contains('embed-pane'); // 나눈 칸 안(split.js)
 
   /* ---------- 공용 ---------- */
   const byCreated = (a, b) => String(a.createdAt).localeCompare(String(b.createdAt));
@@ -105,7 +106,8 @@
 
   function renderDock() {
     const cur = pendingList().filter((p) => S.current && sessionOf(p) === S.current);
-    const others = pendingList().filter((p) => sessionOf(p) !== S.current);
+    // 나눈 칸 안에서는 다른 세션의 대기 안내를 띄우지 않는다(가운데 창에 한 번만 — 칸마다 겹쳤고, 눌러도 칸의 세션이 바뀌었다)
+    const others = PANE ? [] : pendingList().filter((p) => sessionOf(p) !== S.current);
     const first = others[0]; const osid = first ? sessionOf(first) : null; const otitle = osid ? S.sessions.get(osid)?.title || '' : '';
     const sig = `${S.current}|${cur.map((p) => p.id).join(',')}|${others.map((p) => p.id).join(',')}|${osid}|${otitle}`;
     if (sig === P.dockSig) return;
@@ -303,7 +305,7 @@
   function notifyNew(p) {
     const sid = sessionOf(p); const s = S.sessions.get(sid); const where = s?.title || '작업';
     live(`승인이 필요해요: ${where} — ${headline(p)}`);
-    if (sid !== S.current) toast(`${where} — ${headline(p)} · 사이드바에서 열어 답해 주세요`);
+    if (sid !== S.current && !PANE) toast(`${where} — ${headline(p)} · 사이드바에서 열어 답해 주세요`);
     const D = window.hubDesktop; if (D?.isDesktop && typeof D.notify === 'function') { try { D.notify({ title: '승인이 필요해요', body: `${where} — ${headline(p)}`, sessionId: sid }); } catch {} }
   }
   function afterChange(p) {

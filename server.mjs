@@ -5,11 +5,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { URL } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { ROOT, DATA_DIR, readJson, readText } from './lib/util.mjs';
 import { JobManager, publicJob } from './lib/jobs.mjs';
-import { clientEvent, writeSse } from './lib/events.mjs';
+import { clientEvent, writeSse, sessionList } from './lib/events.mjs';
 import { INTERCEPT_CAPABILITIES } from './lib/intercepts.mjs';
 import { sessionToolsRoute, SESSION_CAPABILITIES } from './lib/session-tools.mjs';
 import { PERMISSIONS, permissionSetting } from './lib/prompts.mjs';
@@ -85,7 +85,7 @@ function broadcast(ev) {
   try { push.onEvent(ev, { titleOf: pushTitle, jobOf: (id) => jobs.jobs.get(id) || null }); } catch {}
   const packets = new Map();
   for (const [res, req] of clients) if (checkClient(res, req)) {
-    const key = req.hubCompact ? req.hubSession || '' : '*';
+    const key = req.hubCompact ? (req.hubSession || []).join(',') : '*';
     if (!packets.has(key)) {
       const selected = req.hubCompact ? clientEvent(ev, req.hubSession, (id) => jobs.get(id)?.sessionId || fed?.jobs().find((j) => j.id === id)?.sessionId) : ev;
       packets.set(key, selected ? `data: ${JSON.stringify(selected)}\n\n` : null);
@@ -114,7 +114,7 @@ const knownPeerIds = () => peers.list().map((x) => x.remoteId).filter(Boolean);
 // 다른 PC 세션·작업(rm- id)에 대한 /api 요청은 그 PC로 넘긴다. 단 이 화면의 실시간 연결(/api/events?session=rm-…)은 이 PC 것이다 —
 // 넘기면 그 PC의 세션 목록(다른 id)이 와서 화면이 지금 세션을 잃고 새 세션으로 돌아갔다(2026-10-07 '세션을 누르면 0.1초 만에 새 세션 창으로')
 // 세션 옮기기(/api/sessions/rm-…/move)도 이 PC가 처리한다(그 PC 세션을 이 PC로 가져오는 일)
-const toPeer = (p, url) => !!(fed && p.startsWith('/api/') && p !== '/api/events' && !/^\/api\/sessions\/[\w-]+\/move$/.test(p) && fed.remoteOf(p + url.search));
+const toPeer = (p, url) => !!(fed && p.startsWith('/api/') && p !== '/api/events' && p !== '/api/events/sessions' && !/^\/api\/sessions\/[\w-]+\/move$/.test(p) && fed.remoteOf(p + url.search));
 runningCommit(ROOT); // 켜질 때의 버전을 기억한다(업데이트 뒤 재시작 전과 구분)
 // 구글 드라이브 ODDIN 폴더(공유 기억 사본·자산): 있으면 공유 기억을 드라이브로 맞추고 공유 폴더를 드라이브 자산으로 올린다 (lib/drive-hub.mjs)
 const driveHub = new DriveHub({ driveRoot: process.env.HUB_DRIVE_ROOT || null });
@@ -386,10 +386,25 @@ const server = http.createServer(async (req, res) => {
     // ---- 실시간 이벤트 ----
     if (p === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS });
-      req.hubCompact = url.searchParams.get('compact') === '1'; req.hubSession = url.searchParams.get('session') || null;
-      const hello = { type: 'hello', sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])], groups: groups.list() };
+      // session = "a" 또는 "a,b,c"(나란히 보기: 가운데+칸 세션을 연결 하나로). stream = 이 연결의 번호 — /api/events/sessions 로 거르기 목록만 바꿀 때 쓴다
+      req.hubCompact = url.searchParams.get('compact') === '1'; req.hubSession = sessionList(url.searchParams.get('session'));
+      req.hubStream = randomBytes(16).toString('hex');
+      const hello = { type: 'hello', stream: req.hubStream, sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])], groups: groups.list() };
       writeSse(res, `data: ${JSON.stringify(req.hubCompact ? clientEvent(hello, req.hubSession) : hello)}\n\n`);
       clients.set(res, req); res.on('close', () => clients.delete(res)); return;
+    }
+    // 나눈 칸(?embed=1 iframe)은 자기 연결을 열지 않고 가운데 창의 연결로 이벤트를 받는다(브라우저의 같은 주소 동시 연결 6개 한도) — 처음 상태만 한 번 받아 간다
+    if (p === '/api/events/snapshot' && req.method === 'GET') {
+      const hello = { type: 'hello', sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])], groups: groups.list() };
+      return json(res, clientEvent(hello, sessionList(url.searchParams.get('session'))));
+    }
+    // 열린 실시간 연결의 세션 거르기 목록 바꾸기(나란히 보기에서 칸을 열고 닫을 때 다시 연결하지 않게). 연결 번호는 그 연결의 hello 로만 받는다
+    if (p === '/api/events/sessions' && req.method === 'POST') {
+      const b = await readBody(req);
+      const hit = [...clients.values()].find((r) => r.hubStream && r.hubStream === String(b.stream || ''));
+      if (!hit) return fail(res, '실시간 연결을 찾지 못했어요', 404);
+      hit.hubSession = sessionList(b.sessions);
+      return json(res, { sessions: hit.hubSession });
     }
     // ---- 상태·선택지·사용량 ----
     if (p === '/api/prompts' && req.method === 'GET') return json(res, jobs.prompts.list({ status: url.searchParams.get('status') === 'all' ? 'all' : 'pending', jobId: url.searchParams.get('jobId') || undefined }));

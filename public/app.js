@@ -75,8 +75,35 @@ const S = {
   pop: null, history: [], histIdx: -1,
   prefs: loadPrefs(),
 };
-function loadPrefs() { let p = {}; try { p = JSON.parse(localStorage.getItem('hub.prefs') || '{}'); } catch {} return { mode: 'auto', planner: 'auto', claude: null, codex: null, cwd: null, collapsed: false, ...p }; }
-function savePrefs() { try { localStorage.setItem('hub.prefs', JSON.stringify(S.prefs)); } catch {} }
+// 설정은 창(가운데·나눈 칸·새 창·다른 탭)마다 한 벌씩 들고 있다. 예전엔 통째로 저장해 다른 창에서 바꾼 값이 되돌아갔다(2026-10-10 나눠 보기 점검)
+// → 이 창에서 바꾼 항목만 저장된 값에 합쳐 쓰고, 다른 창이 바꾸면 그 항목을 받아 온다. 나눈 칸·새 창은 화면 배치 항목을 저장하지 않는다
+const PREF_LOCAL = new Set(['cwd', 'collapsed', 'insp', 'inspTab', 'lw', 'rw']);
+function loadPrefs() {
+  let p = {}; try { p = JSON.parse(localStorage.getItem('hub.prefs') || '{}') || {}; } catch {}
+  const target = { mode: 'auto', planner: 'auto', claude: null, codex: null, cwd: null, collapsed: false, ...p };
+  const dirty = (loadPrefs.dirty ||= new Set()); loadPrefs.target = target;
+  return new Proxy(target, { set(t, k, v) { t[k] = v; dirty.add(k); return true; }, deleteProperty(t, k) { delete t[k]; dirty.add(k); return true; } });
+}
+function savePrefs() {
+  const dirty = loadPrefs.dirty; if (!dirty?.size) return;
+  const embed = document.documentElement.classList.contains('embed');
+  try {
+    let stored = {}; try { stored = JSON.parse(localStorage.getItem('hub.prefs') || '{}') || {}; } catch {}
+    for (const k of dirty) { if (embed && PREF_LOCAL.has(k)) continue; if (k in loadPrefs.target) stored[k] = loadPrefs.target[k]; else delete stored[k]; }
+    localStorage.setItem('hub.prefs', JSON.stringify(stored));
+  } catch {}
+  dirty.clear();
+}
+window.addEventListener('storage', (e) => {
+  if (e.key !== 'hub.prefs' || !e.newValue) return;
+  let v = {}; try { v = JSON.parse(e.newValue) || {}; } catch { return; }
+  let changed = false;
+  for (const [k, val] of Object.entries(v)) {
+    if (PREF_LOCAL.has(k) || loadPrefs.dirty?.has(k)) continue; // 화면 배치는 창마다 따로, 이 창에서 막 바꾼 값은 지킨다
+    if (JSON.stringify(loadPrefs.target[k]) !== JSON.stringify(val)) { loadPrefs.target[k] = val; changed = true; }
+  }
+  if (changed) { try { renderBarPills(); renderSend(); } catch {} }
+});
 async function api(url, opt = {}) {
   const r = await fetch(url, { ...opt, headers: { 'Content-Type': 'application/json', ...(opt.headers || {}) } });
   const j = await r.json().catch(() => ({}));
@@ -852,13 +879,57 @@ function md(src, base = '') {
 
 /* ================= 실시간 이벤트 ================= */
 let eventStream = null;
+// 나눠 보기(2026-10-10 "화면분할 찐빠"): 칸마다 실시간 연결을 따로 열면 브라우저의 같은 주소 동시 연결 한도(6개)를 금방 채워
+// 영상·미리보기·API 요청이 멈췄다 → 가운데 창이 연결 하나로 가운데+칸 세션을 함께 받고(session=a,b,c) 칸에 그대로 넘겨 준다(split.js hubForward).
+// 칸(html.embed-pane)은 가운데 창(parent.hubSplit)에 붙어 처음 상태만 /api/events/snapshot 으로 받는다. 가운데 창이 없으면 예전처럼 자기 연결.
+const eventSessions = () => [...new Set([S.current, ...(window.hubSplitSessions?.() || [])].filter(Boolean))].sort();
+function paneHost() { try { return document.documentElement.classList.contains('embed-pane') && parent !== window && parent.hubSplit?.attach ? parent.hubSplit : null; } catch { return null; } }
+/** 가운데 창: 열린 연결의 거르기 목록을 지금 칸 목록에 맞춘다(다시 연결하지 않음). 실패하면 다시 연결 */
+function updateEventFilter() {
+  if (paneHost()) return Promise.resolve();
+  const want = eventSessions().join(',');
+  if (!S.stream || !eventStream || eventStream.readyState === 2) return Promise.resolve(); // 연결 중이면 hello 를 받은 뒤 맞춘다
+  if (want === S.streamSessions) return Promise.resolve();
+  S.streamSessions = want;
+  return api('/api/events/sessions', { method: 'POST', body: JSON.stringify({ stream: S.stream, sessions: want }) }).catch(() => connect());
+}
+let paneSeq = 0;
+async function paneConnect(host) {
+  const seq = ++paneSeq, sid = S.current;
+  try { await host.attach(window, sid); } catch {}
+  let hello = null;
+  try { hello = await api(`/api/events/snapshot?compact=1${sid ? '&session=' + encodeURIComponent(sid) : ''}`); } catch {}
+  if (seq !== paneSeq) return;
+  if (!hello) { setTimeout(() => { if (seq === paneSeq) connect(); }, 2000); return; }
+  onHubEvent(hello);
+}
+window.hubPaneEvent = (raw) => { let ev; try { ev = JSON.parse(raw); } catch { return; } if (ev.type !== 'hello') onHubEvent(ev); };
+window.hubPaneResync = () => { const h = paneHost(); if (h) paneConnect(h); };
 function connect() {
-  eventStream?.close();
-  const es = new EventSource(`/api/events?compact=1${S.current ? '&session=' + encodeURIComponent(S.current) : ''}`);
+  eventStream?.close(); eventStream = null;
+  const host = paneHost();
+  if (host) return paneConnect(host);
+  const list = eventSessions();
+  S.stream = null; S.streamSessions = list.join(',');
+  const es = new EventSource(`/api/events?compact=1${list.length ? '&session=' + encodeURIComponent(list.join(',')) : ''}`);
   eventStream = es;
   es.onmessage = (m) => {
     if (eventStream !== es) return;
     const ev = JSON.parse(m.data);
+    let resync = false;
+    if (ev.type === 'hello') {
+      S.stream = ev.stream || null; resync = !!S.streamLost; S.streamLost = false;
+      if (S.stream && eventSessions().join(',') !== S.streamSessions) { S.streamSessions = null; updateEventFilter(); } // 연결하는 사이 칸이 바뀌었으면
+    }
+    onHubEvent(ev);
+    // 나눈 칸에 넘긴다(끊겼다 다시 이어졌으면 칸도 처음 상태를 다시 받는다)
+    try { window.hubForward?.(m.data, ev, { resync }); } catch {}
+  };
+  // 연결 상태를 remote.js 의 안내 줄에 알린다 (원격이 꺼지거나 허브가 멈춘 경우)
+  es.onopen = () => { if (typeof onHubConn === 'function') onHubConn(true); };
+  es.onerror = () => { es.close(); if (eventStream !== es) return; S.streamLost = true; S.stream = null; if (typeof onHubConn === 'function') onHubConn(false); setTimeout(() => { if (eventStream === es) connect(); }, 2000); };
+}
+function onHubEvent(ev) {
     // 확장: 기능 파일은 window.addEventListener('hub:event', (e) => e.detail)로 모든 실시간 이벤트를 받는다
     try { window.dispatchEvent(new CustomEvent('hub:event', { detail: ev })); } catch {}
     if (ev.type === 'hello') {
@@ -893,14 +964,11 @@ function connect() {
     } else if (ev.type === 'intercept') { onInterceptEvent(ev);
     } else if (ev.type === 'usage') { S.usage = ev.usage; renderUsage(); }
     else if (ev.type === 'catalog') { if (typeof loadCatalog === 'function') loadCatalog(); }
-  };
-  // 연결 상태를 remote.js 의 안내 줄에 알린다 (원격이 꺼지거나 허브가 멈춘 경우)
-  es.onopen = () => { if (typeof onHubConn === 'function') onHubConn(true); };
-  es.onerror = () => { es.close(); if (eventStream !== es) return; if (typeof onHubConn === 'function') onHubConn(false); setTimeout(() => { if (eventStream === es) connect(); }, 2000); };
 }
 function finished(job) {
   const s = S.sessions.get(job.sessionId);
-  if (job.sessionId !== S.current) toast(`${s?.title || '작업'} — ${ST_KO[job.status]}`, job.status === 'failed');
+  // 나눈 칸 안에서는 다른 세션 소식을 띄우지 않는다(가운데 창이 이미 알림 — 칸마다 같은 알림이 겹쳤다)
+  if (job.sessionId !== S.current && !document.documentElement.classList.contains('embed-pane')) toast(`${s?.title || '작업'} — ${ST_KO[job.status]}`, job.status === 'failed');
   document.title = `${job.status === 'done' ? '✓' : '!'} ${s?.title || 'ODDIN'}`; setTimeout(() => (document.title = 'ODDIN'), 8000);
   setTimeout(() => api('/api/usage').then((u) => { S.usage = u; renderUsage(); }).catch(() => {}), 3000);
 }

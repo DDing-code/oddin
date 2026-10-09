@@ -1,9 +1,10 @@
 /* ---------------- 화면 나눠 보기 · 새 창 (split.js) ---------------- */
-/* 나눈 칸이 있으면: 사이드바 | 대화 | 나눈 칸 | 오른쪽 패널 */
-#app.split{grid-template-columns:var(--lw) minmax(0,var(--mf,1fr)) minmax(0,1fr) var(--rw)}
-#app.split.collapsed{grid-template-columns:0 minmax(0,var(--mf,1fr)) minmax(0,1fr) var(--rw)}
-#app.split.insp-off,#app.split.insp-float{grid-template-columns:var(--lw) minmax(0,var(--mf,1fr)) minmax(0,1fr) 0}
-#app.split.collapsed.insp-off,#app.split.collapsed.insp-float{grid-template-columns:0 minmax(0,var(--mf,1fr)) minmax(0,1fr) 0}
+/* 나눈 칸이 있으면: 사이드바 | 대화 | 나눈 칸 | 오른쪽 패널
+   --mf = 가운데 몫(칸 하나 = 1fr 기준), --sf = 칸 묶음 몫(가로로 나란히면 칸 수 — 가운데와 칸이 똑같이 나눠 갖는다) */
+#app.split{grid-template-columns:var(--lw) minmax(0,var(--mf,1fr)) minmax(0,var(--sf,1fr)) var(--rw)}
+#app.split.collapsed{grid-template-columns:0 minmax(0,var(--mf,1fr)) minmax(0,var(--sf,1fr)) var(--rw)}
+#app.split.insp-off,#app.split.insp-float{grid-template-columns:var(--lw) minmax(0,var(--mf,1fr)) minmax(0,var(--sf,1fr)) 0}
+#app.split.collapsed.insp-off,#app.split.collapsed.insp-float{grid-template-columns:0 minmax(0,var(--mf,1fr)) minmax(0,var(--sf,1fr)) 0}
 #app.split #insp{grid-column:4}
 #split{grid-column:3;grid-row:1;position:relative;min-width:0;min-height:0;display:flex;border-left:1px solid var(--line);background:var(--bg)}
 .sp-resizer{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:6}
@@ -11,14 +12,15 @@
 .sp-panes{flex:1;min-width:0;min-height:0;display:flex}
 .sp-panes.rows{flex-direction:column}
 .sp-pane{position:relative;flex:1 1 0;min-width:0;min-height:0;display:flex;flex-direction:column}
-.sp-panes:not(.rows) > .sp-pane + .sp-pane{border-left:1px solid var(--line)}
-.sp-panes.rows > .sp-pane + .sp-pane{border-top:1px solid var(--line)}
+/* 칸 순서는 CSS order(split.js — DOM 을 옮기면 iframe 이 새로 읽힌다), 맨 앞 칸은 .lead */
+.sp-panes:not(.rows) > .sp-pane:not(.lead){border-left:1px solid var(--line)}
+.sp-panes.rows > .sp-pane:not(.lead){border-top:1px solid var(--line)}
 .sp-panes.has-max > .sp-pane:not(.max){display:none}
 .sp-panes.has-max > .sp-pane.max{flex:1 1 0!important;border:0}
 
 /* 칸 사이 경계(앞 칸과 크기를 주고받음) */
 .sp-rz{display:none;position:absolute;z-index:6}
-.sp-pane + .sp-pane > .sp-rz{display:block}
+.sp-pane:not(.lead) > .sp-rz{display:block}
 .sp-panes:not(.rows) .sp-rz{left:-4px;top:0;bottom:0;width:8px;cursor:col-resize}
 .sp-panes.rows .sp-rz{top:-4px;left:0;right:0;height:8px;cursor:row-resize}
 .sp-panes:not(.rows) .sp-rz:hover{background:linear-gradient(90deg,transparent 3px,var(--run) 3px,var(--run) 5px,transparent 5px)}
@@ -97,6 +99,18 @@ html.embed-pane #thread{padding:10px 16px 24px}
 html.embed-pane .input-line{padding-left:16px;padding-right:16px}
 html.embed-pane .hero{padding:12px 0 16px}
 html.embed-pane .sugg,html.embed-pane #hint{display:none}
+/* 칸은 폰이 아니다: 칸 너비가 860px 아래라 폰 규칙(mobile.css·style.css)이 칸 안에 걸렸다 — 입력창 아래 버튼이 4줄로 쌓이고 글자가 커졌다(2026-10-10).
+   한 줄을 지키고, 좁으면 폴더·글자를 빼고 아이콘만 남긴다 */
+html.embed-pane #in{font-size:inherit}
+html.embed-pane #in::placeholder{font-size:inherit}
+html.embed-pane .bar{flex-wrap:nowrap;row-gap:0;padding:4px 8px;overflow:hidden}
+html.embed-pane .bar .pill{flex-shrink:1;min-width:0}
+html.embed-pane .bar .grow{flex:1 1 0;min-width:0}
+@container (max-width:560px){
+  html.embed-pane #pFolder{display:none}
+  html.embed-pane .bar .pill .v,html.embed-pane .bar .pill .nm{display:none}
+  html.embed-pane .bar .pill{padding:4px 7px;max-width:none}
+}
 html.embed-pane #icBar .icb-sub{display:none}
 html.embed-pane #icBar .icb-target{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 /* 칸이 막혔을 때(예전 서버 등): 하얀 빈 칸 대신 안내 */

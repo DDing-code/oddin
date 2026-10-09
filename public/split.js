@@ -1,23 +1,39 @@
 /* 화면 나눠 보기 · 새 창 (2026-10-06 사용자 "세션 목록에서 세션을 드래그해서 새창에서 열거나 화면을 분할해서 동시에 보고 싶어"
-   → 같은 날 "화면 분할 너무 부실해": 칸마다 상태·세션 바꾸기·크기 조절·배치·포커스를 갖춘 판으로 다시 만듦)
+   → 같은 날 "화면 분할 너무 부실해": 칸마다 상태·세션 바꾸기·크기 조절·배치·포커스를 갖춘 판으로 다시 만듦
+   → 2026-10-10 "화면분할 기능이 너무 찐빠가 많이 나": 아래 고침)
    - 칸 늘리기: 사이드바 세션을 끌어 대화 화면 오른쪽에 놓기 · Ctrl+클릭 · 세션 ⋯ "오른쪽에 나란히 열기" · 위쪽 "나란히 보기" 버튼(Ctrl+\) 목록.
      가운데까지 최대 4개(칸 3개). 창 밖에 놓거나 Shift+클릭하면 새 창.
    - 칸 머리: 작업 중·답을 기다림 표시, 제목을 누르면 다른 세션으로 바꾸기, 크게 보기(두 번 눌러도), 가운데와 바꾸기, 새 창, 닫기.
      머리를 끌어 다른 칸에 놓으면 자리 바꾸기, 대화 화면 "여기서 열기"에 놓으면 가운데와 바꾸기.
    - 배치: 가로로 나란히 / 오른쪽에 위아래로. 칸 사이 경계를 끌어 크기 조절(두 번 누르면 똑같이). 나눠 보는 동안 오른쪽 패널은 접었다가 다 닫으면 되돌린다.
    - 포커스: 마지막으로 누른 칸이 강조되고, Alt+1~4 로 칸의 입력창으로 옮겨 간다(1 = 가운데).
-   - 칸·새 창은 같은 화면을 "한 세션만 보기"(?embed=1) 로 띄운다 — 칸마다 실시간 연결·입력창이 따로라 기존 대화 화면 코드를 그대로 쓴다.
-   - 나눈 칸 목록·크기·배치는 이 창에만 기억한다(localStorage). */
+   - 칸·새 창은 같은 화면을 "한 세션만 보기"(?embed=1) 로 띄운다 — 기존 대화 화면 코드를 그대로 쓴다.
+   - 나눈 칸 목록·크기·배치는 이 창에만 기억한다(localStorage).
+   2026-10-10 고친 것:
+   - 너비: 가운데와 칸이 똑같이 나눠 갖는다(예전엔 가운데가 절반, 칸 3개가 나머지 절반을 나눠 220px 남짓이었다).
+   - 칸 자리 바꾸기·다른 세션으로 바꾸기·가운데와 바꾸기에 iframe 을 다시 읽지 않는다(DOM 을 옮기면 iframe 이 새로 읽혀 쓰던 글이 사라졌다)
+     — 자리는 CSS order, 세션 바꾸기는 칸의 주소 #s= 만 바꾼다(칸 안에서 hashchange → openSession).
+   - 실시간 연결: 칸은 자기 연결을 열지 않고 가운데 창의 연결 하나로 받는다(app.js connect · hubForward) — 브라우저의 같은 주소 동시 연결 6개 한도.
+   - 지워진 세션의 칸은 닫고(다른 PC 세션은 잠깐 끊긴 것일 수 있어 둔다), 좁은 창(860px 이하)에서는 칸을 아예 띄우지 않는다(숨겨도 연결·화면이 살아 있었다). */
 (() => {
   const EMBED = /[?&]embed=1\b/.test(location.search);
   const paneUrl = (sid) => `/?embed=1#s=${encodeURIComponent(sid)}`;
   const openWindow = (sid) => { const w = window.open(paneUrl(sid), `oddin-${sid}`, 'popup=yes,width=1040,height=880'); if (!w) toast('새 창이 막혔어요. 브라우저의 팝업 허용을 확인해 주세요', true); };
+  const hashSid = () => (location.hash.match(/s=([\w-]+)/) || [])[1] || null;
 
   /* ---------- 한 세션만 보기(나눈 칸·새 창 안쪽) ---------- */
   if (EMBED) {
     document.documentElement.classList.add('embed');
-    const tell = () => { try { parent !== window && parent.postMessage({ type: 'oddin-pane', sid: (location.hash.match(/s=([\w-]+)/) || [])[1] || null }, location.origin); } catch {} };
-    window.addEventListener('hashchange', tell); window.addEventListener('load', tell);
+    // 나눈 칸은 좁다: 입력창 안내 글을 짧게(긴 안내가 두 줄로 잘렸다). 폰 앱의 짧은 안내(push.js)는 칸에서 돌지 않는다
+    if (document.documentElement.classList.contains('embed-pane')) {
+      window.hubInputPh = () => '무엇을 할까요?';
+      const setPh = () => { const i = document.getElementById('in'); if (i && !i.disabled && !document.getElementById('composer')?.classList.contains('ic-mode') && !document.getElementById('composer')?.classList.contains('rs-mode')) i.placeholder = window.hubInputPh(); };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setPh); else setPh();
+    }
+    const tell = () => { try { parent !== window && parent.postMessage({ type: 'oddin-pane', sid: hashSid() }, location.origin); } catch {} };
+    // 바깥 창이 칸의 세션을 바꿀 때는 주소 #s= 만 바꾼다 → 다시 읽지 않고 그 세션을 연다
+    window.addEventListener('hashchange', () => { const sid = hashSid(); if (sid && typeof S !== 'undefined' && sid !== S.current && typeof openSession === 'function') openSession(sid); tell(); });
+    window.addEventListener('load', tell);
     // 새 창의 창 제목 = 세션 이름 (작업 표시줄에서 구분되게)
     window.addEventListener('load', () => { const t = document.getElementById('title'); if (!t) return; const set = () => { document.title = `${t.textContent || '세션'} · ODDIN`; }; set(); new MutationObserver(set).observe(t, { childList: true, characterData: true, subtree: true }); });
     return;
@@ -30,22 +46,26 @@
   if (!IC.swap) IC.swap = '<path d="M7 7h13l-4-4M17 17H4l4 4"/>';
 
   /* ---------- 상태 ---------- */
-  const KEY = 'oddin.split', MAX = 3;
-  const SP = { panes: [], w: [], mf: 1, layout: 'cols', max: null, focus: null, inspWas: false, el: null, lastMain: null };
+  const KEY = 'oddin.split', MAX = 3, NARROW = 860;
+  // m = 가운데 너비를 칸 하나에 견준 몫(1 = 칸 하나와 같은 너비). 예전 저장값 mf(가운데:칸 전체)는 뜻이 달라 쓰지 않는다
+  const SP = { panes: [], w: [], m: 1, layout: 'cols', max: null, focus: null, inspWas: false, el: null, lastMain: null };
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || '{}');
-    SP.panes = Array.isArray(v.panes) ? v.panes.filter((x) => /^[\w-]+$/.test(x)).slice(0, MAX) : [];
+    SP.panes = Array.isArray(v.panes) ? [...new Set(v.panes.filter((x) => /^[\w-]+$/.test(x)))].slice(0, MAX) : [];
     SP.w = SP.panes.map((_, i) => (Number(v.w?.[i]) > 0 ? Number(v.w[i]) : 1));
-    SP.mf = Number(v.mf) > 0 ? Number(v.mf) : 1;
+    SP.m = Number(v.m) > 0 ? Number(v.m) : 1;
     SP.layout = v.layout === 'rows' ? 'rows' : 'cols';
     SP.inspWas = !!v.inspWas;
   } catch {}
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ panes: SP.panes, w: SP.w, mf: SP.mf, layout: SP.layout, inspWas: SP.inspWas })); } catch {} };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ panes: SP.panes, w: SP.w, m: SP.m, layout: SP.layout, inspWas: SP.inspWas })); } catch {} };
   const sess = (sid) => (typeof S !== 'undefined' ? S.sessions.get(sid) : null);
   const title = (sid) => sess(sid)?.title || '세션';
   const app = () => document.getElementById('app');
   const isOpen = () => SP.panes.length > 0;
+  const narrow = () => window.innerWidth <= NARROW;
   const waiting = (sid) => { try { return typeof hubSessionWaiting === 'function' && hubSessionWaiting(sid); } catch { return false; } };
+  const paneEl = (sid) => SP.el?.querySelector(`.sp-pane[data-sid="${CSS.escape(sid)}"]`) || null;
+  const frameOf = (p) => p?.querySelector('iframe') || null;
 
   // 나눠 보는 동안 오른쪽 패널은 접는다(칸이 좁아지지 않게). 다 닫으면 원래대로
   function inspForSplit(on) {
@@ -55,32 +75,50 @@
   }
 
   /* ---------- 그리기 ---------- */
-  function render() {
-    if (!isOpen()) {
-      if (SP.el) { SP.el.remove(); SP.el = null; app().classList.remove('split'); app().style.removeProperty('--mf'); inspForSplit(false); }
-      SP.max = null; setFocus(null); renderTopBtn(); return;
-    }
+  function teardown() { if (SP.el) { SP.el.remove(); SP.el = null; } app().classList.remove('split'); app().style.removeProperty('--mf'); app().style.removeProperty('--sf'); }
+  // 실시간 연결이 받을 세션 목록(가운데+칸)이 바뀌었으면 가운데 창 연결의 거르기만 고친다(app.js, 같으면 아무것도 안 함)
+  const syncFilter = () => { try { window.updateEventFilter?.(); } catch {} };
+  function render() { draw(); syncFilter(); }
+  function draw() {
+    if (!isOpen()) { if (SP.el) { teardown(); inspForSplit(false); } SP.max = null; setFocus(null); renderTopBtn(); return; }
+    if (narrow()) { teardown(); renderTopBtn(); return; } // 좁은 창(폰 등): 칸을 띄우지 않는다. 넓어지면 다시
     if (!SP.el) {
       SP.el = document.createElement('section'); SP.el.id = 'split'; SP.el.setAttribute('aria-label', '나란히 보는 세션');
-      SP.el.innerHTML = '<div class="sp-resizer" title="끌어서 너비 조절 · 두 번 눌러 반반"></div><div class="sp-panes"></div>';
+      SP.el.innerHTML = '<div class="sp-resizer" title="끌어서 너비 조절 · 두 번 눌러 똑같이"></div><div class="sp-panes"></div>';
       document.getElementById('main').after(SP.el);
       bindMainResizer(SP.el.querySelector('.sp-resizer'));
       inspForSplit(true);
     }
-    app().classList.add('split'); app().style.setProperty('--mf', `${SP.mf}fr`);
+    const maxed = !!SP.max && SP.panes.includes(SP.max);
+    const cols = SP.layout === 'cols' && !maxed ? SP.panes.length : 1; // 가로로 나란히면 칸 수만큼 몫을 가져간다
+    app().classList.add('split'); app().style.setProperty('--mf', `${SP.m}fr`); app().style.setProperty('--sf', `${cols}fr`);
     const box = SP.el.querySelector('.sp-panes');
     box.classList.toggle('rows', SP.layout === 'rows');
-    box.classList.toggle('has-max', !!SP.max && SP.panes.includes(SP.max));
-    // 이미 떠 있는 칸은 그대로 둔다(다시 그려도 iframe 이 새로 읽히지 않게)
-    for (const p of [...box.children]) if (!SP.panes.includes(p.dataset.sid)) p.remove();
+    box.classList.toggle('has-max', maxed);
+    // 이미 떠 있는 칸은 옮기거나 새로 만들지 않는다: 빠진 세션의 칸은 새 세션에 다시 쓰고(주소만 바꿈), 순서는 CSS order 로
+    const els = [...box.children], keep = new Set(SP.panes);
+    const orphans = els.filter((p) => !keep.has(p.dataset.sid));
+    for (const sid of SP.panes) {
+      if (els.some((p) => p.dataset.sid === sid)) continue;
+      const p = orphans.shift();
+      if (p) retarget(p, sid); else box.appendChild(makePane(sid));
+    }
+    for (const p of orphans) p.remove();
     SP.panes.forEach((sid, i) => {
-      let p = box.querySelector(`.sp-pane[data-sid="${CSS.escape(sid)}"]`);
-      if (!p) { p = makePane(sid); box.appendChild(p); }
-      if (box.children[i] !== p) box.insertBefore(p, box.children[i] || null);
-      p.style.flex = `${SP.w[i] || 1} 1 0`;
-      p.classList.toggle('max', SP.max === sid);
+      const p = paneEl(sid); if (!p) return;
+      p.style.order = String(i); p.style.flex = `${SP.w[i] || 1} 1 0`;
+      p.classList.toggle('lead', i === 0); p.classList.toggle('max', SP.max === sid);
     });
     updateHeads(); renderTopBtn();
+  }
+  // 칸의 세션 바꾸기: iframe 을 다시 읽지 않고 주소 #s= 만 바꾼다(칸 안 split.js 가 hashchange 로 연다). 아직 안 읽혔으면 주소째로
+  function retarget(p, sid) {
+    p.dataset.sid = sid;
+    const f = frameOf(p);
+    try {
+      if (!p.classList.contains('loading') && !p.classList.contains('blocked') && f.contentWindow?.location) { f.contentWindow.location.hash = `s=${encodeURIComponent(sid)}`; return; }
+    } catch {}
+    p.classList.add('loading'); f.src = paneUrl(sid);
   }
 
   function makePane(sid) {
@@ -120,14 +158,15 @@
       }
       p.classList.toggle('is-wait', w);
       const mb = p.querySelector('[data-sp="max"]');
-      mb.innerHTML = icon(SP.max === sid ? 'mini' : 'maxi'); mb.title = SP.max === sid ? '원래 크기로' : '크게 보기';
-      p.querySelector('iframe').title = `세션 ${title(sid)}`;
+      const mx = SP.max === sid ? 'mini' : 'maxi';
+      if (mb.dataset.v !== mx) { mb.dataset.v = mx; mb.innerHTML = icon(mx); mb.title = SP.max === sid ? '원래 크기로' : '크게 보기'; }
+      frameOf(p).title = `세션 ${title(sid)}`;
     }
   }
 
   // 칸이 막혔는지(예전 서버의 화면 끼워 넣기 금지 등): 하얀 빈 칸 대신 이유와 다시 열기. 읽히면 포커스·단축키를 잇는다
   function watchFrame(p) {
-    const f = p.querySelector('iframe');
+    const f = frameOf(p);
     f.addEventListener('load', () => {
       p.classList.remove('loading');
       let ok = false;
@@ -142,12 +181,13 @@
       } catch {}
     });
   }
-  const reloadPane = (p) => { const f = p.querySelector('iframe'); p.classList.add('loading'); f.src = f.src; };
+  const reloadPane = (p) => { const f = frameOf(p); p.classList.add('loading'); f.src = paneUrl(p.dataset.sid); };
   const reloadBlocked = () => document.querySelectorAll('.sp-pane.blocked').forEach(reloadPane);
 
   /* ---------- 칸 열기·닫기·바꾸기 ---------- */
   function openSplit(sid, at = null) {
     if (typeof S !== 'undefined' && sid === S.current) return toast('지금 가운데에서 보고 있는 세션이에요. 다른 세션을 나란히 열어 보세요');
+    if (narrow()) return toast('창이 좁아서 나란히 볼 수 없어요. 창을 넓히거나 새 창으로 열어 보세요');
     const i = SP.panes.indexOf(sid);
     if (i >= 0 && at === null) { setFocus(sid); return toast('이미 나란히 열려 있어요'); }
     if (i >= 0 && at !== null && at < SP.panes.length) { // 열린 칸끼리 자리 바꾸기
@@ -173,24 +213,32 @@
   }
   function toggleMax(sid) { SP.max = SP.max === sid ? null : sid; render(); }
   function setLayout(l) { SP.layout = l; SP.max = null; save(); render(); }
-  function evenOut() { SP.w = SP.panes.map(() => 1); SP.mf = SP.layout === 'rows' ? 1.4 : 1; save(); render(); }
+  function evenOut() { SP.w = SP.panes.map(() => 1); SP.m = 1; save(); render(); }
+  // 지워진 세션의 칸은 닫는다. 다른 PC 세션(rm-)은 그 PC가 잠깐 끊긴 것일 수 있어 둔다. 가운데와 같은 세션도 칸에서 뺀다
+  function prune() {
+    if (typeof S === 'undefined' || !S.sessions.size) return;
+    const gone = SP.panes.filter((sid) => sid === S.current || (!sid.startsWith('rm-') && !S.sessions.has(sid)));
+    if (!gone.length) return;
+    for (const sid of gone) { const i = SP.panes.indexOf(sid); SP.panes.splice(i, 1); SP.w.splice(i, 1); if (SP.max === sid) SP.max = null; }
+    save(); render();
+  }
 
   /* ---------- 포커스(마지막으로 누른 칸) · Alt+1~4 ---------- */
   function setFocus(sid) {
     SP.focus = isOpen() ? sid : null;
-    document.getElementById('main')?.classList.toggle('sp-focus', isOpen() && !SP.focus);
+    document.getElementById('main')?.classList.toggle('sp-focus', isOpen() && !!SP.el && !SP.focus);
     SP.el?.querySelectorAll('.sp-pane').forEach((p) => p.classList.toggle('focus', p.dataset.sid === SP.focus));
   }
   function focusIndex(n) {
     if (n === 0) { setFocus(null); document.getElementById('in')?.focus(); return; }
-    const sid = SP.panes[n - 1]; if (!sid) return;
+    const sid = SP.panes[n - 1]; if (!sid || !SP.el) return;
     if (SP.max && SP.max !== sid) { SP.max = sid; render(); }
     setFocus(sid);
-    const f = SP.el?.querySelector(`.sp-pane[data-sid="${CSS.escape(sid)}"] iframe`);
+    const f = frameOf(paneEl(sid));
     try { f?.contentWindow?.focus(); f?.contentDocument?.getElementById('in')?.focus(); } catch {}
   }
   function onKey(e) {
-    if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-4]$/.test(e.key) && isOpen()) { e.preventDefault(); focusIndex(Number(e.key) - 1); }
+    if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-4]$/.test(e.key) && isOpen() && SP.el) { e.preventDefault(); focusIndex(Number(e.key) - 1); }
     else if ((e.ctrlKey || e.metaKey) && e.key === '\\') { e.preventDefault(); openPicker(document.querySelector('[data-spbar]') || document.getElementById('title')); }
   }
   document.addEventListener('keydown', onKey);
@@ -208,6 +256,7 @@
     icon: waiting(s.id) ? 'alert' : 'chat', run,
   });
   function openPicker(anchor, { replace = null } = {}) {
+    if (narrow()) return toast('창이 좁아서 나란히 볼 수 없어요. 창을 넓히거나 새 창으로 열어 보세요');
     const list = candidates();
     const items = [{ header: replace ? '이 칸에서 볼 세션' : `나란히 열 세션 · 가운데까지 ${MAX + 1}개` }];
     for (const s of list) items.push(itemOf(s, () => { closePop(); replace ? openSplit(s.id, SP.panes.indexOf(replace)) : openSplit(s.id); }));
@@ -240,20 +289,21 @@
 
   /* ---------- 크기 조절 ---------- */
   function bindMainResizer(el) {
-    el.addEventListener('dblclick', () => { SP.mf = 1; save(); render(); });
+    el.addEventListener('dblclick', () => { SP.m = 1; save(); render(); });
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault(); el.setPointerCapture(e.pointerId);
       const main = document.getElementById('main'), left = main.getBoundingClientRect().left, total = main.offsetWidth + SP.el.offsetWidth;
+      const cols = SP.layout === 'cols' && !SP.el.querySelector('.sp-panes.has-max') ? SP.panes.length : 1;
       app().classList.add('sp-resizing');
-      const move = (ev) => { const w = Math.min(Math.max(ev.clientX - left, 320), total - 300); SP.mf = Math.round((w / (total - w)) * 100) / 100; app().style.setProperty('--mf', `${SP.mf}fr`); };
+      const move = (ev) => { const w = Math.min(Math.max(ev.clientX - left, 320), total - 260 * cols); SP.m = Math.round((w / (total - w)) * cols * 100) / 100; app().style.setProperty('--mf', `${SP.m}fr`); };
       const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); app().classList.remove('sp-resizing'); save(); };
       el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
     });
   }
-  // 칸 사이 경계: 앞 칸과 이 칸의 몫만 주고받는다
+  // 칸 사이 경계: 앞 칸(순서상 바로 앞)과 이 칸의 몫만 주고받는다
   document.addEventListener('pointerdown', (e) => {
     const rz = e.target.closest('.sp-rz'); if (!rz) return;
-    const p = rz.closest('.sp-pane'), i = SP.panes.indexOf(p.dataset.sid), prev = p.previousElementSibling;
+    const p = rz.closest('.sp-pane'), i = SP.panes.indexOf(p.dataset.sid), prev = i > 0 ? paneEl(SP.panes[i - 1]) : null;
     if (i <= 0 || !prev) return;
     e.preventDefault(); rz.setPointerCapture(e.pointerId);
     const rows = SP.layout === 'rows', pos = (ev) => (rows ? ev.clientY : ev.clientX);
@@ -286,19 +336,46 @@
     if (act === 'main') return swapWithMain(sid);
   });
 
-  // 칸 안에서 세션이 바뀌면(드문 일) 칸 목록을 맞춘다
+  /* ---------- 칸에 실시간 이벤트 넘기기(app.js connect·paneConnect) ---------- */
+  const attached = new Map(); // 칸 window → 그 칸이 보는 세션
+  // 칸이 자기 세션을 열 때 부른다: 칸 목록을 맞추고, 가운데 창 연결이 그 세션도 받게 거르기를 고친 뒤 끝난다
+  function attach(win, sid) {
+    attached.set(win, sid || null);
+    const p = SP.el && [...SP.el.querySelectorAll('.sp-pane')].find((x) => frameOf(x)?.contentWindow === win);
+    if (p && sid && p.dataset.sid !== sid) { // 칸 안에서 다른 세션으로 옮겨 갔다(Ctrl+K 등)
+      const i = SP.panes.indexOf(p.dataset.sid);
+      if (i >= 0 && !SP.panes.includes(sid)) { SP.panes[i] = sid; p.dataset.sid = sid; save(); updateHeads(); }
+    }
+    try { return window.updateEventFilter?.() || Promise.resolve(); } catch { return Promise.resolve(); }
+  }
+  window.hubSplitSessions = () => {
+    for (const [w] of attached) if (w.closed) attached.delete(w); // 닫힌 칸은 뺀다
+    return [...new Set([...(SP.el ? SP.panes : []), ...[...attached.values()].filter(Boolean)])];
+  };
+  window.hubForward = (raw, ev, { resync = false } = {}) => {
+    for (const [w] of attached) {
+      if (w.closed) { attached.delete(w); continue; }
+      try { if (ev.type === 'hello') { if (resync) w.hubPaneResync?.(); } else w.hubPaneEvent?.(raw); } catch { attached.delete(w); }
+    }
+  };
+
+  // 칸 안에서 세션이 바뀌면(주소가 바뀐 경우) 칸 목록을 맞춘다
   window.addEventListener('message', (e) => {
     if (e.origin !== location.origin || e.data?.type !== 'oddin-pane') return;
-    const p = [...document.querySelectorAll('.sp-pane')].find((x) => x.querySelector('iframe')?.contentWindow === e.source);
-    if (p && e.data.sid && e.data.sid !== p.dataset.sid) { const i = SP.panes.indexOf(p.dataset.sid); if (i >= 0) { SP.panes[i] = e.data.sid; p.dataset.sid = e.data.sid; save(); render(); } }
+    const p = [...document.querySelectorAll('.sp-pane')].find((x) => frameOf(x)?.contentWindow === e.source);
+    if (p && e.data.sid && e.data.sid !== p.dataset.sid) { const i = SP.panes.indexOf(p.dataset.sid); if (i >= 0 && !SP.panes.includes(e.data.sid)) { SP.panes[i] = e.data.sid; p.dataset.sid = e.data.sid; save(); render(); } }
   });
   window.addEventListener('hub:event', (e) => {
     const t = e.detail?.type;
-    if (t === 'hello' || t === 'remote_sync') render();
+    // hub:event 는 app.js 가 hello 를 반영하기 전에 오므로, 세션 목록이 채워진 뒤에 지워진 칸을 정리한다
+    if (t === 'hello') { setTimeout(() => { prune(); render(); }, 0); setTimeout(reloadBlocked, 500); } // 새 버전으로 재시작해 다시 연결되면 막혔던 칸을 다시 연다
+    else if (t === 'remote_sync') render();
     else if (t === 'session' || t === 'job' || t === 'prompt') updateHeads();
-    if (t === 'hello') setTimeout(reloadBlocked, 500); // 새 버전으로 재시작해 다시 연결되면 막혔던 칸을 다시 연다
     if (t === 'session_removed' && SP.panes.includes(e.detail.sessionId)) closePane(e.detail.sessionId);
   });
+  // 창 너비가 바뀌면: 좁아지면 칸을 내리고(연결·화면 정리), 넓어지면 다시 띄운다
+  let rt = 0, wasNarrow = narrow();
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const n = narrow(); if (n !== wasNarrow) { wasNarrow = n; render(); } }, 150); });
 
   /* ---------- 끌어다 놓기 ---------- */
   const TYPE = 'text/x-oddin-session';
@@ -370,6 +447,6 @@
     { label: '새 창에서 열기', desc: 'Shift+클릭 · 끌어서 창 밖에 놓아도 돼요', icon: 'open', run: () => { closePop(); openWindow(s.id); } },
   ]);
 
-  window.hubSplit = { open: openSplit, close: closePane, closeAll, window: openWindow, panes: () => [...SP.panes], layout: setLayout, focus: focusIndex, picker: openPicker };
+  window.hubSplit = { open: openSplit, close: closePane, closeAll, window: openWindow, panes: () => [...SP.panes], layout: setLayout, focus: focusIndex, picker: openPicker, attach };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render); else render();
 })();
