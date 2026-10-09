@@ -1,0 +1,31 @@
+{
+  "id": "mukbang",
+  "order": 2,
+  "name": "박병진 먹방 편집",
+  "description": "먹방 원본을 프리미어에서 컷·확대·짧은 자막까지 편집하고 프로젝트와 SRT 로 저장해요",
+  "cwdFrom": "video",
+  "inputs": [
+    {
+      "key": "video",
+      "label": "먹방 원본",
+      "type": "path",
+      "kinds": [
+        "video"
+      ]
+    },
+    {
+      "key": "food",
+      "label": "음식 이름",
+      "type": "text",
+      "placeholder": "예: 유부초밥"
+    },
+    {
+      "key": "request",
+      "label": "더 바라는 것",
+      "type": "textarea",
+      "optional": true
+    }
+  ],
+  "gates": "프리미어가 켜져 있어야 해요. 다 되면 프리미어 시퀀스를 스튜디오로 가져와 손볼 수 있어요.",
+  "prompt": "박병진 먹방 원본 {video} (음식: {food}) 을 저장된 지침대로 한 편 편집해 주세요. 더 바라는 것: {request}."
+}

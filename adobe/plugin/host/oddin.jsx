@@ -4,7 +4,7 @@
 // Commands from ODDIN arrive as ODDIN.run(function () { ...agent script... }).
 
 var ODDIN = (typeof ODDIN === 'object' && ODDIN) ? ODDIN : {};
-ODDIN.version = '1.1.1';
+ODDIN.version = '1.2.0';
 
 ODDIN.quote = function (s) {
   var out = '"', i, c, code, hex;
@@ -158,6 +158,61 @@ ODDIN.pr = {
         }
       }
     }
+    return out;
+  },
+  // Whole sequence for ODDIN Studio import (studio/engine/premiere.mjs reads it): frame size, fps, tracks,
+  // clips (sequence start/end, source in/out, media path, speed, disabled) with a raw dump of each clip's
+  // components (match name, display name, property values and keyframes), and markers. Values stay raw here;
+  // the studio decides what they mean, so fixes do not need a plugin update.
+  editExport: function (a) {
+    a = a || {};
+    var s = ODDIN.pr.sequence(a), TPS = 254016000000, lim = a.maxClips || 3000, count = 0;
+    var out = { id: String(s.sequenceID), name: String(s.name), project: String(app.project.path), width: 0, height: 0, fps: 0, video: [], audio: [], markers: [], truncated: false };
+    try { out.width = Number(s.frameSizeHorizontal); out.height = Number(s.frameSizeVertical); } catch (e0) {}
+    try { var tb = Number(s.timebase); if (tb > 0) out.fps = TPS / tb; } catch (e1) {}
+    function val(p) { try { var v = p.getValue(); if (typeof v === 'string' && v.length > 4000) v = v.substring(0, 4000); return v; } catch (e) { return null; } }
+    function keys(p) {
+      var ks = [];
+      try {
+        if (!p.isTimeVarying()) return ks;
+        var arr = p.getKeys();
+        for (var i = 0; i < arr.length && i < 200; i++) { var v = null; try { v = p.getValueAtKey(arr[i]); } catch (e2) {} ks.push({ t: ODDIN.secs(arr[i]), v: v }); }
+      } catch (e) {}
+      return ks;
+    }
+    function comps(cl) {
+      var r = [];
+      try {
+        for (var i = 0; i < cl.components.numItems; i++) {
+          var c = cl.components[i], props = [];
+          for (var j = 0; j < c.properties.numItems && j < 12; j++) { var p = c.properties[j]; props.push({ dn: String(p.displayName), v: val(p), keys: keys(p) }); }
+          r.push({ mn: String(c.matchName), dn: String(c.displayName), props: props });
+        }
+      } catch (e) {}
+      return r;
+    }
+    var groups = [['video', s.videoTracks], ['audio', s.audioTracks]];
+    for (var g = 0; g < groups.length; g++) {
+      var tracks = groups[g][1];
+      for (var t = 0; t < tracks.numTracks; t++) {
+        var tr = tracks[t], tOut = { name: String(tr.name), muted: false, clips: [] };
+        try { tOut.muted = !!tr.isMuted(); } catch (e3) {}
+        for (var k = 0; k < tr.clips.numItems; k++) {
+          if (count >= lim) { out.truncated = true; break; }
+          var cl = tr.clips[k], media = '', speed = 1, disabled = false;
+          try { media = String(cl.projectItem.getMediaPath()); } catch (e4) {}
+          try { speed = Number(cl.getSpeed()); } catch (e5) {}
+          try { disabled = !!cl.disabled; } catch (e6) {}
+          tOut.clips.push({ name: String(cl.name), start: ODDIN.secs(cl.start), end: ODDIN.secs(cl.end), inPoint: ODDIN.secs(cl.inPoint), outPoint: ODDIN.secs(cl.outPoint), media: media, speed: speed, disabled: disabled, comps: comps(cl) });
+          count++;
+        }
+        out[groups[g][0]].push(tOut);
+      }
+    }
+    try {
+      var m = s.markers.getFirstMarker(), n = 0;
+      while (m && n < 1000) { out.markers.push({ t: ODDIN.secs(m.start), end: ODDIN.secs(m.end), name: String(m.name || ''), comment: String(m.comments || '') }); m = s.markers.getNextMarker(m); n++; }
+    } catch (e7) {}
     return out;
   },
   // Overwrite (default) or insert a media file on a track at a time in seconds.

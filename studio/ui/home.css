@@ -1,0 +1,55 @@
+/* ODDIN 스튜디오 시작 화면 (home.js). 색은 테마 변수만 */
+#home{position:fixed;inset:0;display:flex;flex-direction:column;overflow:auto;background:var(--bg)}
+.hm-top{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:10px 18px;background:var(--side);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.hm-top b{font-size:15px}
+.hm-body{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;padding:18px;max-width:1400px;width:100%;margin:0 auto}
+.hm-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-width:0}
+.hm-card h3{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:13.5px}
+.hm-card h3 small{font-weight:400;font-size:11.5px}
+.hm-new{grid-column:1/-1}
+.hm-acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.hm-big{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px;border:1px solid var(--line2);background:var(--bg);color:var(--fg);text-align:left;border-radius:var(--r)}
+.hm-big:hover:not(:disabled){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--bg))}
+.hm-big .ico{width:22px;height:22px;color:var(--accent);margin-bottom:4px}
+.hm-big b{font-size:13.5px}
+.hm-big span{font-size:11.5px;color:var(--muted);line-height:1.5}
+.hm-list{display:flex;flex-direction:column}
+.hm-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border:0;background:none;color:var(--fg2);text-align:left;border-radius:var(--r2);min-width:0}
+.hm-row:hover{background:var(--hover);color:var(--fg)}
+.hm-row .ico{color:var(--accent)}
+.hm-row .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-row small{color:var(--faint);font-size:11px;white-space:nowrap}
+.hm-pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.hm-pipe{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border:1px solid var(--line2);background:var(--bg);color:var(--fg);text-align:left;border-radius:var(--r)}
+.hm-pipe:hover:not(:disabled){border-color:var(--claude)}
+.hm-pipe b{font-size:12.5px}
+.hm-pipe span{font-size:11px;color:var(--muted);line-height:1.45}
+.hm-jobs h4{margin:14px 0 6px;font-size:12px;color:var(--muted)}
+.hm-job{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:12.5px}
+.hm-job p{flex-basis:100%;margin:2px 0 0;color:var(--fg2);font-size:12px;white-space:pre-wrap}
+.hm-job.s-done .chip{color:var(--ok)}.hm-job.s-failed .chip{color:var(--err)}
+.hm-fbody p{margin:0 0 8px;font-size:12.5px}
+.hm-fbody .btn{margin-right:6px}
+.ve-warn{display:flex;align-items:flex-start;gap:6px;color:var(--warn);font-size:12px}
+.ve-warn .ico{width:14px;height:14px;margin-top:2px}
+/* 입력 창 */
+.hm-form{display:flex;flex-direction:column;gap:10px}
+.hm-form label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--fg2)}
+.hm-form small{font-size:11px}
+.hm-form textarea{resize:vertical}
+.hm-pick{display:flex;gap:6px}
+.hm-pick input{flex:1}
+.hm-fbtn{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.hm-note{display:flex;gap:6px;font-size:11.5px;line-height:1.55}
+.hm-seqs{display:flex;flex-direction:column;border:1px solid var(--line);max-height:40vh;overflow:auto}
+.hm-seq{flex-direction:row!important;align-items:center;gap:8px!important;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer}
+.hm-seq:hover{background:var(--hover)}
+.hm-seq small{margin-left:auto;color:var(--faint)}
+/* 테마 고르기(ODDIN themes.js 창) */
+.theme-picker h4{margin:14px 0 6px;font-size:12px;color:var(--muted)}
+.theme-grid,.style-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;border:0;padding:0;margin:0}
+.theme-choice,.style-choice{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border:1px solid var(--line2);background:var(--bg);color:var(--fg);cursor:pointer;font-size:12px}
+.theme-description{color:var(--muted);font-size:11px}
+.theme-swatches{display:flex;gap:4px}.theme-swatches i{width:14px;height:14px;border:1px solid var(--line2);background:var(--accent)}
+.theme-swatches i:nth-child(2){background:var(--ok)}.theme-swatches i:nth-child(3){background:var(--warn)}.theme-swatches i:nth-child(4){background:var(--panel2)}
+@media (max-width:860px){.hm-body{grid-template-columns:1fr;padding:12px}.hm-top{padding:8px 12px}}

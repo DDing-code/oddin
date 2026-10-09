@@ -1,0 +1,32 @@
+{
+  "id": "motion-scene",
+  "order": 6,
+  "name": "모션 장면",
+  "description": "제목 카드·하단 띠·수치 카운트·도표 같은 모션 그래픽을 HTML 장면(또는 Remotion)으로 만들어 편집에 넣어요",
+  "cwdFrom": "edit",
+  "inputs": [
+    {
+      "key": "request",
+      "label": "만들 장면",
+      "type": "textarea",
+      "placeholder": "예: 0.6초 동안 쫀득하게 튀어나오는 노란 제목 카드 \"오늘의 메뉴\""
+    },
+    {
+      "key": "edit",
+      "label": "넣을 편집 파일",
+      "type": "path",
+      "kinds": [
+        "edit"
+      ],
+      "optional": true
+    },
+    {
+      "key": "at",
+      "label": "넣을 시각(초)",
+      "type": "text",
+      "optional": true
+    }
+  ],
+  "gates": "HTML 장면은 스튜디오 타임라인에서 바로 재생되고 렌더 때 투명하게 합성돼요.",
+  "prompt": "모션 그래픽 장면을 만들어 주세요: {request}\n넣을 편집 파일: {edit} (시각 {at}초). 편집 파일이 없으면 장면 파일과 미리보기 영상(cli.mjs scene)만 만들어 주세요."
+}

@@ -1,9 +1,10 @@
-/* ODDIN 영상 편집기 공용 코어 (2026-10-10, replica/architecture.md)
-   편집기 화면(video-editor.js) · 렌더 페이지(video-render.html) · 서버(lib/video-edit.mjs, vm 으로 읽음)가 같은 코드를 쓴다
+/* ODDIN 스튜디오 공용 코어 (2026-10-10, replica/architecture.md · docs/studio.md)
+   편집기 화면(studio/ui/editor.js) · 렌더 페이지(studio/ui/render.html) · 엔진(studio/engine/edit.mjs, vm 으로 읽음)이 같은 코드를 쓴다
    → 미리보기와 렌더 결과가 같은 계산·같은 그리기로 나온다.
    - 편집 파일 형식 정리(normalize) · 길이 · 스타일 합치기
    - 키프레임 값(valueAt) · 이징(EASE — 서버의 ffmpeg 식 EASE_EXPR 과 같은 공식) · 등장/퇴장 효과
-   - 글자·자막 레이어 그리기(renderOverlay) · SRT 읽기/쓰기 · 시간 표기 */
+   - 글자·자막 레이어 그리기(renderOverlay) · SRT 읽기/쓰기 · 시간 표기
+   - 원본 넣기(placeMedia — 화면 끌어 넣기·CLI add 공통) · SRT 를 자막 트랙으로(srtTrack) */
 (function (root) {
   'use strict';
   const PROPS = ['x', 'y', 'scale', 'rotation', 'opacity'];
@@ -11,6 +12,9 @@
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const r4 = (v) => Math.round(v * 10000) / 10000;
+  // 원본 종류: 영상·소리(video) · 그림(image, 길이 없음) · HTML 장면(html). 화면 맞춤: 꽉 채우기·다 보이게·원래 크기
+  const KINDS = ['video', 'image', 'html'], FITS = ['cover', 'contain', 'none'];
+  const kindOf = (p) => (/\.html?$/i.test(p) ? 'html' : /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(p) ? 'image' : 'video');
 
   /* ---------- 이징: p(0~1) → 진행(0~1). 서버 EASE_EXPR 과 같은 공식 ---------- */
   const C1 = 1.70158, C3 = C1 + 1;
@@ -84,7 +88,8 @@
     };
     for (const [id, m] of Object.entries(d.media && typeof d.media === 'object' ? d.media : {})) {
       if (!m || typeof m.path !== 'string' || !m.path) { problems.push(`원본 ${id}: 경로가 없어 뺐어요`); continue; }
-      doc.media[id] = { path: m.path, duration: num(m.duration, 0), width: num(m.width, 0), height: num(m.height, 0), fps: num(m.fps, 0), audio: m.audio !== false, ...(m.name ? { name: String(m.name) } : {}) };
+      const kind = KINDS.includes(m.kind) ? m.kind : kindOf(m.path);
+      doc.media[id] = { path: m.path, kind, duration: kind === 'image' ? 0 : num(m.duration, 0), width: num(m.width, 0), height: num(m.height, 0), fps: num(m.fps, 0), audio: kind === 'video' && m.audio !== false, ...(m.name ? { name: String(m.name) } : {}) };
     }
     for (const [name, s] of Object.entries(d.styles && typeof d.styles === 'object' ? d.styles : {})) if (s && typeof s === 'object') doc.styles[String(name)] = s;
     const ids = new Set();
@@ -112,7 +117,7 @@
           let inn = Math.max(0, num(c.in, 0)), out = Math.max(inn + 1 / doc.fps, num(c.out, m.duration || inn + 1));
           if (m.duration && out > m.duration + 0.001) { out = m.duration; if (inn >= out) inn = Math.max(0, out - 1 / doc.fps); problems.push(`클립 ${c.id || ''}: 원본 길이를 넘어 끝을 줄였어요`); }
           return { id: fresh(c.id, 'c'), media: c.media, start: r4(Math.max(0, num(c.start, 0))), in: r4(inn), out: r4(out), volume: clamp(num(c.volume, 0), -60, 24),
-            fadeIn: clamp(num(c.fadeIn, 0), 0, 10), fadeOut: clamp(num(c.fadeOut, 0), 0, 10), fit: ['cover', 'contain'].includes(c.fit) ? c.fit : 'cover', ...transformOf(c), keys: cleanKeys(c.keys) };
+            fadeIn: clamp(num(c.fadeIn, 0), 0, 10), fadeOut: clamp(num(c.fadeOut, 0), 0, 10), fit: FITS.includes(c.fit) ? c.fit : 'cover', ...transformOf(c), keys: cleanKeys(c.keys) };
         }).sort((a, b) => a.start - b.start);
       }
       doc.tracks.push(t);
@@ -159,6 +164,7 @@
   /** 영상 클립을 화면에 맞춘 기본 크기(fit) */
   function fitSize(doc, media, fit) {
     const mw = media && media.width > 0 ? media.width : doc.width, mh = media && media.height > 0 ? media.height : doc.height;
+    if (fit === 'none') return { w: mw, h: mh }; // 원래 픽셀 크기(로고·스티커)
     const k = fit === 'contain' ? Math.min(doc.width / mw, doc.height / mh) : Math.max(doc.width / mw, doc.height / mh);
     return { w: mw * k, h: mh * k };
   }
@@ -249,5 +255,66 @@
     return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}:${String(ff).padStart(2, '0')}`;
   }
 
-  root.OddinVideo = { PROPS, BASE, EASE, EASE_KO, ANIM, ANIM_KO, STYLE_DEFAULT, valueAt, styleOf, normalize, duration, clipEnd, animMods, itemState, fitSize, clipBox, activeClips, renderOverlay, fontsOf, fontAvailable, parseSrt, toSrt, snap, fmtTime, uid, clamp };
+  /* ---------- 원본 넣기 (화면 끌어 넣기·CLI add 공통) ---------- */
+  /**
+   * 원본 하나를 트랙에 넣는다. info = 원본 정보(엔진 probe: kind·duration·width·height·fps·audio), o = { path, name, at, trackId, length }
+   * - 같은 경로 원본이 이미 있으면 그 항목을 다시 쓴다
+   * - 고른 트랙이 맞는 종류이고 그 자리가 비었으면 거기, 아니면 같은 종류의 빈 트랙, 없으면 새 트랙(영상은 맨 위)
+   * - 영상 원본을 소리 트랙에 놓으면 소리만 쓴다. 그림은 기본 3초, 화면보다 작으면 원래 크기
+   * 반환: { media, track, clip } (id)
+   */
+  function placeMedia(doc, info, o) {
+    o = o || {};
+    const path = String(o.path || ''); if (!path) throw new Error('원본 경로가 없어요');
+    let id = Object.keys(doc.media).find((k) => doc.media[k].path === path);
+    if (!id) {
+      let n = Object.keys(doc.media).length + 1; while (doc.media[`m${n}`]) n++; id = `m${n}`;
+      const kind = KINDS.includes(info && info.kind) ? info.kind : kindOf(path);
+      doc.media[id] = { path, name: o.name || path.split(/[\\/]/).pop(), kind, duration: kind === 'image' ? 0 : num(info && info.duration, 0), width: num(info && info.width, 0), height: num(info && info.height, 0), fps: num(info && info.fps, 0), audio: kind === 'video' && !!(info && info.audio) };
+    }
+    const m = doc.media[id];
+    const visual = m.kind !== 'video' || m.width > 0;
+    let want = visual ? 'video' : 'audio';
+    let tr = o.trackId ? doc.tracks.find((t) => t.id === o.trackId) : null;
+    if (tr && tr.kind === 'audio' && m.kind === 'video' && m.audio) want = 'audio';
+    else if (tr && tr.kind !== want) tr = null;
+    const want0 = o.length == null || o.length === '' ? 3 : num(o.length, 3); // 길이를 안 주면 3초(null 을 0으로 읽지 않게)
+    const len = m.kind === 'image' ? Math.max(1 / doc.fps, want0) : Math.max(1 / doc.fps, m.duration || want0);
+    const at = snap(Math.max(0, num(o.at, 0)), doc.fps);
+    const free = (t) => t.kind === want && !t.locked && !t.clips.some((c) => at < clipEnd(c) - 1e-6 && at + len > c.start + 1e-6);
+    if (!tr || !free(tr)) tr = doc.tracks.find(free) || null;
+    if (!tr) {
+      const n = doc.tracks.filter((t) => t.kind === want).length + 1;
+      let tid = `${want[0]}${n}`; while (doc.tracks.some((t) => t.id === tid)) tid = uid(want[0]);
+      tr = { id: tid, kind: want, name: `${want === 'video' ? '영상' : '소리'} ${n}`, muted: false, hidden: false, locked: false, clips: [] };
+      // 영상 트랙은 배열 뒤쪽이 위에 그려진다 — 새 영상 트랙은 마지막 영상 트랙 바로 뒤(자막·소리 트랙 순서는 그대로)
+      if (want === 'video') { let last = -1; doc.tracks.forEach((t, i) => { if (t.kind === 'video') last = i; }); doc.tracks.splice(last + 1, 0, tr); } else doc.tracks.push(tr);
+    }
+    const small = m.width > 0 && m.height > 0 && m.width <= doc.width && m.height <= doc.height;
+    const same = m.width === doc.width && m.height === doc.height;
+    const fit = m.kind === 'image' ? (small ? 'none' : 'contain') : m.kind === 'html' ? (same || !m.width ? 'cover' : 'none') : 'cover';
+    let cid = uid('c'); while (doc.tracks.some((t) => (t.clips || t.items).some((x) => x.id === cid))) cid = uid('c');
+    tr.clips.push({ id: cid, media: id, start: at, in: 0, out: r4(len), volume: 0, fadeIn: 0, fadeOut: 0, fit, x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, keys: {} });
+    tr.clips.sort((a, b) => a.start - b.start);
+    return { media: id, track: tr.id, clip: cid };
+  }
+  /** SRT 를 자막 트랙으로: 이름이 같은 자막 트랙이 있으면 내용을 바꾸고, 없으면 새로 만든다. 반환: { track, count } */
+  function srtTrack(doc, text, name) {
+    const items = parseSrt(text);
+    let tr = doc.tracks.find((t) => t.kind === 'text' && (!name || t.name === name));
+    if (!tr) { let tid = `t${doc.tracks.length + 1}`; while (doc.tracks.some((t) => t.id === tid)) tid = uid('t'); tr = { id: tid, kind: 'text', name: name || '자막', style: Object.keys(doc.styles || {})[0] || null, muted: false, hidden: false, locked: false, items: [] }; doc.tracks.push(tr); }
+    tr.items = items.map((c) => ({ id: uid('x'), start: r4(c.start), end: r4(c.end), text: c.text, style: null, override: {}, x: 0, y: Math.round(doc.height * 0.36), scale: 1, rotation: 0, opacity: 1, anim: { in: 'none', out: 'none', inDur: 0.2, outDur: 0.15 }, keys: {} }));
+    return { track: tr.id, count: items.length };
+  }
+  /** 자막 점검(글자 폭 재기 없이 — 엔진·CLI 용): 1초 미만 빈칸·겹침·두 줄 */
+  function textChecks(doc) {
+    const out = { gaps: [], overlaps: [], twoLines: [] }, h = 0.5 / doc.fps;
+    for (const tr of doc.tracks) if (tr.kind === 'text') {
+      for (let i = 1; i < tr.items.length; i++) { const a = tr.items[i - 1], b = tr.items[i], g = b.start - a.end; if (g > h && g < 1) out.gaps.push({ track: tr.name, at: a.end, frames: Math.round(g * doc.fps), text: b.text }); else if (g < -h) out.overlaps.push({ track: tr.name, at: b.start, frames: Math.round(-g * doc.fps), text: b.text }); }
+      for (const it of tr.items) if (it.text.includes('\n')) out.twoLines.push({ track: tr.name, at: it.start, text: it.text });
+    }
+    return out;
+  }
+
+  root.OddinVideo = { KINDS, FITS, kindOf, placeMedia, srtTrack, textChecks, PROPS, BASE, EASE, EASE_KO, ANIM, ANIM_KO, STYLE_DEFAULT, valueAt, styleOf, normalize, duration, clipEnd, animMods, itemState, fitSize, clipBox, activeClips, renderOverlay, fontsOf, fontAvailable, parseSrt, toSrt, snap, fmtTime, uid, clamp };
 })(typeof window !== 'undefined' ? window : globalThis);

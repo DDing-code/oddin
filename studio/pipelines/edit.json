@@ -1,0 +1,26 @@
+{
+  "id": "edit",
+  "order": 1,
+  "name": "촬영본 1차 편집",
+  "description": "찍은 영상의 컷·자막 싱크·자막 디자인·확대·등장 효과를 편집 파일로 만들어 스튜디오에 띄워요",
+  "cwdFrom": "video",
+  "inputs": [
+    {
+      "key": "video",
+      "label": "촬영본(영상 파일)",
+      "type": "path",
+      "kinds": [
+        "video"
+      ]
+    },
+    {
+      "key": "request",
+      "label": "원하는 것",
+      "type": "textarea",
+      "optional": true,
+      "placeholder": "예: 1분 안으로, 말 없는 곳 자르고 자막은 노란 테두리, 웃긴 곳은 펀치 인"
+    }
+  ],
+  "gates": "결과는 편집 파일로 받아 스튜디오에서 손봐요. 렌더(MP4)는 부탁할 때만 해요.",
+  "prompt": "촬영본 {video} 으로 1차 편집을 만들어 주세요(컷·자막 싱크·자막 디자인·필요한 확대와 등장 효과). 원하는 것: {request}. 끝나면 cli.mjs check 로 점검하고 cli.mjs open 으로 스튜디오에 띄워 주세요."
+}

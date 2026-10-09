@@ -1,0 +1,27 @@
+{
+  "id": "instatoon",
+  "order": 5,
+  "name": "인스타툰·릴스",
+  "description": "원고로 백사 인스타툰을 만들고 컷 애니메이션 릴스까지 만들어요",
+  "inputs": [
+    {
+      "key": "text",
+      "label": "원고(글 또는 파일 경로)",
+      "type": "textarea"
+    },
+    {
+      "key": "character",
+      "label": "캐릭터",
+      "type": "text",
+      "optional": true,
+      "placeholder": "기본: 백사"
+    },
+    {
+      "key": "folder",
+      "label": "작업 폴더",
+      "type": "dir",
+      "optional": true
+    }
+  ],
+  "prompt": "이 원고로 인스타툰을 만들고 컷별 애니메이션 릴스도 만들어 주세요. 캐릭터: {character}\n작업 폴더: {folder}\n\n원고:\n{text}"
+}

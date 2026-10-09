@@ -1,0 +1,17 @@
+{
+  "name": "oddin-studio",
+  "productName": "ODDIN 스튜디오",
+  "version": "0.1.0",
+  "description": "ODDIN 스튜디오 — ODDIN 과 연동되는 영상 편집 프로그램(싱크·디자인·모션 손보기, AI 1차 편집)",
+  "main": "main.cjs",
+  "private": true,
+  "author": "D2JK",
+  "scripts": {
+    "start": "electron .",
+    "icons": "electron ../../desktop/scripts/make-icons.cjs ../ui/icon.svg --out build",
+    "shortcuts": "electron . --install-shortcuts"
+  },
+  "devDependencies": {
+    "electron": "44.5.1"
+  }
+}

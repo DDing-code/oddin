@@ -31,7 +31,7 @@ MP4로 렌더(진행률·완료 뒤 재생),내보내기,must,yes,yes,
 구간 반복 재생,미리보기,should,yes,yes,
 시간을 프레임으로 표시(타임코드),타임라인,should,yes,yes,
 클립 음량(dB),소리,should,yes,yes,소리 페이드 들어오기·나가기 포함
-배경음·효과음 트랙,소리,should,yes,partial,"트랙·렌더는 됨, 원본 넣기는 AI·파일로(화면 끌어넣기 아직)"
+배경음·효과음 트랙,소리,should,yes,yes,원본 패널·탐색기 끌어 놓기·cli add 로 소리 트랙에
 키프레임 마름모 끌어 시각 바꾸기,모션,should,yes,no,마름모는 보이지만 끌기는 아직
 안전 영역·가운데 안내선,미리보기,should,yes,yes,
 영상 클립 확대·위치 키프레임(펀치 인),모션,should,yes,yes,먹방 편집의 확대·포지션 · 펀치 인/아웃 단추
@@ -41,12 +41,12 @@ MP4로 렌더(진행률·완료 뒤 재생),내보내기,must,yes,yes,
 발화 시작에 맞추기(파형으로 가까운 시작점),싱크,should,no,yes,ODDIN에서 더함
 쫀득 이징(되튐·강한 감속),모션,should,yes,yes,AE 그래프 편집기로 하던 것을 사전 설정으로 · snap·expo 사전 설정
 AI에게 부탁(선택·시각을 같이 넘김),AI,should,no,yes,ODDIN에서 더함 · 진행 중이면 예약
-SRT 가져오기,파일,should,yes,partial,새 편집 때 자동·scripts/video.mjs import-srt
+SRT 가져오기,파일,should,yes,yes,원본 패널 SRT 줄·끌어 놓기 → 자막 트랙 · cli import-srt
 썸네일 띠(클립 막대 안 장면),타임라인,could,yes,yes,
 가로 그라디언트 글자색,디자인,could,yes,yes,각도 지정
 스타일 복사·붙여넣기,디자인,could,yes,yes,
 여러 개 선택해 함께 옮기기,타임라인,could,yes,yes,
-열린 프리미어 시퀀스 가져오기(어도비 플러그인),연동,could,yes,no,다음 단계 · 다음 단계
+열린 프리미어 시퀀스 가져오기(어도비 플러그인),연동,could,yes,yes,ODDIN 어도비 플러그인 editExport · 캡션 트랙은 SRT 로 · 속도·효과는 알림
 프리미어용 XML 내보내기,연동,could,yes,no,다음 단계 · 다음 단계
 폰에서 보기·간단 수정,ODDIN,could,no,partial,"보기·타임라인은 됨, 속성 패널은 넓은 화면에서"
 트랙 숨김·잠금,타임라인,could,yes,yes,
@@ -63,3 +63,9 @@ Adobe Fonts·Adobe Stock,콘텐츠,could,yes,skip,Adobe가 가진 콘텐츠·구
 AI 음성 전사,AI,could,yes,skip,ODDIN 작업자·로컬 전사 도구가 맡음
 여러 사람 동시 편집(Team Projects),협업,could,yes,skip,범위 밖
 방송용 자막 형식(608/708·Teletext),내보내기,could,yes,skip,범위 밖
+원본 끌어 넣기(탐색기·원본 패널 → 트랙·화면),타임라인,must,yes,yes,프로그램 창은 실제 경로 · 원격은 편집 폴더로 올려서
+그림·로고 넣기(원래 크기·다 보이게),디자인,should,yes,yes,fit none · 그림 클립은 앞뒤로 자유롭게 늘림
+따로 켜는 프로그램(ODDIN 과 연동),ODDIN,must,no,yes,2026-10-10 사용자 요구 · 엔진+창 · ODDIN /studio/ 로 원격·폰
+HTML 장면(코드로 만든 모션 그래픽을 클립으로),모션,could,no,yes,HyperFrames 방식 · 미리보기 iframe·렌더 투명 .mov
+글꼴 설치(등록이 풀린 글꼴 다시 등록 포함),디자인,could,no,yes,사용자 계정 글꼴 · 관리자 권한 없음
+AI 제작 흐름(합친 스킬 파이프라인을 ODDIN 에 맡기기),AI,could,no,yes,studio/pipelines · 공유 스킬 oddin-studio

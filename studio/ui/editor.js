@@ -1,13 +1,13 @@
-/* ODDIN 영상 편집기 (2026-10-10 사용자 "오딘에 딱 맞는 영상편집 툴 … 간단한 싱크 수정/디자인/모션 수정", replica/recon.md·architecture.md)
-   프리미어·AE에서 그 세 가지에 쓰던 흐름을 ODDIN 안에 새로 짠 것. 편집 파일 *.oddin-edit.json 하나를 AI 와 사용자가 같이 고친다.
-   - 여는 곳: 경로 오른쪽 클릭(편집 파일 → 편집기로 열기, 영상 → 이 영상으로 편집 만들기) · 작업 카드 · 검색 팔레트. window.hubVideo.open(path)
-   - 미리보기: 원본 <video>(원본마다 A/B 두 개로 컷 경계 끊김을 줄임) + 글자 레이어(video-core.js renderOverlay — 렌더와 같은 그리기)
+/* ODDIN 스튜디오 편집기 (2026-10-10 사용자 "오딘에 딱 맞는 영상편집 툴 … 간단한 싱크 수정/디자인/모션 수정" → 같은 날 "오딘과 연동되는 프로그램으로", replica/recon.md·architecture.md)
+   프리미어·AE에서 그 세 가지에 쓰던 흐름을 새로 짠 것. 편집 파일 *.oddin-edit.json 하나를 AI 와 사용자가 같이 고친다.
+   - 여는 곳: 시작 화면(home.js)·주소 ?path=·ODDIN 경로 메뉴(엔진 /api/open). window.studioEditor.open(path)
+   - 원본 넣기: 왼쪽 원본 패널(폴더 둘러보기·끌어 넣기·올리기) · 탐색기에서 타임라인/화면으로 끌어 놓기(프로그램 창은 실제 경로, 브라우저는 편집 폴더로 올림)
+   - 미리보기: 원본 <video>(원본마다 A/B 두 개로 컷 경계 끊김을 줄임) · 그림 <img> · HTML 장면 <iframe>(scene-seek.js 로 시각 맞춤) + 글자 레이어(video-core.js renderOverlay — 렌더와 같은 그리기)
    - 타임라인: 트랙·막대·파형·썸네일·재생 헤드·마커, 끌어 옮기기·가장자리 자르기·자석·리플·자막 붙여 두기
    - 속성: 글·스타일(역할별 공유)·변형·키프레임·이징·등장/퇴장, 영상 클립 확대(펀치 인)·음량·페이드
-   - 저장은 자동(바뀐 뒤 0.7초), AI 가 파일을 바꾸면 다시 읽음. 렌더는 서버(lib/video-edit.mjs)가 MP4 로 */
+   - 저장은 자동(바뀐 뒤 0.7초), AI 가 파일을 바꾸면 다시 읽음. 렌더는 엔진(studio/engine/edit.mjs)이 MP4 로 */
 (() => {
   'use strict';
-  if (document.documentElement.classList.contains('embed')) return;
   const V = window.OddinVideo; if (!V) return;
   Object.assign(IC, {
     film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>',
@@ -40,7 +40,8 @@
   const dirOf = (p) => p.replace(/[\\/][^\\/]*$/, '');
   const isAbs = (p) => /^([A-Za-z]:[\\/]|\\\\|\/)/.test(p);
   const mediaAbs = (id) => { const p = E.doc.media[id]?.path || ''; return isAbs(p) ? p : `${dirOf(E.path)}/${p}`; };
-  const fileUrl = (p) => `/api/file?path=${enc(p)}`;
+  const fileUrl = (p) => `api/file?path=${enc(p)}`;
+  const rawUrl = (p) => `api/raw/${String(p).replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/')}`;
   const items = () => { const out = []; for (const tr of E.doc.tracks) for (const x of tr.items || tr.clips) out.push({ tr, x }); return out; };
   const find = (id) => { for (const tr of E.doc.tracks) { const x = (tr.items || tr.clips).find((y) => y.id === id); if (x) return { tr, x }; } return null; };
   const startOf = (x) => x.start, endOf = (tr, x) => (tr.kind === 'text' ? x.end : V.clipEnd(x));
@@ -49,42 +50,52 @@
 
   /* ---------- 열기·닫기 ---------- */
   async function open(path, { sessionId = null } = {}) {
-    let r; try { r = await api(`/api/video/edit?path=${enc(path)}`); } catch (e) { return toast(`편집 파일을 열지 못했어요: ${e.message}`, true); }
+    let r; try { r = await api(`api/edit?path=${enc(path)}`); } catch (e) { return toast(`편집 파일을 열지 못했어요: ${e.message}`, true); }
     if (E.open) close(true);
-    Object.assign(E, { userZoom: false, open: true, path: r.path, doc: r.doc, mtime: r.mtime, dirty: false, conflict: false, problems: r.problems || [], sel: new Set(), t: 0, playing: false, undo: [], redo: [], sessionId: sessionId || (typeof S !== 'undefined' ? S.current : null), render: null, loop: null });
+    const sid = sessionId || new URLSearchParams(location.search).get('sid') || readSid(r.path);
+    Object.assign(E, { userZoom: false, open: true, path: r.path, doc: r.doc, mtime: r.mtime, dirty: false, conflict: false, problems: r.problems || [], sel: new Set(), t: 0, playing: false, undo: [], redo: [], sessionId: sid, render: null, loop: null, binDir: E.binDir && E.binPathOf === r.path ? E.binDir : dirOf(r.path), binPathOf: r.path });
     build(); fitZoom(); refresh();
     if (E.problems.length) toast(`편집 파일을 고쳐 읽었어요: ${E.problems.slice(0, 2).join(' · ')}`);
     loadAssets();
-    if (!E.fonts) api('/api/video/fonts').then((l) => { E.fonts = l; if (E.open) renderInsp(); }).catch(() => {});
+    if (!E.fonts) api('api/fonts').then((l) => { E.fonts = l; if (E.open) renderInsp(); }).catch(() => {});
     clearInterval(E.watchT); E.watchT = setInterval(watch, 2000);
-    try { localStorage.setItem('oddin.vedit.last', E.path); } catch {}
+    try { localStorage.setItem('oddin.studio.last', E.path); } catch {}
+    api('api/recent', { method: 'POST', body: JSON.stringify({ path: E.path, title: E.doc.title }) }).catch(() => {});
+    const u = new URL(location.href); if (u.searchParams.get('path') !== E.path) { u.searchParams.set('path', E.path); u.searchParams.delete('video'); history.pushState(null, '', u); }
+    document.title = `${E.doc.title || '편집'} · ODDIN 스튜디오`;
+    renderBin();
   }
   async function create(videoPath) {
     try {
-      const r = await api('/api/video/new', { method: 'POST', body: JSON.stringify({ video: videoPath }) });
+      const r = await api('api/new', { method: 'POST', body: JSON.stringify({ video: videoPath }) });
       toast(r.existed ? '같은 이름의 편집 파일이 있어 그것을 열어요' : r.srt ? '새 편집을 만들고 같은 이름의 SRT를 자막으로 넣었어요' : '새 편집을 만들었어요');
       return open(r.path);
     } catch (e) { toast(`편집을 만들지 못했어요: ${e.message}`, true); }
   }
-  function close(silent = false) {
+  // 편집 파일마다 AI 부탁을 이어 갈 ODDIN 세션(이 브라우저에 기억)
+  function readSid(p) { try { return JSON.parse(localStorage.getItem('oddin.studio.sids') || '{}')[p] || null; } catch { return null; } }
+  function writeSid(p, sid) { try { const m = JSON.parse(localStorage.getItem('oddin.studio.sids') || '{}'); m[p] = sid; localStorage.setItem('oddin.studio.sids', JSON.stringify(m)); } catch {} }
+  function close(silent = false, { home = true } = {}) {
     if (!E.open) return;
     pause(); clearInterval(E.watchT);
     if (E.dirty) save();
-    for (const els of POOL.values()) for (const el of els) { try { el.pause(); el.removeAttribute('src'); el.load(); } catch {} }
+    for (const els of POOL.values()) for (const el of els) { try { if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') { el.pause(); el.removeAttribute('src'); el.load(); } else el.remove(); } catch {} }
     POOL.clear();
     E.el?.remove(); E.el = null; E.open = false;
     document.removeEventListener('keydown', onKey, true);
-    if (!silent) toast('편집기를 닫았어요');
+    document.title = 'ODDIN 스튜디오';
+    if (home) { const u = new URL(location.href); if (u.searchParams.has('path')) { u.searchParams.delete('path'); history.pushState(null, '', u); } window.studioHome?.show(); }
+    if (!silent) toast('편집을 닫았어요 (저장돼요)');
   }
   async function watch() {
     if (!E.open || E.dirty || E.saving || E.drag) return;
     try {
-      const { mtime } = await api(`/api/video/mtime?path=${enc(E.path)}`);
+      const { mtime } = await api(`api/mtime?path=${enc(E.path)}`);
       if (Math.abs(mtime - E.mtime) > 1) await reload('파일이 바뀌어서(AI 수정 등) 다시 읽었어요');
     } catch {}
   }
   async function reload(msg) {
-    const r = await api(`/api/video/edit?path=${enc(E.path)}`);
+    const r = await api(`api/edit?path=${enc(E.path)}`);
     E.doc = r.doc; E.mtime = r.mtime; E.dirty = false; E.conflict = false; pruneSel(); loadAssets(); refresh();
     if (msg) toast(msg);
   }
@@ -104,7 +115,7 @@
     if (E.saving) { E.saveAgain = true; return; }
     E.saving = true; renderTop();
     try {
-      const r = await api('/api/video/edit', { method: 'PUT', body: JSON.stringify({ path: E.path, doc: E.doc, baseMtime: E.mtime, force }) });
+      const r = await api('api/edit', { method: 'PUT', body: JSON.stringify({ path: E.path, doc: E.doc, baseMtime: E.mtime, force }) });
       E.mtime = r.mtime; E.dirty = false; E.conflict = false;
     } catch (e) {
       if (/바꿨어요/.test(e.message)) E.conflict = true; else toast(`저장하지 못했어요: ${e.message}`, true);
@@ -118,16 +129,16 @@
   function loadAssets() {
     for (const [id, m] of Object.entries(E.doc.media)) {
       const p = mediaAbs(id);
-      if (m.audio !== false && !E.peaks.has(p)) { E.peaks.set(p, null); api(`/api/video/peaks?path=${enc(p)}`).then((r) => { const b = atob(r.peaks), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); E.peaks.set(p, a); drawLanes(); }).catch(() => {}); }
-      if (m.width > 0 && !E.thumbs.has(p)) {
+      if (m.kind === 'video' && m.audio !== false && !E.peaks.has(p)) { E.peaks.set(p, null); api(`api/peaks?path=${enc(p)}`).then((r) => { const b = atob(r.peaks), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); E.peaks.set(p, a); drawLanes(); }).catch(() => {}); }
+      if (((m.kind === 'video' && m.width > 0) || m.kind === 'image') && !E.thumbs.has(p)) {
         E.thumbs.set(p, null);
-        api(`/api/video/thumbs?path=${enc(p)}&meta=1`).then((meta) => { const img = new Image(); img.onload = () => { E.thumbs.set(p, { ...meta, img }); drawLanes(); }; img.src = `/api/video/thumbs?path=${enc(p)}`; }).catch(() => {});
+        api(`api/thumbs?path=${enc(p)}&meta=1`).then((meta) => { const img = new Image(); img.onload = () => { E.thumbs.set(p, { ...meta, img }); drawLanes(); }; img.src = `api/thumbs?path=${enc(p)}`; }).catch(() => {});
       }
     }
   }
   /** 그 시퀀스 시각에 소리가 나는 원본과 원본 시각(발화 시작 찾기용) */
   function sourceAt(t) {
-    for (const tr of E.doc.tracks) if (tr.kind !== 'text' && !tr.muted) for (const c of tr.clips) if (t >= c.start && t < V.clipEnd(c) && E.doc.media[c.media]?.audio !== false) return { path: mediaAbs(c.media), st: c.in + (t - c.start), clip: c };
+    for (const tr of E.doc.tracks) if (tr.kind !== 'text' && !tr.muted) for (const c of tr.clips) if (t >= c.start && t < V.clipEnd(c) && E.doc.media[c.media]?.kind === 'video' && E.doc.media[c.media]?.audio !== false) return { path: mediaAbs(c.media), st: c.in + (t - c.start), clip: c };
     return null;
   }
   /** 발화 시작 찾기: 앞뒤 0.3초에서 조용하다가 소리가 올라오는 첫 지점(파형 기준) */
@@ -151,7 +162,8 @@
     el.innerHTML = `
       <header class="ve-top"></header>
       <div class="ve-mid">
-        <div class="ve-view"><div class="ve-stage-wrap"><div class="ve-stage"><div class="ve-vids"></div><div class="ve-ov"></div><div class="ve-guides"></div></div></div></div>
+        <aside class="ve-bin" aria-label="원본"${binOpen() ? '' : ' hidden'}></aside>
+        <div class="ve-view"><div class="ve-stage-wrap"><div class="ve-stage"><div class="ve-vids"></div><div class="ve-ov"></div><div class="ve-guides"></div></div></div><div class="ve-drop" hidden><div>${icon('plus')}<b>여기에 놓으면 재생 헤드에 넣어요</b><span>영상·소리·그림·HTML 장면·SRT·글꼴</span></div></div></div>
         <aside class="ve-insp" aria-label="속성"></aside>
       </div>
       <div class="ve-trans"></div>
@@ -159,6 +171,7 @@
       <div class="ve-ai" hidden></div>`;
     document.body.appendChild(el); E.el = el;
     document.addEventListener('keydown', onKey, true);
+    bindBin(); bindDrop();
     new ResizeObserver(() => { if (E.open) { layoutStage(); drawLanes(); } }).observe(el.querySelector('.ve-view'));
     // 타임라인 너비가 정해지거나 바뀌면 전체가 보이게 맞춘다(사용자가 확대·축소했으면 그대로)
     new ResizeObserver(() => { if (E.open && !E.userZoom) { fitZoom(); renderTimeline(); frame(); } }).observe(el.querySelector('.ve-scroll'));
@@ -176,7 +189,7 @@
     const r = E.render;
     const rend = r ? (r.status === 'running' ? `<span class="ve-rend"><span class="ve-bar"><i style="width:${Math.round(r.progress * 100)}%"></i></span>${esc(r.stage || '')} ${Math.round(r.progress * 100)}%<button type="button" class="btn sm" data-ve="rcancel">중지</button></span>`
       : r.status === 'done' ? `<span class="ve-rend ok">${icon('check')}렌더 완료<button type="button" class="btn sm" data-ve="rview">결과 보기</button></span>` : r.status === 'failed' ? `<span class="ve-rend err" title="${esc(r.error || '')}">${icon('alert')}렌더 실패</span>` : '') : '';
-    top.innerHTML = `<span class="ve-logo">${icon('film')}</span><b class="ve-title" title="${esc(E.path)}">${esc(E.doc.title || '편집')}</b>${st}
+    top.innerHTML = `<button type="button" class="icon-btn ve-logo" data-ve="home" title="시작 화면으로 (저장돼요)">${icon('left')}</button><button type="button" class="btn sm${binOpen() ? ' on' : ''}" data-ve="bin" title="원본 패널: 폴더에서 영상·소리·그림·HTML 장면을 끌어 넣기">${icon('folder')}원본</button><b class="ve-title" title="${esc(E.path)}">${esc(E.doc.title || '편집')}</b>${st}
       ${E.conflict ? '<button type="button" class="btn sm" data-ve="reload">다시 읽기</button><button type="button" class="btn sm" data-ve="force">내 것으로 덮기</button>' : ''}
       <span class="grow"></span>${rend}
       <button type="button" class="icon-btn" data-ve="undo" title="되돌리기 (Ctrl+Z)" ${E.undo.length ? '' : 'disabled'}>${icon('undo')}</button>
@@ -184,20 +197,22 @@
       <button type="button" class="btn sm" data-ve="ai" title="이 편집을 AI에게 부탁 — 고른 것·재생 헤드 시각을 같이 넘겨요">${icon('sparkle')}AI에게</button>
       <button type="button" class="btn sm" data-ve="srt" title="자막을 SRT 파일로 받기">SRT</button>
       <button type="button" class="btn sm primary" data-ve="render" title="MP4로 렌더 (편집 파일 옆에 저장)" ${r?.status === 'running' ? 'disabled' : ''}>${icon('render')}렌더</button>
-      <button type="button" class="icon-btn" data-ve="close" title="닫기 (저장돼요)">${icon('x')}</button>`;
+      ${window.hubTheme ? `<button type="button" class="icon-btn" data-ve="theme" title="테마(색·모양)">${icon('palette')}</button>` : ''}`;
   }
   function bindTop() {
     E.el.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-ve]'); if (!b || b.disabled) return;
       const a = b.dataset.ve;
-      if (a === 'close') return close();
+      if (a === 'close' || a === 'home') return close(true);
+      if (a === 'bin') { setBinOpen(!binOpen()); return; }
+      if (a === 'theme') return window.hubTheme?.open();
       if (a === 'undo') return undo();
       if (a === 'redo') return redo();
       if (a === 'reload') return reload('다시 읽었어요');
       if (a === 'force') return save(true);
-      if (a === 'srt') { await save(); return window.open(`/api/video/srt?path=${enc(E.path)}`, '_blank'); }
+      if (a === 'srt') { await save(); return window.open(`api/srt?path=${enc(E.path)}`, '_blank'); }
       if (a === 'render') return startRender();
-      if (a === 'rcancel') return api(`/api/video/render/${E.render.id}/cancel`, { method: 'POST', body: '{}' }).catch((x) => toast(x.message, true));
+      if (a === 'rcancel') return api(`api/render/${E.render.id}/cancel`, { method: 'POST', body: '{}' }).catch((x) => toast(x.message, true));
       if (a === 'rview') return viewResult();
       if (a === 'ai') return openAi();
       if (a === 'play') return toggle();
@@ -222,16 +237,19 @@
   async function startRender() {
     if (E.dirty) { clearTimeout(E.saveT); await save(); }
     if (E.conflict) return toast('다른 곳에서 바뀐 파일이에요. 다시 읽거나 덮어쓴 뒤 렌더하세요', true);
-    try { E.render = await api('/api/video/render', { method: 'POST', body: JSON.stringify({ path: E.path }) }); renderTop(); toast('렌더를 시작했어요. 이 PC에서 ffmpeg가 만들어요'); }
+    try { E.render = await api('api/render', { method: 'POST', body: JSON.stringify({ path: E.path }) }); renderTop(); toast('렌더를 시작했어요. 이 PC에서 ffmpeg가 만들어요'); }
     catch (e) { toast(`렌더를 시작하지 못했어요: ${e.message}`, true); }
   }
   function viewResult() {
     const r = E.render; if (!r?.out) return;
-    window.hubOpenViewer?.({ title: '렌더 결과', items: [{ key: 'r', label: r.out.split(/[\\/]/).pop(), url: fileUrl(r.out), video: true, path: r.out }] });
+    const body = modal(`렌더 결과 · ${r.out.split(/[\\/]/).pop()}`, true);
+    body.innerHTML = `<video class="ve-result" src="${esc(fileUrl(r.out))}" controls autoplay playsinline></video>
+      <div class="ve-result-acts"><span class="c-muted grow" title="${esc(r.out)}">${esc(r.out)}</span>${STUDIO.desktop?.showItem ? '<button type="button" class="btn sm" data-r="show">탐색기에서 보기</button>' : ''}<a class="btn sm" href="${esc(fileUrl(r.out))}" download>내려받기</a></div>${r.warnings?.length ? `<p class="ve-warn">${icon('alert')}${esc(r.warnings.join(' / '))}</p>` : ''}`;
+    body.querySelector('[data-r="show"]')?.addEventListener('click', () => STUDIO.desktop.showItem(r.out));
   }
   window.addEventListener('hub:event', (e) => {
     const ev = e.detail || {};
-    if (ev.type !== 'video_render' || !E.open || !ev.render || ev.render.path !== E.path) return;
+    if (ev.type !== 'render' || !E.open || !ev.render || ev.render.path !== E.path) return;
     const was = E.render?.status; E.render = ev.render; renderTop();
     if (was === 'running' && ev.render.status === 'done') { toast(`렌더 완료: ${ev.render.out.split(/[\\/]/).pop()}${ev.render.warnings?.length ? ` · ${ev.render.warnings[0]}` : ''}`); }
     if (was === 'running' && ev.render.status === 'failed') toast(`렌더 실패: ${ev.render.error}`, true);
@@ -241,7 +259,7 @@
   function openAi() {
     const box = $v('.ve-ai'); box.hidden = false;
     const sel = selected().map(({ tr, x }) => `${tr.name}: ${tr.kind === 'text' ? `"${x.text.slice(0, 30)}"` : (E.doc.media[x.media]?.name || x.media)} (${tc(x.start)}~${tc(endOf(tr, x))}, id ${x.id})`);
-    box.innerHTML = `<div class="ve-ai-card" role="dialog" aria-label="AI에게 부탁"><b>AI에게 부탁</b><p class="c-muted">고른 것과 재생 헤드 시각을 같이 넘겨요. AI가 편집 파일을 고치면 편집기가 다시 읽어요.${E.sessionId ? '' : ' (새 세션에서 해요)'}</p>
+    box.innerHTML = `<div class="ve-ai-card" role="dialog" aria-label="AI에게 부탁"><b>AI에게 부탁 (ODDIN)</b><p class="c-muted">고른 것과 재생 헤드 시각을 같이 넘겨요. AI가 편집 파일을 고치면 편집기가 다시 읽어요.${E.sessionId ? ' 같은 ODDIN 세션에 이어서 해요(작업 중이면 예약).' : ' ODDIN 에 이 폴더로 새 세션을 만들어요.'}</p>
       <div class="ve-ai-ctx">${sel.length ? sel.map((x) => `<div>${esc(x)}</div>`).join('') : '<div class="c-muted">고른 것 없음 — 편집 전체</div>'}<div>재생 헤드 ${tc(E.t)}</div></div>
       <textarea rows="3" placeholder="예: 자막 전부 2프레임 늦춰 / 고른 자막을 쫀득하게 튀어나오게 / 3초부터 5초까지 확대"></textarea>
       <div class="ve-ai-acts"><button type="button" class="btn" data-ai="cancel">닫기</button><button type="button" class="btn primary" data-ai="send">보내기</button></div></div>`;
@@ -251,12 +269,13 @@
       if (b.dataset.ai === 'cancel') { box.hidden = true; return; }
       const text = ta.value.trim(); if (!text) return ta.focus();
       if (E.dirty) { clearTimeout(E.saveT); await save(); }
-      const goal = `[영상 편집기에서 부탁] ${text}\n\n편집 파일: ${E.path}\n${sel.length ? `고른 것:\n${sel.map((x) => `- ${x}`).join('\n')}\n` : ''}재생 헤드: ${E.t.toFixed(3)}초 (${tc(E.t)}, ${E.doc.fps}fps)\n\n편집 파일 형식은 공유 스킬 oddin-video 를 따르세요. 파일을 직접 고치면 사용자 편집기가 저절로 다시 읽습니다. 렌더는 사용자가 하니 하지 마세요.`;
-      const body = { goal, mode: S.prefs.mode, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission } };
-      if (E.sessionId && S.sessions.has(E.sessionId)) { body.sessionId = E.sessionId; if (typeof liveJob === 'function' && liveJob(E.sessionId)) body.reserve = true; }
-      else body.cwd = dirOf(E.path);
-      try { const job = await api('/api/jobs', { method: 'POST', body: JSON.stringify(body) }); E.sessionId = job.sessionId; box.hidden = true; toast(job.reserved ? 'AI에게 예약했어요 — 지금 작업이 끝나면 해요' : 'AI에게 보냈어요 — 고치면 편집기가 다시 읽어요'); }
-      catch (x) { toast(`보내지 못했어요: ${x.message}`, true); }
+      const goal = `[ODDIN 스튜디오에서 부탁] ${text}\n\n편집 파일: ${E.path}\n${sel.length ? `고른 것:\n${sel.map((x) => `- ${x}`).join('\n')}\n` : ''}재생 헤드: ${E.t.toFixed(3)}초 (${tc(E.t)}, ${E.doc.fps}fps)\n\n공유 스킬 oddin-studio(편집 파일 형식·도구)를 따르세요. 파일을 직접 고치면 사용자의 스튜디오 화면이 저절로 다시 읽습니다. 렌더는 사용자가 하니 부탁받지 않으면 하지 마세요.`;
+      const send = (sid) => api('api/ai', { method: 'POST', body: JSON.stringify(sid ? { goal, sessionId: sid } : { goal, cwd: dirOf(E.path) }) });
+      try {
+        let job; try { job = await send(E.sessionId); } catch (x) { if (E.sessionId && x.status === 404) job = await send(null); else throw x; }
+        E.sessionId = job.sessionId; writeSid(E.path, job.sessionId); box.hidden = true;
+        toast(job.reserved ? 'AI에게 예약했어요 — ODDIN 의 지금 작업이 끝나면 해요' : 'AI에게 보냈어요 — 고치면 편집기가 다시 읽어요');
+      } catch (x) { toast(`보내지 못했어요: ${x.message}`, true); }
     };
     ta.onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) box.querySelector('[data-ai="send"]').click(); if (e.key === 'Escape') { e.stopPropagation(); box.hidden = true; } };
   }
@@ -285,16 +304,32 @@
 
   /* ---------- 원본 재생기(원본마다 A/B 두 개) ---------- */
   const POOL = new Map(); // 원본 경로 → [el, el]
+  let SEEK_SRC = null; // HTML 장면 시각 맞추기 스크립트(ui/scene-seek.js — 엔진 렌더와 같은 것)
   function poolFor(c) {
     const p = mediaAbs(c.media), m = E.doc.media[c.media];
     let a = POOL.get(p);
     if (!a) {
-      const tag = m.width > 0 ? 'video' : 'audio';
-      a = [0, 1].map(() => { const el = document.createElement(tag); el.preload = 'auto'; el.playsInline = true; el.src = fileUrl(p); el.className = 've-v'; el._clip = null; if (tag === 'video') $v('.ve-vids').appendChild(el); return el; });
+      const tag = m.kind === 'image' ? 'img' : m.kind === 'html' ? 'iframe' : m.width > 0 ? 'video' : 'audio';
+      a = [0, 1].map(() => {
+        const el = document.createElement(tag); el.className = `ve-v k-${m.kind}`; el._clip = null;
+        if (tag === 'img') { el.src = fileUrl(p); el.draggable = false; el.alt = ''; }
+        else if (tag === 'iframe') {
+          el.src = rawUrl(p); el.setAttribute('tabindex', '-1'); el.setAttribute('title', m.name || 'HTML 장면'); el.style.width = `${m.width || E.doc.width}px`; el.style.height = `${m.height || E.doc.height}px`;
+          el.addEventListener('load', async () => {
+            try {
+              SEEK_SRC ||= await fetch('ui/scene-seek.js').then((r) => r.text());
+              el.contentWindow.eval(SEEK_SRC); el._ready = true; el._t = null; frame(true);
+            } catch (e) { console.warn('HTML 장면 연결 실패', e); }
+          });
+        } else { el.preload = 'auto'; el.playsInline = true; el.src = fileUrl(p); }
+        if (tag !== 'audio') $v('.ve-vids').appendChild(el);
+        return el;
+      });
       POOL.set(p, a);
     }
     return a;
   }
+  const isAV = (el) => el.tagName === 'VIDEO' || el.tagName === 'AUDIO';
   function elFor(c, pre = false) {
     const els = poolFor(c);
     return els.find((el) => el._clip === c.id) || els.find((el) => !el._clip) || (pre ? null : els.find((el) => el._pre) || els[0]);
@@ -307,31 +342,50 @@
     for (const { tr, c } of want) {
       const el = elFor(c); used.add(el);
       el._clip = c.id; el._pre = false;
-      const exp = c.in + (t - c.start);
-      el.muted = !!tr.muted || E.doc.media[c.media]?.audio === false; el.volume = V.clamp(dbGain(c.volume), 0, 1);
-      if (E.playing) {
-        if (el.paused) { el.currentTime = exp; el.play().catch(() => {}); }
-        else if (Math.abs(el.currentTime - exp) > 0.25) el.currentTime = exp;
-        if (!E.master && !el.muted) E.master = { el, clip: c };
-      } else { if (!el.paused) el.pause(); if (force || Math.abs(el.currentTime - exp) > 0.02) el.currentTime = exp; }
-      if (el.tagName === 'VIDEO') {
-        if (tr.hidden) { el.style.display = 'none'; continue; }
-        const b = V.clipBox(E.doc, c, t);
-        el.style.cssText = `display:block;position:absolute;left:${b.cx - b.w / 2}px;top:${b.cy - b.h / 2}px;width:${b.w}px;height:${b.h}px;transform:rotate(${b.rotation}deg);opacity:${b.opacity};z-index:${E.doc.tracks.indexOf(tr) + 1};object-fit:fill;`;
+      const exp = c.in + (t - c.start), m = E.doc.media[c.media] || {};
+      if (isAV(el)) {
+        el.muted = !!tr.muted || m.audio === false || tr.kind === 'video' && tr.muted; el.volume = V.clamp(dbGain(c.volume), 0, 1);
+        if (tr.kind === 'audio' && el.tagName === 'VIDEO') el.muted = !!tr.muted; // 소리 트랙에 놓은 영상: 소리만
+        if (E.playing) {
+          if (el.paused) { el.currentTime = exp; el.play().catch(() => {}); }
+          else if (Math.abs(el.currentTime - exp) > 0.25) el.currentTime = exp;
+          if (!E.master && !el.muted) E.master = { el, clip: c };
+        } else { if (!el.paused) el.pause(); if (force || Math.abs(el.currentTime - exp) > 0.02) el.currentTime = exp; }
+      } else if (el.tagName === 'IFRAME' && el._ready && (force || el._t == null || Math.abs(el._t - exp) > 0.5 / E.doc.fps)) {
+        el._t = exp; try { el.contentWindow.__oddinSeekAny?.(exp); } catch {}
+      }
+      if (el.tagName !== 'AUDIO') {
+        if (tr.hidden || tr.kind !== 'video') { el.style.display = 'none'; continue; }
+        const b = V.clipBox(E.doc, c, t), z = E.doc.tracks.indexOf(tr) + 1;
+        if (el.tagName === 'IFRAME') { // 장면은 제 크기로 그리고 맞춤 배율만큼 키운다(장면 안 글자·그림이 픽셀 그대로)
+          const nw = m.width || E.doc.width, nh = m.height || E.doc.height;
+          el.style.cssText = `display:block;position:absolute;left:${b.cx - nw / 2}px;top:${b.cy - nh / 2}px;width:${nw}px;height:${nh}px;transform:rotate(${b.rotation}deg) scale(${b.w / nw},${b.h / nh});opacity:${b.opacity};z-index:${z};border:0;background:transparent;pointer-events:none;color-scheme:normal;`;
+        } else el.style.cssText = `display:block;position:absolute;left:${b.cx - b.w / 2}px;top:${b.cy - b.h / 2}px;width:${b.w}px;height:${b.h}px;transform:rotate(${b.rotation}deg);opacity:${b.opacity};z-index:${z};object-fit:fill;pointer-events:none;`;
         el.classList.toggle('sel', E.sel.has(c.id));
       }
     }
     // 쓰지 않는 재생기는 멈추고 숨긴다. 재생 중이면 다음 컷을 미리 감아 둔다(같은 원본의 다른 재생기)
     for (const els of POOL.values()) for (const el of els) if (!used.has(el)) {
-      if (!el.paused) el.pause();
-      el._clip = null; if (el.tagName === 'VIDEO') el.style.display = 'none';
+      if (isAV(el) && !el.paused) el.pause();
+      el._clip = null; if (el.tagName !== 'AUDIO') el.style.display = 'none';
     }
     if (E.playing) for (const tr of E.doc.tracks) if (tr.kind !== 'text') {
       const nx = tr.clips.find((c) => c.start > t && c.start - t < 1.2); if (!nx || want.some((w) => w.c.id === nx.id)) continue;
       const el = elFor(nx, true); if (!el || used.has(el)) continue;
-      if (el._pre !== nx.id) { el._pre = nx.id; el._clip = nx.id; try { el.currentTime = nx.in; } catch {} }
+      if (el._pre !== nx.id) { el._pre = nx.id; el._clip = nx.id; if (isAV(el)) { try { el.currentTime = nx.in; } catch {} } }
       used.add(el);
     }
+  }
+  /** 화면 좌표의 그 시각 맨 위 영상 클립(그림·장면 포함) — 미리보기에서 눌러 고르기 */
+  function clipAtPoint(clientX, clientY) {
+    const st = $v('.ve-stage').getBoundingClientRect(), x = (clientX - st.left) / E.k, y = (clientY - st.top) / E.k;
+    const list = V.activeClips(E.doc, E.t).reverse();
+    for (const { clip } of list) {
+      const b = V.clipBox(E.doc, clip, E.t), a = -b.rotation * Math.PI / 180, dx = x - b.cx, dy = y - b.cy;
+      const rx = dx * Math.cos(a) - dy * Math.sin(a), ry = dx * Math.sin(a) + dy * Math.cos(a);
+      if (Math.abs(rx) <= b.w / 2 && Math.abs(ry) <= b.h / 2) return clip.id;
+    }
+    return null;
   }
   function frame(force = false) {
     if (!E.open) return;
@@ -359,9 +413,9 @@
   function bindStage() {
     const st = $v('.ve-stage');
     st.addEventListener('pointerdown', (e) => {
-      const ov = e.target.closest('[data-ov]'), vid = !ov && e.target.closest('video');
+      const ov = e.target.closest('[data-ov]');
       let id = ov?.dataset.ov || null;
-      if (vid) { const el = [...POOL.values()].flat().find((x) => x === vid); id = el?._clip || null; }
+      if (!id) id = clipAtPoint(e.clientX, e.clientY);
       if (!id) { if (!e.shiftKey) { E.sel.clear(); refresh(); } return; }
       const f = find(id); if (!f) return;
       if (e.shiftKey) { E.sel.has(id) ? E.sel.delete(id) : E.sel.add(id); refresh(); return; }
@@ -557,9 +611,11 @@
           for (const g of group) { const q = orig.get(g.x.id); g.x.start = snapT(q.start + d); if (g.tr.kind === 'text') g.x.end = snapT(q.end + d); }
         } else if (edge === 'l') {
           let ns = o.start + d; if (E.snap) ns = snapTo(ns, [x.id], thr); ns = snapT(ns);
-          if (tr.kind !== 'text') ns = Math.max(ns, o.start - o.in); // 원본 앞을 넘지 않게
+          const still = tr.kind !== 'text' && E.doc.media[x.media]?.kind === 'image'; // 그림은 원본 구간이 없어 앞으로도 늘릴 수 있다
+          if (tr.kind !== 'text' && !still) ns = Math.max(ns, o.start - o.in); // 원본 앞을 넘지 않게
           ns = Math.min(ns, o.end - FR()); ns = Math.max(0, ns);
-          if (tr.kind !== 'text') x.in = snapT(o.in + (ns - o.start), 1e9);
+          if (still) x.out = x.in + (o.end - ns);
+          else if (tr.kind !== 'text') x.in = snapT(o.in + (ns - o.start), 1e9);
           x.start = ns;
           if (E.chain && !E.ripple && neighbours.prev && tr.kind === 'text') neighbours.prev.x.end = Math.max(neighbours.prev.o.start + FR(), ns);
         } else {
@@ -648,7 +704,8 @@
         const o = { start: x.start, end: endOf(tr, x), in: x.in }, nb = chainNeighbours(tr, x);
         if (which === 'start') {
           if (t >= o.end) continue;
-          if (tr.kind !== 'text') { const ns = Math.max(t, o.start - o.in); x.in = o.in + (ns - o.start); x.start = ns; } else x.start = t;
+          if (tr.kind !== 'text' && E.doc.media[x.media]?.kind === 'image') { x.out = x.in + (o.end - t); x.start = t; }
+          else if (tr.kind !== 'text') { const ns = Math.max(t, o.start - o.in); x.in = o.in + (ns - o.start); x.start = ns; } else x.start = t;
           if (E.chain && !ripple && nb.prev) nb.prev.x.end = Math.max(nb.prev.o.start + FR(), x.start);
           if (ripple) rippleAfter(tr, x, o, 'l');
         } else {
@@ -702,7 +759,7 @@
   }
 
   /* ---------- 속성 패널 ---------- */
-  const FONTS = [{ family: 'Noto Sans KR' }, { family: 'Malgun Gothic', ko: '맑은 고딕' }]; // 서버가 이 PC 글꼴 목록을 주면 바꾼다(/api/video/fonts)
+  const FONTS = [{ family: 'Noto Sans KR' }, { family: 'Malgun Gothic', ko: '맑은 고딕' }]; // 엔진이 이 PC 글꼴 목록을 주면 바꾼다(api/fonts)
   const num = (k, v, { step = 1, unit = '', key = false, x = null, min = null, max = null } = {}) => `<label class="ve-f"><span class="ve-fl" data-scrub="${k}" data-step="${step}" title="좌우로 끌어 바꾸기">${esc(LABEL[k] || k)}${unit ? ` <small>${unit}</small>` : ''}</span><input type="number" data-f="${k}" value="${Math.round(v * 1000) / 1000}" step="${step}"${min != null ? ` min="${min}"` : ''}${max != null ? ` max="${max}"` : ''}>${key ? `<button type="button" class="ve-kb${x && keyAt(x, k) ? ' on' : ''}${x?.keys?.[k]?.length ? ' has' : ''}" data-key="${k}" title="키프레임 넣기/빼기 (재생 헤드)">${icon('diamond')}</button><button type="button" class="ve-kn" data-kn="${k}:-1" title="이전 키">‹</button><button type="button" class="ve-kn" data-kn="${k}:1" title="다음 키">›</button>` : ''}</label>`;
   const LABEL = { x: '가로 위치', y: '세로 위치', scale: '크기', rotation: '회전', opacity: '불투명도', size: '글자 크기', weight: '두께', letterSpacing: '자간', lineHeight: '행간', maxWidth: '최대 너비', strokeWidth: '테두리 두께', shX: '그림자 X', shY: '그림자 Y', shBlur: '그림자 흐림', padX: '배경 가로 여백', padY: '배경 세로 여백', radius: '배경 둥글기', volume: '음량', fadeIn: '소리 들어오기', fadeOut: '소리 나가기', inDur: '등장 길이', outDur: '퇴장 길이', gAngle: '그라디언트 각도' };
   function renderInsp() {
@@ -779,11 +836,14 @@
   }
   function clipPanel(tr, x) {
     const m = E.doc.media[x.media] || {};
-    return `<h4>${icon(tr.kind === 'video' ? 'film' : 'sound')}${esc(m.name || m.path || x.media)}</h4>
-      <p class="c-muted ve-src" title="${esc(m.path || '')}">원본 ${tc(x.in)} ~ ${tc(x.out)} · 원본 길이 ${tc(m.duration || 0)}</p>
+    const kindKo = { image: '그림', html: 'HTML 장면' }[m.kind] || (m.width > 0 ? '영상' : '소리');
+    const sound = m.kind === 'video' && m.audio !== false;
+    return `<h4>${icon(m.kind === 'image' ? 'image' : m.kind === 'html' ? 'code' : tr.kind === 'video' ? 'film' : 'sound')}${esc(m.name || m.path || x.media)}</h4>
+      <p class="c-muted ve-src" title="${esc(m.path || '')}">${kindKo}${m.kind === 'image' ? ` · ${m.width}×${m.height}` : ` · 원본 ${tc(x.in)} ~ ${tc(x.out)} · 원본 길이 ${tc(m.duration || 0)}`}${tr.kind === 'audio' && m.width > 0 ? ' · 소리 트랙이라 소리만 써요' : ''}</p>
+      ${m.kind === 'html' ? `<div class="ve-acts"><button type="button" class="btn sm" data-act="scenereload" title="장면 파일을 고쳤으면 다시 읽기">장면 다시 읽기</button>${STUDIO.desktop?.openPath && !STUDIO.remote ? '<button type="button" class="btn sm" data-act="sceneopen" title="장면 HTML 을 기본 프로그램으로 열기">장면 파일 열기</button>' : ''}</div>` : ''}
       ${timeBlock(tr, x)}
-      <div class="ve-sec"><h5>소리</h5><div class="ve-row2">${num('volume', x.volume, { step: 0.5, unit: 'dB', min: -60, max: 24 })}</div><div class="ve-row2">${num('fadeIn', Math.round(x.fadeIn * E.doc.fps), { unit: 'f', min: 0 })}${num('fadeOut', Math.round(x.fadeOut * E.doc.fps), { unit: 'f', min: 0 })}</div><small class="c-muted">말끝이 뚝 끊기면 나가기 2~3프레임</small></div>
-      ${tr.kind === 'video' ? `<div class="ve-sec"><h5>화면 맞춤</h5><div class="ve-seg"><button type="button" class="${x.fit === 'cover' ? 'on' : ''}" data-fit="cover">꽉 채우기</button><button type="button" class="${x.fit === 'contain' ? 'on' : ''}" data-fit="contain">다 보이게</button></div></div>${transformBlock(x, true)}` : ''}`;
+      ${sound ? `<div class="ve-sec"><h5>소리</h5><div class="ve-row2">${num('volume', x.volume, { step: 0.5, unit: 'dB', min: -60, max: 24 })}</div><div class="ve-row2">${num('fadeIn', Math.round(x.fadeIn * E.doc.fps), { unit: 'f', min: 0 })}${num('fadeOut', Math.round(x.fadeOut * E.doc.fps), { unit: 'f', min: 0 })}</div><small class="c-muted">${tr.kind === 'video' && tr.muted ? '이 영상 트랙은 소리를 꺼 뒀어요(트랙 M) · ' : ''}말끝이 뚝 끊기면 나가기 2~3프레임</small></div>` : ''}
+      ${tr.kind === 'video' ? `<div class="ve-sec"><h5>화면 맞춤</h5><div class="ve-seg"><button type="button" class="${x.fit === 'cover' ? 'on' : ''}" data-fit="cover">꽉 채우기</button><button type="button" class="${x.fit === 'contain' ? 'on' : ''}" data-fit="contain">다 보이게</button><button type="button" class="${x.fit === 'none' ? 'on' : ''}" data-fit="none" title="원본 픽셀 크기 그대로(로고·스티커)">원래 크기</button></div></div>${transformBlock(x, true)}` : ''}`;
   }
   function docPanel() {
     const c = checks();
@@ -794,7 +854,7 @@
       <label class="ve-f"><span class="ve-fl">배경색</span><input type="color" data-doc="background" value="${hex6(E.doc.background)}"></label>
       <div class="ve-sec"><h5>자막 점검</h5>
         ${!c.gaps.length && !c.overlaps.length && !c.long.length && !c.fonts.length ? `<p class="ve-ok">${icon('check')}빈칸·겹침·한 줄 넘침·없는 글꼴 없음</p>` : ''}
-        ${c.fonts.length ? `<p class="ve-warn">${icon('alert')}이 PC에 없는 글꼴: ${c.fonts.map(esc).join(', ')}</p>` : ''}
+        ${c.fonts.length ? `<p class="ve-warn">${icon('alert')}이 PC에 없는 글꼴: ${c.fonts.map(esc).join(', ')}</p><div class="ve-acts"><button type="button" class="btn sm" data-act="fontsfix" title="사용자 글꼴 폴더에 파일은 있는데 등록이 풀린 글꼴이면 등록해요">글꼴 찾아 설치</button><button type="button" class="btn sm" data-act="fontsfile" title="글꼴 파일(.ttf·.otf)을 골라 설치">파일로 설치…</button></div>` : ''}
         ${row('자막 사이 빈칸', c.gaps, '<button type="button" class="btn sm" data-act="closegaps" title="1초 미만 빈칸을 앞 자막 끝을 늘려 붙여요">모두 붙이기</button>')}
         ${row('겹침', c.overlaps, '<button type="button" class="btn sm" data-act="fixoverlaps" title="앞 자막 끝을 뒤 자막 시작으로">모두 고치기</button>')}
         ${row('한 줄 넘침', c.long, '')}</div>
@@ -849,7 +909,7 @@
         edit(() => { if (tcK === 'start') { if (t < endOf(tr, x)) { if (tr.kind !== 'text') x.in = Math.max(0, x.in + (t - x.start)); x.start = t; } } else if (t > x.start) setEnd(tr, x, t); });
       }
     });
-    el.addEventListener('click', (e) => {
+    el.addEventListener('click', async (e) => {
       const b = e.target.closest('button'); if (!b || b.disabled) return;
       const s = selected(), one = s.length === 1 ? s[0] : null;
       if (b.dataset.key && one) return edit(() => toggleKey(one.x, b.dataset.key));
@@ -862,6 +922,15 @@
       if (act === 'edge:start') return setEdge('start');
       if (act === 'edge:end') return setEdge('end');
       if (act === 'onset') return snapOnset();
+      if (act === 'fontsfix') {
+        const want = new Set(checks().fonts.map((f) => String(f).toLowerCase()));
+        const list = await api('api/fonts/installable').catch(() => []);
+        const files = list.filter((x) => x.families.some((f) => want.has(f.toLowerCase()) || (x.ko && want.has(x.ko.toLowerCase())))).map((x) => x.file);
+        return files.length ? installFonts(files) : toast('이 PC에서 그 글꼴 파일을 찾지 못했어요 — "파일로 설치…"로 글꼴 파일을 골라 주세요', true);
+      }
+      if (act === 'fontsfile') { const f = await pickPath({ title: '설치할 글꼴 파일', kinds: ['font'], multi: true, start: dirOf(E.path), confirm: '설치' }); if (f?.length) installFonts(f); return; }
+      if (act === 'scenereload' && one) { for (const el of POOL.get(mediaAbs(one.x.media)) || []) { el._ready = false; try { el.contentWindow.location.reload(); } catch { el.src = el.src; } } return toast('장면을 다시 읽어요'); }
+      if (act === 'sceneopen' && one) return STUDIO.desktop?.openPath(mediaAbs(one.x.media));
       if (act === 'center' && one) return edit(() => { setProp(one.x, 'x', 0); setProp(one.x, 'y', 0); });
       if (act === 'clearkeys' && one) return edit(() => { for (const p of Object.keys(one.x.keys || {})) { one.x[p] = V.valueAt(one.x[p], one.x.keys[p], E.t - one.x.start); } one.x.keys = {}; });
       if (act === 'punch' && one) return edit(() => { const x = one.x, lt = Math.max(0, snapT(E.t - x.start)), ks = (x.keys ||= {}).scale ||= []; const v0 = V.valueAt(x.scale, ks, lt); ks.push({ t: lt, v: v0, ease: 'snap' }, { t: lt + 6 * FR(), v: Math.round(v0 * 1.15 * 1000) / 1000, ease: 'hold' }); ks.sort((a, b) => a.t - b.t); });
@@ -920,31 +989,174 @@
     if (fn && !mod) { e.preventDefault(); e.stopPropagation(); fn(); }
   }
 
+  /* ---------- 원본 패널 (2026-10-10 사용자 "원본 끌어 넣기") ---------- */
+  // 왼쪽 패널: 이 편집에 쓴 원본 · 폴더 둘러보기(편집 파일 폴더에서 시작). 줄을 타임라인·화면으로 끌거나 + 로 재생 헤드에 넣는다.
+  // SRT 는 자막 트랙으로, 글꼴 파일은 설치, 다른 편집 파일은 열기. 올리기(원격·폰)는 편집 폴더로 복사한 뒤 넣는다.
+  const BIN_KEY = 'oddin.studio.bin';
+  function binOpen() { try { const v = localStorage.getItem(BIN_KEY); return v == null ? window.innerWidth >= 1100 : v === '1'; } catch { return window.innerWidth >= 1100; } }
+  function setBinOpen(on) { try { localStorage.setItem(BIN_KEY, on ? '1' : '0'); } catch {} const b = $v('.ve-bin'); if (b) b.hidden = !on; renderTop(); layoutStage(); if (on) renderBin(); }
+  const PATH_TYPE = 'application/x-oddin-path';
+  const sep = (p) => String(p).replace(/\\/g, '/');
+  /** 편집 파일에 적을 원본 경로: 편집 폴더 안이면 상대, 밖이면 절대(/) — 엔진 relOrAbs 와 같은 규칙 */
+  function relOrAbs(p) { const d = sep(dirOf(E.path)).replace(/\/+$/, '') + '/', f = sep(p); return f.toLowerCase().startsWith(d.toLowerCase()) ? f.slice(d.length) : f; }
+  async function renderBin() {
+    const el = $v('.ve-bin'); if (!el || el.hidden || !E.open) return;
+    const used = Object.entries(E.doc.media);
+    const list = E.binList && E.binList.path === E.binDir ? E.binList : null;
+    const upTitle = STUDIO.remote || !STUDIO.desktop ? '이 기기의 파일을 편집 폴더로 올려서 재생 헤드에 넣기' : '파일을 편집 폴더로 복사해서 재생 헤드에 넣기';
+    const usedRows = used.map(([id, m]) => binRow({ path: mediaAbs(id), name: m.name || m.path.split(/[\\/]/).pop(), kind: m.kind === 'video' ? (m.width > 0 ? 'video' : 'audio') : m.kind, used: id, info: m.kind === 'image' ? `${m.width}×${m.height}` : tc(m.duration || 0) })).join('');
+    const dirRows = list ? (list.entries.filter((x) => x.path.toLowerCase() !== E.path.toLowerCase()).map((x) => binRow(x)).join('') || '<div class="empty-row">넣을 파일이 없어요</div>') : '<div class="empty-row">읽는 중…</div>';
+    el.innerHTML = `<div class="vb-head"><b>${icon('folder')}원본</b><span class="grow"></span>
+        <button type="button" class="icon-btn sm" data-b="pick" title="다른 폴더 고르기">${icon('folder')}</button>
+        <label class="icon-btn sm vb-up" title="${upTitle}">${icon('upload')}<input type="file" multiple accept="video/*,audio/*,image/*,.html,.htm,.srt,.ttf,.otf" hidden></label>
+        <button type="button" class="icon-btn sm" data-b="refresh" title="다시 읽기">${icon('refresh')}</button></div>
+      ${used.length ? `<div class="vb-sec"><h6>이 편집에 쓴 원본 ${used.length}</h6>${usedRows}</div>` : ''}
+      <div class="vb-sec vb-dir"><div class="vb-path"><button type="button" class="icon-btn sm" data-b="up" title="위 폴더" ${list?.parent ? '' : 'disabled'}>${icon('up')}</button><span title="${esc(E.binDir)}">${esc(E.binDir.split(/[\\/]/).filter(Boolean).pop() || E.binDir)}</span></div>
+      <div class="vb-list">${dirRows}</div></div>
+      <p class="vb-tip c-muted">줄을 타임라인이나 화면으로 끌어 넣어요. ${STUDIO.desktop ? '탐색기에서 바로 끌어 놓아도 돼요.' : '탐색기에서 끌어 놓으면 편집 폴더로 올려서 넣어요.'}</p>`;
+    if (!list) {
+      try { E.binList = await api(`api/list?path=${enc(E.binDir)}`); } catch (e) { E.binList = { path: E.binDir, parent: null, entries: [] }; toast(`폴더를 읽지 못했어요: ${e.message}`, true); }
+      if (E.binList.path === E.binDir) renderBin();
+    }
+  }
+  const ROW_TIP = { srt: '누르면 자막 트랙으로 넣어요', font: '누르면 이 PC에 설치해요', edit: '누르면 이 편집을 열어요' };
+  function binRow(x) {
+    const k = x.kind, add = k !== 'dir' && k !== 'edit';
+    const info = x.info || (k === 'dir' ? '' : x.size ? fmtSize(x.size) : '');
+    const tip = k === 'dir' ? x.path : `${x.path}\n${ROW_TIP[k] || '끌어서 넣거나 + 를 누르세요'}`;
+    const addTip = k === 'srt' ? '자막 트랙으로 넣기' : k === 'font' ? '글꼴 설치' : '재생 헤드에 넣기';
+    return `<div class="vb-row k-${k}${x.used ? ' used' : ''}" data-path="${esc(x.path)}" data-kind="${k}" ${k !== 'dir' ? 'draggable="true"' : ''} title="${esc(tip)}">${icon(KIND_ICON[k] || 'file')}<span class="n">${esc(x.name)}</span><small>${esc(info)}</small>${add ? `<button type="button" class="vb-add" data-add title="${addTip}">${icon('plus')}</button>` : ''}</div>`;
+  }
+  function bindBin() {
+    const el = $v('.ve-bin'); if (!el) return;
+    el.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-b]');
+      if (b) {
+        if (b.dataset.b === 'refresh') { E.binList = null; return renderBin(); }
+        if (b.dataset.b === 'up' && E.binList?.parent) { E.binDir = E.binList.parent; E.binList = null; return renderBin(); }
+        if (b.dataset.b === 'pick') { const d = await pickPath({ title: '원본 폴더 고르기', mode: 'dir', start: E.binDir, confirm: '이 폴더 보기' }); if (d) { E.binDir = d; E.binList = null; renderBin(); } return; }
+      }
+      const row = e.target.closest('.vb-row'); if (!row) return;
+      const k = row.dataset.kind, p = row.dataset.path;
+      if (k === 'dir') { E.binDir = p; E.binList = null; return renderBin(); }
+      if (k === 'edit') return open(p);
+      if (e.target.closest('[data-add]') || k === 'srt' || k === 'font') return addPaths([p], { at: E.t });
+      // 이 편집에 쓴 원본: 그 원본을 쓰는 클립을 고르고 처음으로
+      const id = Object.keys(E.doc.media).find((m) => mediaAbs(m).toLowerCase() === p.toLowerCase());
+      if (id) { const clips = items().filter(({ tr, x }) => tr.kind !== 'text' && x.media === id); if (clips.length) { E.sel = new Set(clips.map((c) => c.x.id)); seek(clips[0].x.start); refresh(); scrollTo(clips[0].x.start); } }
+    });
+    el.addEventListener('dblclick', (e) => { const row = e.target.closest('.vb-row'); if (row && !['dir', 'edit', 'srt', 'font'].includes(row.dataset.kind)) addPaths([row.dataset.path], { at: E.t }); });
+    el.addEventListener('dragstart', (e) => { const row = e.target.closest('.vb-row'); if (!row || row.dataset.kind === 'dir') return; e.dataTransfer.setData(PATH_TYPE, JSON.stringify([row.dataset.path])); e.dataTransfer.setData('text/plain', row.dataset.path); e.dataTransfer.effectAllowed = 'copy'; });
+    el.addEventListener('change', async (e) => {
+      const inp = e.target.closest('input[type=file]'); if (!inp || !inp.files.length) return;
+      const files = [...inp.files]; inp.value = '';
+      await dropFiles(files.map((f) => ({ file: f, forceUpload: true })), { at: E.t });
+    });
+  }
+
+  /* ---------- 끌어 놓기 ---------- */
+  function dragKind(e) { const t = [...(e.dataTransfer?.types || [])]; return t.includes(PATH_TYPE) ? 'path' : t.includes('Files') ? 'files' : null; }
+  function laneAt(e) {
+    const lane = e.target.closest?.('.ve-lane'); if (!lane) return null;
+    const sc = $v('.ve-scroll'), r = sc.getBoundingClientRect();
+    let t = Math.max(0, (e.clientX - r.left - HEAD + sc.scrollLeft) / E.zoom); if (E.snap) t = snapTo(t, null, 8 / E.zoom);
+    return { trackId: lane.dataset.track, at: snapT(t), lane };
+  }
+  function bindDrop() {
+    const el = E.el; let mark = null, depth = 0;
+    const clear = () => { el.querySelectorAll('.ve-lane.drop-on').forEach((x) => x.classList.remove('drop-on')); mark?.remove(); mark = null; const d = $v('.ve-drop'); if (d) d.hidden = true; };
+    el.addEventListener('dragenter', (e) => { if (dragKind(e)) depth++; });
+    el.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; clear(); } });
+    el.addEventListener('dragover', (e) => {
+      const kind = dragKind(e); if (!kind) return;
+      const lane = laneAt(e), inView = e.target.closest('.ve-view, .ve-bin');
+      if (!lane && !inView) { e.dataTransfer.dropEffect = 'none'; return; }
+      e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+      el.querySelectorAll('.ve-lane.drop-on').forEach((x) => { if (x !== lane?.lane) x.classList.remove('drop-on'); });
+      if (lane) {
+        lane.lane.classList.add('drop-on'); $v('.ve-drop').hidden = true;
+        if (!mark) { mark = document.createElement('i'); mark.className = 've-dropmark'; $v('.ve-grid').appendChild(mark); }
+        mark.style.left = `${HEAD + lane.at * E.zoom}px`; mark.dataset.t = tc(lane.at);
+      } else { mark?.remove(); mark = null; if (e.target.closest('.ve-view')) $v('.ve-drop').hidden = false; }
+    });
+    el.addEventListener('drop', async (e) => {
+      const kind = dragKind(e); if (!kind) return;
+      e.preventDefault(); e.stopPropagation(); depth = 0;
+      const lane = laneAt(e), opts = lane ? { at: lane.at, trackId: lane.trackId } : { at: E.t };
+      clear();
+      if (kind === 'path') { let ps = []; try { ps = JSON.parse(e.dataTransfer.getData(PATH_TYPE)); } catch {} return addPaths(ps, opts); }
+      return dropFiles([...e.dataTransfer.files].map((f) => ({ file: f })), opts);
+    });
+  }
+  // 편집기 밖에 놓쳐도 브라우저가 파일을 열어 버리지 않게
+  window.addEventListener('dragover', (e) => { if (E.open && dragKind(e)) e.preventDefault(); });
+  window.addEventListener('drop', (e) => { if (E.open && dragKind(e)) e.preventDefault(); });
+  /** 탐색기에서 온 파일: 프로그램 창(이 PC)이면 실제 경로, 아니면 편집 폴더로 올린 뒤 그 경로 */
+  async function dropFiles(list, opts) {
+    const paths = [];
+    for (const it of list) {
+      const real = !it.forceUpload && !STUDIO.remote ? STUDIO.desktop?.pathForFile?.(it.file) : null;
+      if (real) { paths.push(real); continue; }
+      try { paths.push(await upload(it.file)); } catch (e) { toast(`${it.file.name}: ${e.message}`, true); }
+    }
+    if (paths.length) await addPaths(paths, opts);
+  }
+  async function upload(file) {
+    const dir = dirOf(E.path); toast(`올리는 중: ${file.name} (${fmtSize(file.size)})`);
+    const r = await fetch(`api/upload?dir=${enc(dir)}&name=${enc(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `올리지 못했어요(${r.status})`);
+    E.binList = null; return j.path;
+  }
+  const MEDIA_RE = /\.(mp4|m4v|mov|webm|mkv|avi|mts|m2ts|wmv|mxf|mp3|wav|m4a|aac|flac|ogg|opus|aif|aiff|png|jpe?g|webp|gif|bmp|tiff?|html?)$/i;
+  /** 경로들을 넣는다: 영상·소리·그림·장면은 차례로 이어서(되돌리기 한 번), SRT 는 자막 트랙, 글꼴은 설치, 편집 파일은 열기 */
+  async function addPaths(paths, { at = E.t, trackId = null } = {}) {
+    const media = [], name = (p) => p.split(/[\\/]/).pop();
+    for (const p of paths) {
+      if (/\.oddin-edit\.json$/i.test(p)) return open(p);
+      if (/\.srt$/i.test(p)) {
+        try {
+          const text = await fetch(fileUrl(p)).then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.text(); });
+          const nm = name(p).replace(/\.srt$/i, ''); let res = null;
+          edit((d) => { res = V.srtTrack(d, text, nm); });
+          toast(`자막 ${res?.count || 0}개를 "${nm}" 트랙으로 넣었어요`);
+        } catch (e) { toast(`SRT 를 읽지 못했어요: ${e.message}`, true); }
+        continue;
+      }
+      if (/\.(ttf|otf|ttc)$/i.test(p)) { await installFonts([p]); continue; }
+      if (!MEDIA_RE.test(p)) { toast(`넣을 수 없는 파일이에요: ${name(p)}`, true); continue; }
+      try { media.push({ p, info: await api(`api/probe?path=${enc(p)}`) }); } catch (e) { toast(`${name(p)}: ${e.message}`, true); }
+    }
+    if (!media.length) return;
+    const placed = [];
+    edit((d) => {
+      let t = at;
+      for (const { p, info } of media) {
+        const r = V.placeMedia(d, info, { path: relOrAbs(p), name: name(p), at: t, trackId });
+        const tr = d.tracks.find((x) => x.id === r.track), c = tr.clips.find((x) => x.id === r.clip);
+        placed.push(r.clip); t = V.clipEnd(c);
+      }
+    });
+    E.sel = new Set(placed); loadAssets(); refresh(); renderBin();
+    toast(media.length === 1 ? `넣었어요: ${name(media[0].p)}` : `${media.length}개를 차례로 넣었어요`);
+  }
+  async function installFonts(files) {
+    try {
+      const r = await api('api/fonts/install', { method: 'POST', body: JSON.stringify(files ? { files } : { all: true }) });
+      E.fonts = await api('api/fonts').catch(() => E.fonts);
+      const msg = r.installed.length ? `글꼴 ${r.installed.length}개를 설치했어요${STUDIO.desktop ? '' : ' — 미리보기에 바로 안 보이면 창을 새로 고치세요'}` : (r.skipped[0]?.reason || '설치할 글꼴이 없어요');
+      toast(msg, !r.installed.length && !!r.skipped.length);
+      renderInsp();
+    } catch (e) { toast(`글꼴을 설치하지 못했어요: ${e.message}`, true); }
+  }
+
   /* ---------- 여는 곳 ---------- */
   // 시험·자동화용: 화면 단추와 같은 동작을 코드로(마우스 없이)
   const select = (ids) => { E.sel = new Set([].concat(ids || [])); refresh(); };
-  window.hubVideo = { open, create, close, state: () => E, cmd: { select, seek, play, pause, splitAt, deleteSel, nudge, setEdge, snapOnset, addMarker, addText, undo, redo, save, toggleKey: (id, p) => { const f = find(id); if (f) edit(() => toggleKey(f.x, p)); }, setProp: (id, p, v) => { const f = find(id); if (f) edit(() => setProp(f.x, p, v)); }, checks, speechOnset } };
-  // 경로 오른쪽 클릭 메뉴(tools-ui.js pathMenu → window.hubPathItems)
-  (window.hubPathItems ||= []).push((info, { fed }) => {
-    if (fed || !info || info.kind === 'dir') return [];
-    const p = info.path;
-    if (/\.oddin-edit\.json$/i.test(p)) return [{ label: '영상 편집기로 열기', desc: '싱크·디자인·모션 고치기', icon: 'film', run: () => { closePop(); open(p); } }];
-    if (/\.(mp4|m4v|mov|webm|mkv|avi|mts|m2ts)$/i.test(p)) return [{ label: '이 영상으로 편집 만들기', desc: '같은 이름 SRT가 있으면 자막으로 · 있으면 그 편집을 열어요', icon: 'film', run: () => { closePop(); create(p); } }];
-    return [];
+  window.studioEditor = { open, create, close, state: () => E, cmd: { select, seek, play, pause, splitAt, deleteSel, nudge, setEdge, snapOnset, addMarker, addText, undo, redo, save, addPaths, toggleKey: (id, p) => { const f = find(id); if (f) edit(() => toggleKey(f.x, p)); }, setProp: (id, p, v) => { const f = find(id); if (f) edit(() => setProp(f.x, p, v)); }, checks, speechOnset, installFonts } };
+  // 엔진이 "이 파일을 열어 달라"고 하면(명령줄 open·ODDIN 경로 메뉴) 이 창에서 연다
+  STUDIO.on((ev) => {
+    if (ev.type === 'open' && ev.path) { if (/\.oddin-edit\.json$/i.test(ev.path)) open(ev.path); else create(ev.path); try { STUDIO.desktop?.focus?.(); } catch {} }
+    if (ev.type === 'fonts' && E.open) api('api/fonts').then((l) => { E.fonts = l; renderInsp(); }).catch(() => {});
   });
-  // 작업 카드: 결과에 편집 파일 경로가 있으면 "영상 편집기로 열기"
-  (window.hubJobExtras ||= []).push((j) => {
-    if (String(j.id).startsWith('rm-')) return '';
-    const text = `${j.report || ''}\n${(j.tasks || []).map((t) => t.text || '').join('\n')}`;
-    const m = [...new Set((text.match(/[A-Za-z]:[\\/][^\s`'"<>|*?()\[\]]+?\.oddin-edit\.json/g) || []))];
-    return m.length ? m.slice(0, 3).map((p) => `<div class="handoff-row ve-job">${icon('film')}<span class="t"><b>영상 편집</b> · ${esc(p.split(/[\\/]/).pop())}</span><button type="button" class="btn" data-vedit="${esc(p)}" data-vsid="${esc(j.sessionId || '')}">편집기로 열기</button></div>`).join('') : '';
-  });
-  document.addEventListener('click', (e) => { const b = e.target.closest('[data-vedit]'); if (b) { e.preventDefault(); open(b.dataset.vedit, { sessionId: b.dataset.vsid || null }); } });
-  (window.hubCommands ||= []).push(() => {
-    const last = (() => { try { return localStorage.getItem('oddin.vedit.last'); } catch { return null; } })();
-    return [
-      ...(last ? [{ label: '영상 편집기 · 최근 편집 열기', desc: last.split(/[\\/]/).pop(), icon: 'film', run: () => open(last) }] : []),
-      { label: '영상 편집기 · 경로로 열기…', desc: '편집 파일(.oddin-edit.json) 또는 영상 파일 경로', icon: 'film', run: () => { const p = prompt('편집 파일(.oddin-edit.json) 또는 영상 파일의 전체 경로'); if (!p) return; const q = p.trim().replace(/^"|"$/g, ''); /\.oddin-edit\.json$/i.test(q) ? open(q) : create(q); } },
-    ];
-  });
+  window.addEventListener('popstate', () => { const p = new URLSearchParams(location.search).get('path'); if (p && p !== E.path) open(p); else if (!p && E.open) close(true); });
 })();

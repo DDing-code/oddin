@@ -1,4 +1,4 @@
-/* ODDIN 영상 편집기 (video-editor.js). 색은 테마 변수만 */
+/* ODDIN 스튜디오 편집기 (editor.js). 색은 테마 변수만 */
 #vedit{position:fixed;inset:0;z-index:41;display:grid;grid-template-rows:auto minmax(0,1fr) auto minmax(150px,var(--ve-tl,34vh));background:var(--bg);color:var(--fg);font-size:13px;outline:none}
 #vedit .grow{flex:1}
 #vedit .btn.sm{padding:4px 9px;font-size:12px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
@@ -22,7 +22,8 @@
 .ve-rend .ve-bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
 
 /* 가운데: 미리보기 | 속성 */
-.ve-mid{display:grid;grid-template-columns:minmax(0,1fr) 330px;min-height:0}
+.ve-mid{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 330px;min-height:0}
+.ve-mid:has(> .ve-bin:not([hidden])){grid-template-columns:250px minmax(0,1fr) 330px}
 .ve-view{position:relative;display:flex;align-items:center;justify-content:center;min-height:0;min-width:0;overflow:hidden;background:color-mix(in srgb,var(--bg) 70%,#000)}
 .ve-stage-wrap{position:relative;flex:none;overflow:hidden;box-shadow:0 0 0 1px var(--line2)}
 .ve-stage{position:absolute;left:0;top:0;transform-origin:0 0;overflow:hidden}
@@ -142,10 +143,54 @@
 /* 좁은 화면(폰·작은 창): 위아래로 쌓고 속성은 아래 */
 @media (max-width:860px){
   #vedit{grid-template-rows:auto minmax(200px,42vh) auto minmax(0,1fr)}
-  .ve-mid{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr)}
+  .ve-mid,.ve-mid:has(> .ve-bin:not([hidden])){grid-template-columns:1fr;grid-template-rows:minmax(0,1fr)}
+  .ve-bin{position:absolute;inset:0 auto 0 0;width:min(300px,86vw);z-index:15;box-shadow:10px 0 30px color-mix(in srgb,var(--shadow) 40%,transparent)}
   .ve-insp{display:none}
   .ve-title{max-width:30vw}
   .ve-top .btn.sm:not(.primary){padding:4px 7px}
   .ve-trans{gap:4px}
   .ve-time{font-size:12px}
 }
+
+/* 원본 패널(왼쪽) */
+.ve-bin{display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--side);min-height:0;overflow:hidden}
+.vb-head{display:flex;align-items:center;gap:2px;padding:6px 6px 6px 12px;border-bottom:1px solid var(--line)}
+.vb-head b{display:inline-flex;align-items:center;gap:6px;font-size:12.5px}
+.vb-head b .ico{width:14px;height:14px;color:var(--muted)}
+.vb-up{cursor:pointer}
+.vb-sec{border-bottom:1px solid var(--line);padding:4px 0}
+.vb-sec h6{margin:4px 12px 2px;font-size:11px;font-weight:600;color:var(--muted)}
+.vb-dir{flex:1;min-height:0;display:flex;flex-direction:column;border-bottom:0}
+.vb-path{display:flex;align-items:center;gap:4px;padding:2px 8px;font-size:12px;color:var(--fg2);min-width:0}
+.vb-path span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vb-list{flex:1;min-height:0;overflow:auto}
+.vb-row{display:flex;align-items:center;gap:7px;padding:4px 6px 4px 12px;font-size:12px;color:var(--fg2);cursor:pointer;user-select:none;min-width:0}
+.vb-row:hover{background:var(--hover);color:var(--fg)}
+.vb-row[draggable=true]{cursor:grab}
+.vb-row .ico{width:14px;height:14px}
+.vb-row .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vb-row small{color:var(--faint);font-size:10.5px;white-space:nowrap}
+.vb-row.used .n{color:var(--fg)}
+.vb-add{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);border-radius:var(--r2);padding:0;opacity:0}
+.vb-row:hover .vb-add,.vb-row:focus-within .vb-add{opacity:1}
+.vb-add:hover{color:var(--fg);border-color:var(--accent)}
+.vb-add .ico{width:12px;height:12px}
+.vb-tip{margin:0;padding:8px 12px;font-size:11px;line-height:1.5;border-top:1px solid var(--line)}
+.ve-bin .k-video .ico,.ve-bin .k-image .ico{color:var(--codex)}.ve-bin .k-audio .ico{color:var(--ok)}.ve-bin .k-html .ico{color:var(--warn)}.ve-bin .k-edit .ico{color:var(--accent)}.ve-bin .k-srt .ico{color:var(--claude)}
+.ve-top .btn.sm.on{border-color:var(--accent);color:var(--fg)}
+/* 끌어 놓기 */
+.ve-drop{position:absolute;inset:10px;z-index:12;display:flex;align-items:center;justify-content:center;border:2px dashed var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent);pointer-events:none}
+.ve-drop div{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 22px;background:var(--panel);border:1px solid var(--line2);font-size:13px}
+.ve-drop .ico{width:22px;height:22px;color:var(--accent)}
+.ve-drop span{color:var(--muted);font-size:11.5px}
+.ve-lane.drop-on{background:color-mix(in srgb,var(--accent) 12%,transparent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ve-dropmark{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--accent);z-index:8;pointer-events:none}
+.ve-dropmark::after{content:attr(data-t);position:absolute;top:2px;left:4px;font:10.5px/1 var(--mono);background:var(--accent);color:var(--bg);padding:2px 4px;white-space:nowrap}
+/* 그림·HTML 장면 미리보기 */
+.ve-v.k-image,.ve-v.k-html{transform-origin:50% 50%}
+.ve-v.k-html{border:0;background:transparent}
+.ve-v.sel{outline:2px solid var(--accent);outline-offset:-1px}
+/* 렌더 결과 */
+.ve-result{display:block;width:100%;max-height:62vh;background:#000}
+.ve-result-acts{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;min-width:0}
+.ve-result-acts .c-muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

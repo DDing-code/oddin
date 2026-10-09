@@ -1,0 +1,23 @@
+{
+  "id": "pixel-shorts",
+  "order": 3,
+  "name": "픽셀 쇼츠",
+  "description": "주제 하나로 닌텐도 DS풍 픽셀 쇼츠(세로)를 조사·대본·3D 장면·소리·MP4까지 만들어요",
+  "inputs": [
+    {
+      "key": "topic",
+      "label": "주제",
+      "type": "text",
+      "placeholder": "예: 몬티 홀 문제 / 차트던전 07편"
+    },
+    {
+      "key": "review",
+      "label": "대본 검토",
+      "type": "text",
+      "optional": true,
+      "placeholder": "검토를 받으려면 \"검토\" 라고 적기"
+    }
+  ],
+  "gates": "\"검토\"라고 적으면 대본을 보여 주고 확인을 받은 뒤 진행해요.",
+  "prompt": "/pixel-shorts {topic} {review}"
+}

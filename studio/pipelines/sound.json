@@ -1,0 +1,25 @@
+{
+  "id": "sound",
+  "order": 7,
+  "name": "소리 만들기",
+  "description": "효과음·환경음·배경음을 찾거나 만들어 편집의 소리 트랙에 넣어요",
+  "cwdFrom": "edit",
+  "inputs": [
+    {
+      "key": "request",
+      "label": "필요한 소리",
+      "type": "textarea",
+      "placeholder": "예: 펀치 인마다 짧은 뿅 소리, 전체에 잔잔한 배경음 -18dB"
+    },
+    {
+      "key": "edit",
+      "label": "넣을 편집 파일",
+      "type": "path",
+      "kinds": [
+        "edit"
+      ],
+      "optional": true
+    }
+  ],
+  "prompt": "소리를 찾거나 만들어 주세요: {request}\n넣을 편집 파일: {edit}"
+}

@@ -39,7 +39,7 @@ import { AdobeBridge, appKey } from './lib/adobe-bridge.mjs';
 import { Profile } from './lib/profile.mjs';
 import { Push } from './lib/push.mjs';
 import { BrowserManager } from './lib/browser.mjs';
-import { VideoEditor } from './lib/video-edit.mjs';
+import { StudioLink } from './lib/studio-link.mjs';
 import { ChromeExtBrowser, isExtRequest } from './lib/chrome-ext.mjs';
 import { HubAuth, controlGate, canonicalRoute } from './lib/hub-auth.mjs';
 import { SessionGroups, listDirs, makeDir, renameDir } from './lib/session-groups.mjs';
@@ -159,9 +159,9 @@ function browserFor(owner, b) {
   return m;
 }
 process.on('exit', () => { try { oddinBrowser?.proc?.kill(); } catch {} });
-// 영상 편집기(lib/video-edit.mjs, 2026-10-10): *.oddin-edit.json 읽기·저장·렌더. 렌더의 글자 레이어는 ODDIN 브라우저로 그린다
-const video = new VideoEditor({ config, getRoots: openRoots, browser: oddinBrowser, hubUrl: () => `http://127.0.0.1:${config.port}` });
-video.on('event', (ev) => broadcast(ev));
+// ODDIN 스튜디오(studio/, 2026-10-10 "오딘과 연동되는 프로그램으로"): 따로 켜는 영상 편집 프로그램. 켜지면 여기에 알리고(hello),
+// 허브는 /studio/ 로 그 화면을 비춘다(폰·원격). 규약 docs/studio.md
+const studio = new StudioLink({ root: ROOT, emit: (ev) => broadcast(ev) });
 jobs.browserTool = (job, task) => browsers().length ?{ command: process.execPath, args: [path.join(ROOT, 'scripts', 'oddin-browser-mcp.mjs')], env: { ODDIN_TASK: `${job.id}/${task.id}`, ODDIN_HUB: `http://127.0.0.1:${config.port}` } } : null;
 jobs.machines = () => { const list = peers.list(); return list.length ? { self: peers.self().name, peers: list.map((x) => x.name), handoff: path.join(ROOT, 'scripts', 'handoff.mjs') } : null; };
 /** 세션 실행 PC 옮기기: 대화 기록을 다른 PC(또는 이 PC)에 새 세션으로 가져오고 원래 세션은 보관함으로. machine = 'self' | PC id·이름 */
@@ -293,6 +293,9 @@ const server = http.createServer(async (req, res) => {
     }
     // 다른 PC 세션·작업(rm-<PC>- id)에 대한 요청은 그 PC로 넘긴다
     if (toPeer(p, url)) { const raw = ['GET', 'HEAD'].includes(req.method) ? null : await readRaw(req, 8_000_000); return await fed.proxy(req, res, { pathname: p, search: url.search, raw }); }
+    // ODDIN 스튜디오 화면·API 비추기(폰·원격에서 열기). 문서를 열 때 화면 쿠키를 줘 원격에서도 스튜디오 화면이 바꾸기 요청을 할 수 있게
+    if (p === '/studio') { res.writeHead(302, { Location: `/studio/${url.search}`, 'Cache-Control': 'no-store' }); return res.end(); }
+    if (p.startsWith('/studio/')) return studio.proxy(req, res, { pathname: p, search: url.search, remote: !!req.hubViewer?.remote, cookie: hubAuth.cookieFor(req, { secure: !!req.hubViewer?.remote }) });
     const checkpoint = await checkpointRoute({ pathname: p, method: req.method, query: url.searchParams, readBody: () => readBody(req), manager: jobs });
     if (checkpoint) return json(res, checkpoint.body);
     if (await tools.handle(req, res, url, { json, readBody })) return;
@@ -437,8 +440,19 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/chrome-ext/result') return json(res, chromeExt.result(b));
       return fail(res, '없는 기능이에요', 404);
     }
-    // ---- 영상 편집기 (lib/video-edit.mjs). 저장·렌더는 원격에서 ODDIN 화면에서만(lib/hub-auth.mjs isControl) ----
-    if (p.startsWith('/api/video/')) return await video.handle(req, res, p, url, { json, fail, readBody, send });
+    // ---- ODDIN 스튜디오 (lib/studio-link.mjs). 엔진의 알림·열기 범위는 이 PC에서만, 켜기·설치·끄기는 제어(원격은 ODDIN 화면에서만) ----
+    if (p.startsWith('/api/studio/')) {
+      const local = !req.hubViewer?.remote;
+      if (p === '/api/studio/status' && req.method === 'GET') return json(res, studio.status());
+      if (!local && ['/api/studio/hello', '/api/studio/bye', '/api/studio/roots'].includes(p)) return fail(res, '스튜디오 연결은 이 PC에서만 해요', 403);
+      if (p === '/api/studio/hello' && req.method === 'POST') return json(res, studio.hello(await readBody(req)));
+      if (p === '/api/studio/bye' && req.method === 'POST') return json(res, studio.bye(await readBody(req)));
+      if (p === '/api/studio/roots' && req.method === 'GET') return json(res, { roots: openRoots() });
+      if (p === '/api/studio/start' && req.method === 'POST') { const b = await readBody(req); return json(res, await studio.start({ open: local ? b.open || null : null, window: local && b.window !== false })); }
+      if (p === '/api/studio/stop' && req.method === 'POST') { const b = await readBody(req); return json(res, await studio.stop({ force: b.force === true })); }
+      if (p === '/api/studio/install' && req.method === 'POST') { await readBody(req); if (!local) return fail(res, '설치는 그 PC에서만 해요', 403); return json(res, studio.install()); }
+      return fail(res, '없는 스튜디오 기능이에요', 404);
+    }
     if (p.startsWith('/api/browser')) {
       if (!browsers().length) return fail(res, 'ODDIN 브라우저가 꺼져 있어요(config.browser.oddin)', 404);
       if (p === '/api/browser' && req.method === 'GET') return json(res, browserState());
