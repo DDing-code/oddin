@@ -620,6 +620,8 @@ process.on('uncaughtException', (e) => {
   console.error(e); process.exit(1);
 });
 
+// 요청을 다 받는 시간 한도: 기본 5분이면 폰·원격에서 스튜디오(/studio/)로 큰 원본을 올리다 끊긴다 — 1시간으로
+server.requestTimeout = 60 * 60_000;
 server.listen(config.port, config.host || '127.0.0.1', () => {
   console.log(`ODDIN  http://${config.host || '127.0.0.1'}:${config.port}  (허브: ${config.hubDir})`);
   const settings = remote.readConfig();
