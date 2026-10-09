@@ -33,7 +33,7 @@
   const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 
   const STATUS = { added: ['A', '추가', 'add'], modified: ['M', '수정', 'mod'], deleted: ['D', '삭제', 'del'], renamed: ['R', '이름 변경', 'ren'] };
-  const SKIP_KO = { large_file: '큰 파일', symlink: '바로 가기(링크)', special_file: '특수 파일', changed_during_scan: '스캔 중 바뀜', missing_during_scan: '스캔 중 사라짐', too_many_files: '파일 수 초과로 폴더 전체 건너뜀' };
+  const SKIP_KO = { large_file: '큰 파일', symlink: '바로 가기(링크)', special_file: '특수 파일', changed_during_scan: '스캔 중 바뀜', missing_during_scan: '스캔 중 사라짐', too_many_files: '파일 수 초과로 폴더 전체 건너뜀', reserved_name: '윈도 예약 이름(nul 등)', unreadable: '열 수 없음(잠김·사라짐)' };
   const ACTION_KO = { added: '지워져요', modified: '작업 전 내용으로', deleted: '다시 생겨요', renamed: '원래 이름으로' };
   const STEP = 20, ROW_CAP = 2500;
 

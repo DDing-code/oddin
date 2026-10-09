@@ -211,3 +211,29 @@ test('분리된 시험 서버: 작업·세션 API, 충돌·복원·취소 SSE, �
   const cleanupEnd = Date.now() + 15000; while ((await api('/api/checkpoints')).body.repositories.some((r) => r.jobs.length)) { if (Date.now() > cleanupEnd) throw new Error('참조 정리 대기 시간 초과'); await delay(20); }
   assert.equal((await api('/api/checkpoints/cleanup', {})).body.removed.length, 1);
 });
+
+// 2026-10-10 "체크포인트 Git 처리에 실패했습니다 (종료 코드 128)": DDingUI_Super 에 Git Bash 의 `2>nul`이 만든 nul 파일이 있어
+// git 이 열지 못하고 스냅샷 전체가 실패했다 → 윈도 예약 이름은 건너뛰고, 그래도 못 여는 파일 하나는 빼고 다시 한다
+test('윈도 예약 이름 파일(nul 등)은 건너뛰고 스냅샷은 성공한다', { skip: process.platform !== 'win32' && '윈도 전용' }, async () => {
+  const f = fixture(); f.write('정상.txt', '내용\n');
+  const long = (p) => '\\\\?\\' + p; // 예약 이름은 \\?\ 경로로만 만들고 지울 수 있다
+  const nul = long(path.join(f.cwd, 'nul')), aux = long(path.join(f.cwd, 'aux.txt'));
+  fs.writeFileSync(nul, 'dir: cannot access\n'); fs.writeFileSync(aux, 'x');
+  try {
+    const j = f.job(); await f.c.begin(j);
+    assert.ok(j.checkpoint.before, j.checkpoint.warning); assert.notEqual(j.checkpoint.status, 'warning');
+    assert.deepEqual(j.checkpoint.skipped.filter((s) => s.reason === 'reserved_name').map((s) => s.path).sort(), ['aux.txt', 'nul']);
+    f.write('정상.txt', '바뀜\n'); await f.finish(j);
+    assert.deepEqual((await f.c.changes(j)).files.map((x) => x.path), ['정상.txt']);
+  } finally { for (const p of [nul, aux]) { try { fs.unlinkSync(p); } catch {} } }
+});
+
+test('훑은 뒤 열 수 없게 된 파일 하나는 빼고 스냅샷을 이어 간다', async () => {
+  const f = fixture(); f.write('남음.txt', '남음\n'); f.write('사라짐.txt', '곧 사라짐\n');
+  const scan = f.c.scan.bind(f.c);
+  f.c.scan = async (repo) => { const r = await scan(repo); fs.unlinkSync(path.join(f.cwd, '사라짐.txt')); return r; }; // 훑은 다음 해시하기 전에 지워짐
+  const j = f.job(); await f.c.begin(j);
+  assert.ok(j.checkpoint.before, j.checkpoint.warning);
+  assert.deepEqual(j.checkpoint.skipped.filter((s) => s.reason === 'unreadable').map((s) => s.path), ['사라짐.txt']);
+  f.c.scan = scan; await f.finish(j);
+});
