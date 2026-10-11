@@ -284,8 +284,9 @@ function icRestore() {
   INT.drafts.delete(k); input.value = d.value; S.atts = d.atts; autosize(); renderAtts();
 }
 const _icOpenSession = openSession, _icNewSession = newSession;
-openSession = async function (id) { if (id !== S.current) icStash(S.current, id); await _icOpenSession(id); icRestore(); renderSend(); };
-newSession = function (cwd) { icStash(S.current, null); _icNewSession(cwd); icRestore(); renderSend(); };
+// 열기가 끝나기 전에 다른 세션을 또 열면 앞선 열기는 그만둔다(app.js openSeq) — 그때는 보관한 입력을 되돌리지 않는다(아직 옛 세션이라, 되돌리면 그 글이 새로 여는 세션 입력창에 남는다)
+openSession = async function (id) { if (id !== S.current) icStash(S.current, id); await _icOpenSession(id); if (S.current === id) icRestore(); renderSend(); };
+newSession = function (cwd, group) { icStash(S.current, null); _icNewSession(cwd, group); icRestore(); renderSend(); }; // group: "이 묶음에 새 세션"(빠뜨리면 묶음 밖에 생긴다)
 
 /* ---------- 새로고침 복구: 응답을 못 받은 채 새로고침하면 접수 여부를 확인하고 아니면 원문을 되돌린다 ---------- */
 const IC_PKEY = 'hub.icPending';

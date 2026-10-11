@@ -629,9 +629,9 @@
       for (const j of ev.jobs || []) CH.sig.set(j.id, cpSig(j));
       setTimeout(() => { if (typeof S !== 'undefined' && S.current) refreshPanel(S.current); refreshCmp(); loadBackups(); }, 0);
     } else if (ev.type === 'session_open') {
-      // 다시 연결하지 않고 세션만 바꿨다(app.js openSession): 이 세션에 모아 둔 것은 새로 읽는다 — 다른 세션을 보는 동안의 소식은 요약으로만 왔다
-      const sid = ev.sessionId; CH.session.delete(sid);
-      for (const j of jobsOf(sid)) { invalidate(j.id, sid); CH.sig.set(j.id, cpSig(j)); }
+      // 다시 연결하지 않고 세션만 바꿨다(app.js openSession). 다른 세션을 보는 동안 작업이 바뀌었으면 그때 요약 소식으로 이미 비웠고(위 job),
+      // 세션 비교는 작업 상태가 담긴 열쇠(sessionKey)로 다시 읽을지 정한다 — 여기서 또 비우면 세션을 열 때마다 몇 초짜리 비교를 다시 한다. 표시만 지금 작업에 맞춘다
+      for (const j of jobsOf(ev.sessionId)) CH.sig.set(j.id, cpSig(j));
     } else if (ev.type === 'job_removed') { CH.rewinds.delete(ev.jobId); CH.sig.delete(ev.jobId); invalidate(ev.jobId, ev.sessionId); }
     else if (ev.type === 'session_removed') { CH.session.delete(ev.sessionId); CH.scope.delete(ev.sessionId); }
   });
