@@ -55,7 +55,7 @@
     el.innerHTML = `<div class="mx-h">${icon('image')}<b>결과 보기</b><span class="mx-sub">${sub}${fromPc}</span></div>
       <div class="mx-note" hidden></div>
       ${vids.length ? `<div class="mx-vids">${vids.map((v, i) => `<figure class="mx-vid" data-k="v${i}">
-        <video controls playsinline preload="metadata" src="${esc(fileUrl(j, v))}"></video>
+        <video controls playsinline preload="none" data-mx-lazy src="${esc(fileUrl(j, v))}"></video>
         <figcaption><span class="mx-cap" title="${esc(v.path)}">${icon('film')}${esc(v.label)}</span><span class="grow"></span>
           <button type="button" class="icon-btn mx-big" data-mx-big="v${i}" title="크게 보기" aria-label="${esc(v.label)} 크게 보기">${icon('expand')}</button>
           <button type="button" class="icon-btn" ${pathAttrs(v)} title="${remote() ? '허브 안에서 보기' : '이 PC에서 열기 · 오른쪽 클릭 메뉴'}" aria-label="${esc(v.label)} 열기">${icon('open')}</button></figcaption>
@@ -107,7 +107,24 @@
       let rec = MX.nodes.get(j.id);
       if (!rec || rec.sig !== sig) { rec = { sig, node: build(j, items) }; MX.nodes.set(j.id, rec); }
       slot.replaceWith(rec.node);
+      rec.node.querySelectorAll('video[data-mx-lazy]').forEach((v) => lazyVideos()?.observe(v));
     });
+  });
+  // 영상은 화면 근처에 왔을 때 길이·첫 장면을 읽는다 — 예전에는 세션을 열면 화면 밖 카드의 영상까지 한꺼번에 읽어(큰 세션 40개) 다른 요청과 연결을 다퉜다
+  let vio = null;
+  function lazyVideos() {
+    if (vio || typeof IntersectionObserver !== 'function') return vio;
+    vio = new IntersectionObserver((entries) => { for (const e of entries) if (e.isIntersecting) { const v = e.target; vio.unobserve(v); v.removeAttribute('data-mx-lazy'); v.preload = 'metadata'; if (v.readyState === 0) { try { v.load(); } catch {} } } }, { rootMargin: '600px 0px' });
+    return vio;
+  }
+  // 다른 세션으로 옮기면 앞 세션의 결과 요소는 놓아 준다(영상은 주소를 떼어 받던 것을 멈춘다) — 세션을 돌아다닐수록 쌓였다
+  window.addEventListener('hub:event', (e) => {
+    if (e.detail?.type !== 'session_open') return;
+    for (const [id, rec] of MX.nodes) {
+      if (S.jobs.get(id)?.sessionId === e.detail.sessionId) continue;
+      rec.node.querySelectorAll('video').forEach((v) => { try { vio?.unobserve(v); v.pause(); v.removeAttribute('src'); v.load(); } catch {} });
+      MX.nodes.delete(id);
+    }
   });
   // 범위를 바꾸면(권한 메뉴) 못 불러온 것을 다시 시도하게 새로 만든다
   window.addEventListener('hub:event', (e) => {

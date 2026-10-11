@@ -12,7 +12,15 @@ const isUnread = (s) => s.id !== S.current && s.status !== 'running' && s.jobCou
 
 /* ================= 왼쪽: 세션 목록 ================= */
 let treeQ = false;
+// 이름을 바꾸는 중이거나 세션을 끄는 중에는 목록을 갈아 끼우지 않는다 — 작업이 도는 동안 0.3초마다 다시 그려서
+// 이름 입력칸이 사라지고, 끌던 줄이 없어져 "여기서 열기" 덮개가 남아 대화가 안 눌렸다(2026-10-12 점검). 끝나면 한 번 그린다
+let treeLater = false;
+const treeBusy = () => { const a = document.activeElement; return !!(a && a.classList?.contains('rename') && a.closest('#tree')) || !!document.getElementById('app')?.classList.contains('sp-dragging'); };
 function renderTree() {
+  if (treeBusy()) {
+    if (!treeLater) { treeLater = true; const retry = () => { if (treeBusy()) return setTimeout(retry, 300); treeLater = false; renderTree(); }; setTimeout(retry, 300); }
+    return;
+  }
   if (treeQ) return; treeQ = true;
   requestAnimationFrame(() => {
     treeQ = false;

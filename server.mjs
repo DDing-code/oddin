@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import zlib from 'node:zlib';
 import { URL } from 'node:url';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -309,9 +310,18 @@ function uiVersion() {
 }
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json; charset=utf-8' };
 
+const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml)|image\/svg)/;
 function send(res, code, body, type = 'application/json; charset=utf-8', extra = {}) {
-  res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS, ...extra });
-  res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
+  let out = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
+  const headers = { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...SECURITY_HEADERS, ...extra };
+  // 원격(폰·다른 PC 브라우저)으로 나가는 글 응답은 줄여 보낸다 — 큰 세션의 작업 목록 1.5MB 가 270KB 쯤 된다. 이 PC 화면은 그대로(줄이는 시간이 더 든다)
+  const req = res.req;
+  if (code === 200 && req?.hubViewer?.remote && COMPRESSIBLE.test(type) && !headers['Content-Encoding'] && /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+    const buf = Buffer.isBuffer(out) ? out : Buffer.from(out);
+    if (buf.length > 4096) { out = zlib.gzipSync(buf, { level: 4 }); headers['Content-Encoding'] = 'gzip'; headers.Vary = 'Accept-Encoding'; }
+  }
+  res.writeHead(code, headers);
+  res.end(out);
 }
 const json = (res, body, code = 200) => send(res, code, body);
 const fail = (res, e, code) => json(res, { error: String(e?.message || e), ...(e?.code ? { code: e.code } : {}), ...(e?.files ? { files: e.files } : {}) }, code || e?.status || 400);
@@ -607,7 +617,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'PATCH') return json(res, jobs.updateSession(r[1], await readBody(req)));
       if (req.method === 'DELETE') return json(res, { removed: jobs.sessions.has(r[1]) ? await jobs.sessionTools.delete(r[1], url.searchParams.get('cleanup') === '1') : false });
     }
-    if ((r = m(/^\/api\/sessions\/([\w-]+)\/jobs$/))) return json(res, jobs.sessionJobs(r[1]));
+    if ((r = m(/^\/api\/sessions\/([\w-]+)\/jobs$/))) return json(res, jobs.sessionJobs(r[1], { full: url.searchParams.get('full') === '1' }));
     // ---- 기억: 세션 결정 노트 읽기·고치기, 작업이 저장한 장기 기억 되돌리기 (lib/memory-curate.mjs) ----
     if ((r = m(/^\/api\/sessions\/([\w-]+)\/notes$/))) {
       if (req.method === 'GET') return json(res, jobs.sessionNotes(r[1]));
@@ -682,6 +692,13 @@ const server = http.createServer(async (req, res) => {
     if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'not found', 'text/plain');
     // ODDIN 화면을 열 때(문서 탐색) 화면 쿠키를 준다 — 원격 제어 기능은 이 쿠키가 있는 화면에서만(lib/hub-auth.mjs)
     const cookie = path.basename(file) === 'index.html' ? hubAuth.cookieFor(req, { secure: !!req.hubViewer?.remote }) : null;
+    // 화면 파일은 "바뀌었을 때만 다시 받기": 열 때마다 서버에 묻되(no-cache) 그대로면 본문 없이 304 — 예전에는 매번 900KB 를 통째로 다시 받았다.
+    // 화면 문서(index.html)는 쿠키를 주므로 늘 새로 보낸다
+    const st = fs.statSync(file), etag = `"${st.size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}"`;
+    if (!cookie && path.basename(file) !== 'index.html') {
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache', ...SECURITY_HEADERS }); return res.end(); }
+      return send(res, 200, fs.readFileSync(file), MIME[path.extname(file)] || 'application/octet-stream', { ETag: etag, 'Cache-Control': 'no-cache' });
+    }
     return send(res, 200, fs.readFileSync(file), MIME[path.extname(file)] || 'application/octet-stream', cookie ? { 'Set-Cookie': cookie } : {});
   } catch (e) {
     return fail(res, e, e?.status || (e instanceof SyntaxError ? 400 : 500));

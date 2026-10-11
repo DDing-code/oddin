@@ -419,6 +419,8 @@
   });
   // 창 안 어디든(사이드바 묶음 등) 놓았으면 새 창을 열지 않는다
   document.addEventListener('drop', (e) => { if (drag && isSessionDrag(e)) drag.dropped = true; }, true);
+  // 끌기가 끝났는데 "놓을 자리" 덮개가 남아 있으면(끌던 줄이 사라져 끝 신호를 못 받은 경우) 다음에 누를 때 치운다
+  document.addEventListener('pointerdown', () => { if (!drag && app().classList.contains('sp-dragging')) { app().classList.remove('sp-dragging', 'sp-dragging-pane'); document.querySelectorAll('.spz.on, .sp-pane.on').forEach((x) => x.classList.remove('on')); } }, true);
   document.addEventListener('dragend', (e) => {
     if (!drag) return;
     app().classList.remove('sp-dragging', 'sp-dragging-pane');

@@ -177,7 +177,7 @@ function renderThread() {
   for (const j of jobs) h += `<div class="turn" id="job-${j.id}">${jobHtml(j)}</div>`;
   h += `<div id="notes">${(S.notes.get(sid || 'draft') || []).join('')}</div>`;
   box.innerHTML = h;
-  mountPreviews(box);
+  mountPreviews(box); fillDur(box);
   const sc = $('#scroll'); sc.scrollTop = sc.scrollHeight;
   watchTurns(box, jobs);
   scheduleInspector();
@@ -374,10 +374,17 @@ function rerenderJob(id) {
   const sc = $('#scroll'); const stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
   const logScroll = {}; el.querySelectorAll('.log, .proc-body').forEach((l) => (logScroll[l.id] = l.scrollHeight - l.scrollTop - l.clientHeight < 30 ? -1 : l.scrollTop));
   el.innerHTML = jobHtml(j);
-  mountPreviews(el);
+  mountPreviews(el); fillDur(el);
   el.querySelectorAll('.log, .proc-body').forEach((l) => { const v = logScroll[l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; });
   if (stick) sc.scrollTop = sc.scrollHeight;
 }
+/** 경과 시간 칸은 그릴 때 바로 채운다 — 비워 두면 다시 그릴 때마다(진행 중 카드는 0.15초마다) 비었다가 1초 타이머가 채워 깜빡였다. 생각 과정(.proc)의 것은 process.js 가 자기 모양으로 채운다 */
+function fillDur(root) { root.querySelectorAll('.live-dur').forEach((el) => { if (!el.closest('.proc')) el.textContent = dur(el.dataset.from, null); }); }
+// 누르고 있는 카드·글자를 선택해 둔 카드는 다시 그리기를 잠깐 미룬다 — 그리는 순간 누르던 버튼이 사라져 한 번에 안 눌리고, 선택이 풀렸다
+let pressTurn = null; const heldSince = new Map();
+document.addEventListener('pointerdown', (e) => { pressTurn = e.target.closest?.('#thread .turn') || null; }, true);
+document.addEventListener('pointerup', () => { setTimeout(() => { pressTurn = null; }, 0); }, true);
+document.addEventListener('pointercancel', () => { pressTurn = null; }, true);
 const rq = new Set(); let rt = null;
 function queueRerender(id) { rq.add(id); if (!rt) rt = setTimeout(() => { rt = null; flushRerender(); }, 150); }
 /* 모아 둔 카드를 한 번에 다시 그린다. 예전에는 카드마다 "읽기(스크롤 높이) → 쓰기 → 읽기"를 되풀이해 카드 수만큼 화면 배치를 다시 계산했다
@@ -387,14 +394,23 @@ function flushRerender() {
   const ids = [...rq]; rq.clear();
   const sc = $('#scroll'); const stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
   const targets = [];
+  const sel = document.getSelection?.(), selNode = sel && !sel.isCollapsed ? sel.anchorNode : null, now = Date.now();
+  let held = false;
   for (const id of ids) {
     const j = S.jobs.get(id), el = document.getElementById(`job-${id}`); if (!j || !el) continue;
     if (LZ.io && LZ.ready && !LZ.near.has(id)) { LZ.stale.add(id); continue; }
+    // 누르는 중·선택 중이면 미룬다(길어도 15초 — 선택을 계속 잡고 있어도 카드가 멈춰 있지는 않게)
+    if (el === pressTurn || (selNode && el.contains(selNode))) {
+      if (!heldSince.has(id)) heldSince.set(id, now);
+      if (now - heldSince.get(id) < 15_000) { rq.add(id); held = true; continue; }
+    }
+    heldSince.delete(id);
     targets.push({ j, el });
   }
+  if (held && !rt) rt = setTimeout(() => { rt = null; flushRerender(); }, 400);
   if (!targets.length) return;
   const keep = targets.map(({ el }) => { const m = {}; el.querySelectorAll('.log, .proc-body').forEach((l) => (m[l.id] = l.scrollHeight - l.scrollTop - l.clientHeight < 30 ? -1 : l.scrollTop)); return m; });
-  for (const { j, el } of targets) { el.innerHTML = jobHtml(j); mountPreviews(el); }
+  for (const { j, el } of targets) { el.innerHTML = jobHtml(j); mountPreviews(el); fillDur(el); }
   targets.forEach(({ el }, i) => el.querySelectorAll('.log, .proc-body').forEach((l) => { const v = keep[i][l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; }));
   if (stick) sc.scrollTop = sc.scrollHeight;
 }

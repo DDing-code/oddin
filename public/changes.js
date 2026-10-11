@@ -557,7 +557,7 @@
   async function loadBackups() {
     if (CH.backupsLoaded) return; CH.backupsLoaded = true;
     try {
-      const r = await call('/api/checkpoints');
+      const r = await call('/api/checkpoints?backups=1');
       const all = (r.repositories || []).flatMap((repo) => repo.backups || []);
       const byId = new Map(all.map((b) => [b.id, b]));
       let local = {}; try { local = JSON.parse(store.get('hub.changes.rewinds', '{}')) || {}; } catch {}
