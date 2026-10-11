@@ -24,7 +24,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
   const why = (e) => (/^없는 API$/.test(String(e?.message || '')) ? OLD_SERVER : String(e?.message || e));
   async function load() {
     if (P.loading) return; P.loading = true; P.tried = true;
-    try { [P.view, P.setup, P.folders, P.drive, P.hub] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null), call('/api/drive-folders').catch(() => null), call('/api/drive-hub').catch(() => null)]); P.adobe = await call('/api/adobe/status').catch(() => null); P.studio = await call('/api/studio/status').catch(() => null); P.error = ''; }
+    try { [P.view, P.setup, P.folders, P.drive, P.hub] = await Promise.all([call('/api/peers'), call('/api/shared/setup').catch(() => null), call('/api/shared-folders').catch(() => null), call('/api/drive-folders').catch(() => null), call('/api/drive-hub').catch(() => null)]); P.adobe = await call('/api/adobe/status').catch(() => null); P.studio = await call('/api/studio/status').catch(() => null); P.storage = await call('/api/storage').catch(() => null); P.error = ''; }
     catch (e) { P.error = why(e); }
     P.loading = false; refresh();
   }
@@ -95,6 +95,18 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
       if (st.installing || st.installLog?.length) h += `<div class="pc-sync">${IC('info')}<span>${E((st.installLog || []).slice(-2).join(' · '))}</span></div>`;
       h += `</div><div class="pc-actions"><button class="btn" data-studio="open">${IC('open')}${st.online ? '창 열기' : '켜기'}</button>${typeof isRemoteView === 'function' && isRemoteView() ? '' : `<button class="btn" data-studio="install" ${st.installing ? 'disabled' : ''}>${st.installing ? '<span class="spin-xs"></span>설치 중' : `${IC('bolt')}${st.installed ? '다시 설치' : '프로그램 설치'}`}</button>`}${st.online ? '<button class="btn" data-studio="stop">끄기</button>' : ''}</div>`;
       h += '<p class="pc-hint">컷·자막 싱크, 글자 디자인, 모션을 손보는 프로그램이에요. AI 가 만든 편집 파일(.oddin-edit.json)을 열고, 원본을 끌어 넣고, 프리미어 시퀀스를 가져와요. 폰·원격에서는 ODDIN 주소의 /studio/ 로 열려요.</p>';
+    }
+
+    // 저장 공간(lib/retention.mjs): 하루에 한 번 쉬는 때 정리 — 지운 작업의 실행 기록, 오래된 CLI 원본 기록·변경 스냅샷, 브라우저 캐시
+    const sg = P.storage;
+    if (sg) {
+      const gb = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)}GB` : `${Math.round((n || 0) / 1048576)}MB`);
+      const last = sg.last;
+      h += '<div class="ilabel">저장 공간</div><div class="pc-peer">';
+      h += `<div class="pc-sync">${IC('folder')}<span>${last ? `마지막 정리 ${E(when(last.at))} · ${gb(last.freedBytes)} 비움` : '아직 정리 전이에요(하루에 한 번, 쉬는 때 저절로 해요)'}${sg.running ? ' · <span class="spin-xs"></span>정리 중' : ''}</span></div>`;
+      if (sg.parts) h += `<div class="pc-sync">${IC('info')}<span>${sg.parts.map((x) => `${E(x.name)} ${gb(x.bytes)}`).join(' · ')} · 모두 ${gb(sg.bytes)}</span></div>`;
+      h += `</div><div class="pc-actions"><button class="btn" data-storage="sizes" ${P.busy === 'storage' ? 'disabled' : ''}>${IC('search')}지금 얼마나 쓰는지 보기</button>${typeof isRemoteView === 'function' && isRemoteView() ? '' : `<button class="btn" data-storage="clean" ${P.busy === 'storage' || sg.running ? 'disabled' : ''}>${IC('refresh')}지금 정리</button>`}</div>`;
+      h += '<p class="pc-hint">지운 작업의 실행 기록, 7일 지난 AI 원본 기록, 30일 지난 변경 스냅샷(그 작업은 변경 비교·되돌리기를 못 써요), 숨은 브라우저 캐시를 지워요. 작업 폴더의 결과물과 첨부는 건드리지 않아요.</p>';
     }
 
     // 어도비 플러그인(lib/adobe-bridge.mjs·adobe/): 프리미어·애프터이펙트 안 ODDIN 패널, AI 명령을 받아 실행
@@ -191,8 +203,13 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     }
   });
   document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-studio],[data-adobe-install],[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-pc-local-save],[data-hub-create],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
+    const b = e.target.closest('[data-storage],[data-studio],[data-adobe-install],[data-pc-sync],[data-pc-setup],[data-pc-remove],[data-pc-rename],[data-pc-update],[data-sf-remove],[data-sf-pull],[data-sf-open],[data-sf-mode],[data-pc-local-save],[data-hub-create],[data-dv-work],[data-dv-open],[data-dv-remove],[data-dv-path],[data-dv-resolve]'); if (!b) return;
     if (b.hasAttribute('data-pc-local-save')) { const t = document.querySelector('[data-pc-local]'); const content = t ? t.value : (P.localDraft ?? ''); act('local', () => call('/api/shared/local', { method: 'POST', body: JSON.stringify({ content }) }), (r) => { P.localDraft = undefined; return r.sync && r.sync.ok === false ? '저장했지만 Codex 지침 반영에 실패했어요' : '이 PC 전용 지침을 저장했어요'; }); return; }
+    if (b.hasAttribute('data-storage')) {
+      if (b.dataset.storage === 'sizes') act('storage', () => call('/api/storage?sizes=1'), (r) => { P.storage = { ...(P.storage || {}), ...r }; return '지금 쓰는 양을 쟀어요'; });
+      else act('storage', () => call('/api/storage/cleanup', { method: 'POST', body: '{}' }), (r) => { P.storage = { ...(P.storage || {}), last: r, parts: null }; return `정리했어요 · ${Math.round((r.freedBytes || 0) / 1048576)}MB 비움`; });
+      return;
+    }
     if (b.hasAttribute('data-studio')) { const a = b.dataset.studio; if (a === 'open') { window.hubStudio?.open(); return; } if (a === 'install') { act('studio', () => call('/api/studio/install', { method: 'POST', body: '{}' }), '스튜디오 프로그램을 설치하고 있어요 — 끝나면 시작 메뉴·바탕화면에 "ODDIN 스튜디오"가 생겨요'); return; } if (a === 'stop') { act('studio', () => call('/api/studio/stop', { method: 'POST', body: '{}' }), (r) => r.quit ? '스튜디오를 껐어요' : `끄지 않았어요: ${r.reason || ''}`); return; } }
     if (b.hasAttribute('data-adobe-install')) { act('adobe', () => call('/api/adobe/install', { method: 'POST', body: '{}' }), (r) => r.ok ? `프리미어·애프터이펙트용 ODDIN 플러그인 ${r.version}을 설치했어요. ${r.note}` : `일부 설치하지 못했어요: ${(r.apps || []).filter((x) => !x.ok).map((x) => x.error).join(' / ')}`); return; }
     if (b.hasAttribute('data-hub-create')) { act('hub-create', () => call('/api/drive-hub', { method: 'POST', body: '{}' }), (r) => r.created ? 'ODDIN 폴더를 만들었어요. 공유 기억과 공유 폴더를 올리는 중이에요' : '이미 있는 ODDIN 폴더를 쓰기 시작했어요'); return; }
@@ -232,6 +249,7 @@ if (typeof IC === 'object' && IC && !IC.monitor) IC.monitor = '<rect x="3" y="4"
     else if (ev.type === 'shared-folders' && ev.own) { P.folders = { ...(P.folders || {}), own: ev.own, mirrors: ev.mirrors }; refresh(); }
     else if (ev.type === 'hello' && P.view) load();
     else if (ev.type === 'adobe') { P.adobe = { ...(P.adobe || {}), ...ev }; refresh(); }
+    else if (ev.type === 'maintenance' && ev.result) { P.storage = { ...(P.storage || {}), last: ev.result, parts: null, running: false }; refresh(); }
     else if (ev.type === 'studio') { const { type, ...rest } = ev; P.studio = { ...(P.studio || {}), ...rest }; refresh(); }
   });
   document.addEventListener('input', (e) => { if (e.target.matches?.('[data-pc-local]')) P.localDraft = e.target.value; });

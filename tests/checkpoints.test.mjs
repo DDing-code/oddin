@@ -237,3 +237,34 @@ test('훑은 뒤 열 수 없게 된 파일 하나는 빼고 스냅샷을 이어 
   assert.deepEqual(j.checkpoint.skipped.filter((s) => s.reason === 'unreadable').map((s) => s.path), ['사라짐.txt']);
   f.c.scan = scan; await f.finish(j);
 });
+
+test('스냅샷: 지난번 뒤로 안 바뀐 파일은 다시 읽지 않고, 바뀐 파일·저장소에서 사라진 내용만 다시 읽는다', async () => {
+  const f = fixture(); for (let i = 0; i < 30; i++) f.write(`src/f${i}.txt`, `내용 ${i}\n`);
+  const old = new Date(Date.now() - 60_000); for (let i = 0; i < 30; i++) fs.utimesSync(path.join(f.cwd, `src/f${i}.txt`), old, old); // 방금 만든 파일은 믿지 않으므로 1분 전 것으로
+  const j1 = f.job('j-a'); await f.c.begin(j1); await f.finish(j1);
+  assert.equal(j1.checkpoint.status, 'ready');
+  // 두 번째 작업: 하나만 고친다
+  const j2 = f.job('j-b'); await f.c.begin(j2);
+  f.write('src/f3.txt', '고침\n'); f.write('src/new.txt', '새 파일\n');
+  await f.finish(j2);
+  const by = Object.fromEntries((await f.c.changes(j2)).files.map((x) => [x.path, x.status]));
+  assert.deepEqual(by, { 'src/f3.txt': 'modified', 'src/new.txt': 'added' }, '비교 결과는 그대로');
+  // 직접 스냅샷을 찍어 다시 쓴 수를 본다
+  const repo = (await f.c.repositories())[0];
+  const tree = async (snap) => (await f.c.git(repo, ['rev-parse', `${snap.hash}^{tree}`])).toString().trim(); // 스냅샷 id 는 찍은 시각이 들어가 매번 다르므로 내용(트리)으로 비교
+  const s1 = await f.c.snapshot(repo, 'refs/checkpoints/test/a', '시험');
+  assert.equal(s1.count, 31); assert.ok(s1.reused >= 29, `다시 쓴 파일 ${s1.reused}`);
+  // 크기가 같아도 수정 시각이 바뀌면 다시 읽는다
+  fs.writeFileSync(path.join(f.cwd, 'src/f5.txt'), '내용 X\n'); fs.utimesSync(path.join(f.cwd, 'src/f5.txt'), new Date(Date.now() - 30_000), new Date(Date.now() - 30_000));
+  const s2 = await f.c.snapshot(repo, 'refs/checkpoints/test/b', '시험');
+  assert.ok(s2.reused <= 30); assert.notEqual(await tree(s2), await tree(s1), '바뀐 내용이 스냅샷에 들어감');
+  // 기억해 둔 해시의 내용이 저장소에서 사라졌으면(정리) 그 파일은 다시 읽어 넣는다
+  const cache = JSON.parse(fs.readFileSync(path.join(repo.dir, 'oddin-stat.json'), 'utf8'));
+  cache.files['src/f7.txt'].hash = '0123456789abcdef0123456789abcdef01234567'; fs.writeFileSync(path.join(repo.dir, 'oddin-stat.json'), JSON.stringify(cache));
+  const s3 = await f.c.snapshot(repo, 'refs/checkpoints/test/c', '시험');
+  assert.equal(await tree(s3), await tree(s2), '없는 해시를 믿지 않고 다시 읽어 같은 내용이 됨');
+  // 기억 파일이 깨져도 전부 다시 읽어 성공한다
+  fs.writeFileSync(path.join(repo.dir, 'oddin-stat.json'), '{ 깨짐');
+  const s4 = await f.c.snapshot(repo, 'refs/checkpoints/test/d', '시험');
+  assert.equal(await tree(s4), await tree(s2)); assert.equal(s4.reused, 0);
+});

@@ -190,3 +190,34 @@ test('보안: 다른 사이트에서 온 요청은 API 에서 받지 않는다(�
   assert.equal(r('/api/jobs', { 'sec-fetch-site': 'same-origin' }), null);
   assert.equal(r('/api/jobs', { 'sec-fetch-site': 'cross-site' })?.code, 'bad_origin');
 });
+
+test('디스크 정리: 주인 없는 실행 기록·오래된 원본 기록·오래된 스냅샷만 지우고 화면이 읽는 기록과 최근 것은 둔다', async () => {
+  const { maintain, removeRunDir } = await import('../lib/retention.mjs');
+  const runs = path.join(temp, 'ret-runs'), prof = path.join(temp, 'ret-prof');
+  const put = (f, text = 'x') => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+  const day = 86_400_000, t = Date.now();
+  const mk = (id, daysAgo, extra = {}) => ({ id, runDir: path.join(runs, id), status: 'done', finishedAt: new Date(t - daysAgo * day).toISOString(), createdAt: new Date(t - daysAgo * day).toISOString(), tasks: [], ...extra });
+  const oldJob = mk('20261001-000000-old1', 10, { checkpoint: { repo: 'r', status: 'ready', files: [{ path: 'a' }] } }), midJob = mk('20261010-000000-mid1', 8), newJob = mk('20261012-000000-new1', 1, { checkpoint: { repo: 'r', status: 'ready', files: [] } });
+  for (const j of [oldJob, midJob, newJob]) { put(path.join(j.runDir, 't1', 'attempt-1', 'events.jsonl'), 'e'.repeat(1000)); put(path.join(j.runDir, 't1', 'stderr.log'), 's'); put(path.join(j.runDir, 't1.log.jsonl'), '{}'); put(path.join(j.runDir, 'REPORT.md'), '보고'); }
+  const orphan = path.join(runs, '20260901-000000-gone'), fresh = path.join(runs, '20261012-000001-making'); put(path.join(orphan, 'x.txt')); put(path.join(fresh, 'x.txt')); put(path.join(runs, 'notes', 'keep.txt'));
+  const twoDaysAgo = new Date(t - 2 * day); fs.utimesSync(orphan, twoDaysAgo, twoDaysAgo);
+  for (const c of ['Default/Cache/a', 'Default/Code Cache/b', 'GrShaderCache/c']) put(path.join(prof, c), 'c'.repeat(100)); put(path.join(prof, 'Default', 'Cookies'), 'login');
+  const forgot = []; let saved = 0;
+  const jobs = { jobs: new Map([oldJob, midJob, newJob].map((j) => [j.id, j])), save: () => { saved++; }, checkpoints: { forget: async (j) => { forgot.push(j.id); }, storage: async () => ({ bytes: 1000 }), cleanup: async () => ({ removed: ['x'], compacted: ['y', 'z'], bytes: 400 }) } };
+  const r = await maintain({ jobs, config: { retention: { rawLogDays: 7, checkpointDays: 9 } }, runsDir: runs, browserProfile: prof, browserRunning: () => false, save: false });
+  assert.equal(r.orphanRuns, 1); assert.ok(!fs.existsSync(orphan)); assert.ok(fs.existsSync(fresh), '막 만들어진 폴더는 둠'); assert.ok(fs.existsSync(path.join(runs, 'notes', 'keep.txt')), '작업 폴더 모양이 아닌 것은 둠');
+  assert.equal(r.rawLogs, 4, '7일 지난 두 작업의 원본 기록 두 개씩');
+  for (const j of [oldJob, midJob]) { assert.ok(!fs.existsSync(path.join(j.runDir, 't1', 'attempt-1', 'events.jsonl'))); assert.ok(fs.existsSync(path.join(j.runDir, 't1.log.jsonl')), '화면이 읽는 기록은 둠'); assert.ok(fs.existsSync(path.join(j.runDir, 'REPORT.md'))); }
+  assert.ok(fs.existsSync(path.join(newJob.runDir, 't1', 'attempt-1', 'events.jsonl')), '최근 작업은 둠');
+  assert.deepEqual(forgot, [oldJob.id], '9일 지난 스냅샷만'); assert.equal(oldJob.checkpoint.status, 'warning'); assert.match(oldJob.checkpoint.warning, /정리/); assert.deepEqual(oldJob.checkpoint.files, []);
+  assert.equal(newJob.checkpoint.status, 'ready'); assert.equal(saved, 1);
+  assert.deepEqual(r.repos, { compacted: 2, removed: 1 }); assert.ok(r.browserCache >= 300); assert.equal(fs.readFileSync(path.join(prof, 'Default', 'Cookies'), 'utf8'), 'login', '로그인은 그대로');
+  assert.ok(r.freedBytes >= 2000 + 600);
+  // 다시 돌려도 더 지우지 않는다. 브라우저가 켜져 있으면 캐시를 건드리지 않는다
+  put(path.join(prof, 'Default/Cache/a'), 'c');
+  const r2 = await maintain({ jobs, config: { retention: { rawLogDays: 7, checkpointDays: 9 } }, runsDir: runs, browserProfile: prof, browserRunning: () => true, save: false });
+  assert.equal(r2.orphanRuns + r2.rawLogs + r2.snapshots, 0); assert.equal(r2.browserCache, 0); assert.ok(fs.existsSync(path.join(prof, 'Default/Cache/a')));
+  // 작업을 지울 때: 실행 기록 폴더 바로 아래 것만 지운다
+  assert.equal(removeRunDir({ runDir: path.join(temp, 'elsewhere') }, runs), false); assert.equal(removeRunDir({ runDir: null }, runs), false); assert.equal(removeRunDir({ runDir: runs }, runs), false);
+  assert.equal(removeRunDir(newJob, runs), true); await delay(200); assert.ok(!fs.existsSync(newJob.runDir));
+});

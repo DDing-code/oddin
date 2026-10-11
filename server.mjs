@@ -45,6 +45,7 @@ import { HubAuth, controlGate, canonicalRoute } from './lib/hub-auth.mjs';
 import { SessionGroups, listDirs, makeDir, renameDir } from './lib/session-groups.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
 import { timed, startLoadLog, loadReport, requestTimer } from './lib/load-log.mjs';
+import { maintain, lastMaintenance, storageReport } from './lib/retention.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -277,6 +278,19 @@ const checkPeers = async () => {
 };
 setTimeout(checkPeers, 2000).unref(); // 켜자마자 한 번 (안 그러면 1분 동안 상태 모름)
 every('peers-check', 60_000, checkPeers);
+// 디스크 정리(lib/retention.mjs): 하루에 한 번, 작업이 없을 때. 시험 서버는 하지 않는다
+let maintaining = null;
+const runMaintenance = () => (maintaining ||= maintain({ jobs, config, browserProfile: oddinBrowser?.profile || null, browserRunning: () => !!oddinBrowser?.running })
+  .then((r) => { console.log(`디스크 정리: ${Math.round(r.freedBytes / 1048576)}MB 비움 (주인 없는 실행 기록 ${r.orphanRuns} · 원본 기록 ${r.rawLogs} · 스냅샷 ${r.snapshots} · 저장소 묶음 ${r.repos.compacted})`); broadcast({ type: 'maintenance', result: r }); return r; })
+  .finally(() => { maintaining = null; }));
+if (config.retention?.enabled !== false && process.env.HUB_SKIP_CLI_INSTALL !== '1') {
+  setInterval(() => {
+    if (hubBusy() || maintaining) return;
+    const last = Date.parse(lastMaintenance()?.at || '') || 0;
+    if (Date.now() - last < 20 * 3600_000) return;
+    timed('maintenance', runMaintenance).catch((e) => console.error('디스크 정리 실패:', e.message));
+  }, 30 * 60_000).unref();
+}
 
 // 공통 커맨드·서브 에이전트를 Claude Code·Codex 에 설치하고, 원본이 바뀌면 다시 설치
 if (process.env.HUB_SKIP_CLI_INSTALL !== '1') {
@@ -365,6 +379,9 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/hub/version' && req.method === 'GET') return json(res, url.searchParams.get('check') === '1' ? await checkUpdate(ROOT) : runningCommit(ROOT));
     // 쓰는 중 알림(화면에서 누르거나 칠 때)·허브가 무엇에 시간을 쓰는지(lib/load-log.mjs)
     if (p === '/api/hub/touch' && req.method === 'POST') { await readBody(req); return json(res, { ok: true }); }
+    // 저장 공간: 지금 쓰는 양(느림 — 볼 때만)·마지막 정리 결과, 지금 정리하기
+    if (p === '/api/storage' && req.method === 'GET') return json(res, url.searchParams.get('sizes') === '1' ? await storageReport() : { last: lastMaintenance(), running: !!maintaining });
+    if (p === '/api/storage/cleanup' && req.method === 'POST') { await readBody(req); if (hubBusy()) return fail(res, '진행 중인 작업이 끝난 뒤에 정리할 수 있어요', 409); return json(res, await runMaintenance()); }
     if (p === '/api/hub/load' && req.method === 'GET') return json(res, { active: hubActive(), busy: hubBusy(), idleSeconds: Math.round((Date.now() - lastTouch) / 1000), windows: clients.size, ...loadReport(), sync: shared?.status().recent || [] });
     if (p === '/api/hub/update' && req.method === 'POST') { await readBody(req); const r = await applyUpdate(ROOT); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     // 지금 바꾸기: 진행 중인 작업을 멈춰 저장하고(새 버전에서 같은 대화로 이어 함) 이 허브만 바로 재시작한다
