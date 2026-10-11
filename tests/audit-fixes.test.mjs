@@ -142,3 +142,51 @@ test('다른 PC 비추기: 요약으로 연결하고, 이 PC 화면이 보는 �
   assert.equal(full.report, '보고'); assert.equal(full.sessionId, 'rm-p1-s-a'); assert.equal(full.machine.name, '회사');
   fed.close();
 });
+
+test('보안: 허브 자료 폴더·.env 는 열기 범위 안이어도 읽기·내려받기·폴더 ZIP 에서 빼고, 범위 안 링크가 밖을 가리키면 밖', async () => {
+  const { isAllowed, isPrivate, normalizeLocalPath } = await import('../lib/opener.mjs');
+  const { resolveFile } = await import('../lib/files.mjs');
+  const { planZip } = await import('../lib/zip.mjs');
+  const root = temp; // 허브 폴더가 통째로 열기 범위인 상황(자료 폴더가 그 안에 있다)
+  const secret = path.join(DATA_DIR, 'hub-auth.json'); fs.writeFileSync(secret, '{"secret":"x"}');
+  const env = path.join(cwd, '.env'), envLocal = path.join(cwd, '.env.local'), ok = path.join(cwd, 'a.txt'), outside = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-audit-out-'));
+  for (const f of [env, envLocal, ok]) fs.writeFileSync(f, 'v'); fs.writeFileSync(path.join(outside, 'o.txt'), 'o');
+  try {
+    assert.equal(isPrivate(secret), true); assert.equal(isPrivate(env), true); assert.equal(isPrivate(envLocal), true); assert.equal(isPrivate(ok), false);
+    assert.equal(isPrivate(path.join(cwd, 'env.md')), false); assert.equal(isPrivate(path.join(cwd, '.envrc')), false);
+    assert.equal(isAllowed(secret, [root]), false, '자료 폴더는 열기(탐색기)도 안 됨'); assert.equal(isAllowed(ok, [root]), true);
+    assert.throws(() => resolveFile({ path: secret }, [root]), (e) => e.status === 403);
+    assert.throws(() => resolveFile({ path: env }, [root]), (e) => e.status === 403);
+    assert.equal(resolveFile({ path: ok }, [root]), fs.realpathSync.native(ok));
+    const names = planZip(root).entries.map((e) => e.rel);
+    assert.ok(names.some((n) => n.endsWith('a.txt'))); assert.ok(!names.some((n) => /hub-auth|\.env/.test(n)), names.join(','));
+    // 범위 안에 놓인 정션이 범위 밖을 가리키면 밖이다(예전에는 글자 경로만 보고 통과)
+    const link = path.join(cwd, 'link'); let linked = false;
+    try { fs.symlinkSync(outside, link, 'junction'); linked = true; } catch {}
+    if (linked) { assert.equal(isAllowed(path.join(link, 'o.txt'), [cwd]), false); assert.equal(isAllowed(path.join(link, 'o.txt'), [cwd, outside]), true); fs.rmSync(link, { force: true, recursive: false }); }
+    // 같은 파일의 다른 이름·장치 이름은 경로로 받지 않는다
+    for (const bad of ['C:/a/b.txt::$DATA', 'C:/a/b.txt:stream', 'C:/a/b.txt.', 'C:/a/nul', 'C:/a/CON.txt', '//server/share/x']) assert.equal(normalizeLocalPath(bad), null, bad);
+    assert.equal(normalizeLocalPath('C:/a/b.txt'), path.win32.join('C:', 'a', 'b.txt')); assert.equal(normalizeLocalPath('file:///C:/a/console.log'), path.win32.join('C:', 'a', 'console.log'));
+  } finally { fs.rmSync(outside, { recursive: true, force: true }); }
+});
+
+test('보안: 다른 사이트에서 온 요청은 API 에서 받지 않는다(읽기도) — 화면·결과 페이지·브라우저가 아닌 호출은 그대로', async () => {
+  const { checkRemoteRequest } = await import('../lib/remote.mjs');
+  const req = (url, headers = {}, method = 'GET') => ({ method, url, headers: { host: '127.0.0.1:7700', ...headers }, socket: { remoteAddress: '127.0.0.1' } });
+  const check = (...a) => checkRemoteRequest(req(...a), { port: 7700 });
+  assert.equal(check('/api/adobe/check?app=premiere', { 'sec-fetch-site': 'cross-site' })?.code, 'bad_origin', '악성 웹페이지의 <img>·fetch');
+  assert.equal(check('/api/usage?force=1', { 'sec-fetch-site': 'same-site' })?.code, 'bad_origin', '이 PC의 다른 포트에서 도는 웹앱');
+  assert.equal(check('/studio/api/file?path=C:%5Cx', { 'sec-fetch-site': 'cross-site' })?.code, 'bad_origin');
+  assert.equal(check('/api/events', { 'sec-fetch-site': 'cross-site' })?.code, 'bad_origin');
+  assert.equal(check('/api/status', { 'sec-fetch-site': 'same-origin' }), null, '허브 화면');
+  assert.equal(check('/api/status', { 'sec-fetch-site': 'none' }), null, '주소창에 직접');
+  assert.equal(check('/api/status'), null, 'CLI·다른 허브·플러그인(머리 없음)');
+  assert.equal(check('/', { 'sec-fetch-site': 'cross-site' }), null, '다른 곳의 링크로 화면 열기');
+  assert.equal(check('/view/C%3A/x/index.html', { 'sec-fetch-site': 'cross-site' }), null, '격리된 결과 페이지가 자기 그림·글꼴을 읽는 것');
+  assert.equal(check('/api/chrome-ext/poll', { 'sec-fetch-site': 'cross-site', origin: 'chrome-extension://bbphnjmjmoneaomdoefgepngcjlmimgk' }, 'POST'), null, 'ODDIN 크롬 확장');
+  // 원격(Tailscale)도 같다
+  const remote = { enabled: true, hosts: ['pc.example.ts.net'], logins: ['me@example.com'], url: 'https://pc.example.ts.net/' };
+  const r = (url, extra) => checkRemoteRequest({ method: 'GET', url, headers: { host: '127.0.0.1:7700', 'x-forwarded-host': 'pc.example.ts.net', 'x-forwarded-proto': 'https', 'tailscale-user-login': 'me@example.com', ...extra }, socket: { remoteAddress: '127.0.0.1' } }, { port: 7700, remote });
+  assert.equal(r('/api/jobs', { 'sec-fetch-site': 'same-origin' }), null);
+  assert.equal(r('/api/jobs', { 'sec-fetch-site': 'cross-site' })?.code, 'bad_origin');
+});
