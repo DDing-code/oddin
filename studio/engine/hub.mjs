@@ -7,8 +7,9 @@
 import { VERSION, error } from './env.mjs';
 
 export class HubLink {
-  constructor({ hubUrl, port, app = () => null, interval = 15_000 }) {
-    this.hubUrl = hubUrl; this.port = port; this.app = app; this.interval = interval;
+  /** commit = 이 엔진이 켜질 때의 버전(허브가 자기 버전과 다르면 한가할 때 엔진을 다시 켠다) */
+  constructor({ hubUrl, port, app = () => null, interval = 15_000, commit = '' }) {
+    this.hubUrl = hubUrl; this.port = port; this.app = app; this.interval = interval; this.commit = commit;
     this.online = false; this.lastError = null; this.timer = null; this.rootsCache = null;
   }
   async call(p, { method = 'GET', body = null, timeoutMs = 15_000 } = {}) {
@@ -20,7 +21,7 @@ export class HubLink {
     return j;
   }
   async hello() {
-    try { await this.call('/api/studio/hello', { method: 'POST', body: { port: this.port, version: VERSION, pid: process.pid, app: this.app() }, timeoutMs: 5000 }); this.online = true; this.lastError = null; }
+    try { await this.call('/api/studio/hello', { method: 'POST', body: { port: this.port, version: VERSION, commit: this.commit, pid: process.pid, app: this.app() }, timeoutMs: 5000 }); this.online = true; this.lastError = null; }
     catch (e) { this.online = false; this.lastError = e.message; }
     return this.online;
   }

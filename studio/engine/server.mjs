@@ -22,6 +22,7 @@ import { renderScene } from './scene.mjs';
 import { SceneOrigin } from './scene-origin.mjs';
 import { premiereToEdit } from './premiere.mjs';
 import { HubLink } from './hub.mjs';
+import { hubCommit } from '../../lib/hub-update.mjs';
 
 const args = process.argv.slice(2);
 const config = loadConfig();
@@ -38,7 +39,7 @@ const drawing = () => [...editor.renders.values()].some((r) => r.status === 'run
 const browser = new BrowserManager({ exe: config.browser?.exe || null, profile: path.join(DATA_DIR, 'browser-profile'), headless: true, width: 1080, height: 1920, idleMs: (config.browser?.idleMinutes ?? 5) * 60_000, isLive: () => drawing() });
 const editor = new Editor({ config, browser: findBrowser(config.browser?.exe) ? browser : null, engineUrl: () => SELF, sceneUrl });
 const appWindows = new Map(); // 창(SSE ?app=1) id → res
-const hub = new HubLink({ hubUrl: config.hubUrl, port: PORT, app: () => ({ windows: appWindows.size }) });
+const hub = new HubLink({ hubUrl: config.hubUrl, port: PORT, app: () => ({ windows: appWindows.size }), commit: hubCommit(HUB_ROOT).commit || '' });
 
 /* ---------- 실시간 알림(SSE) ---------- */
 const clients = new Set();

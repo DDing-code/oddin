@@ -221,3 +221,21 @@ test('디스크 정리: 주인 없는 실행 기록·오래된 원본 기록·�
   assert.equal(removeRunDir({ runDir: path.join(temp, 'elsewhere') }, runs), false); assert.equal(removeRunDir({ runDir: null }, runs), false); assert.equal(removeRunDir({ runDir: runs }, runs), false);
   assert.equal(removeRunDir(newJob, runs), true); await delay(200); assert.ok(!fs.existsSync(newJob.runDir));
 });
+
+test('스튜디오 엔진: 허브와 버전이 다르면 창도 일도 없을 때 한 번 다시 켠다', async () => {
+  const { StudioLink } = await import('../lib/studio-link.mjs');
+  let status = { windows: 0, renders: 0 }, stopped = 0, launched = 0;
+  const link = new StudioLink({ root: temp, commit: () => 'new123' });
+  Object.assign(link, { restartGapMs: 5, call: async (p) => { if (p === '/api/status') return status; throw new Error(p); }, stop: async () => { stopped++; }, launchEngine: async () => { launched++; } });
+  assert.equal(await link.refreshIfStale({ commit: 'new123' }), false, '같은 버전이면 그대로');
+  status = { windows: 1, renders: 0 };
+  assert.equal(await link.refreshIfStale({ commit: 'old999' }), false, '창이 열려 있으면 두고');
+  status = { windows: 0, renders: 2 };
+  assert.equal(await link.refreshIfStale({}), false, '렌더 중이면 두고');
+  assert.equal(stopped + launched, 0);
+  status = { windows: 0, renders: 0 };
+  assert.equal(await link.refreshIfStale({}), true, '버전을 안 알려 주는 예전 엔진도 다시 켠다');
+  assert.deepEqual([stopped, launched], [1, 1]);
+  assert.equal(await link.refreshIfStale({ commit: 'old999' }), false, '허브 버전 하나에 한 번만');
+  assert.deepEqual([stopped, launched], [1, 1]);
+});

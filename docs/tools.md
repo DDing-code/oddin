@@ -225,3 +225,9 @@ cmd는 코드 페이지를 65001로 바꿔도 UTF-8 파이프의 한글 입력�
 새 기능 시험은 `node --test tests/terminal.test.mjs tests/files.test.mjs`, 전체 회귀는 `npm test`다. 파일 시험은 실제 허브를 **7714**로 띄우되 `HUB_PORT`, `HUB_DATA_DIR`, `HUB_RUNS_DIR`, `HUB_CONFIG_FILE`을 모두 임시 경로에 지정하고 `HUB_SKIP_CLI_INSTALL=1`을 사용한다. 실제 AI CLI를 호출하지 않는다. 미리보기 시험의 가짜 HTTP 대상은 루프백 임의 포트다. 시험 프로세스는 해당 PID만 종료한다.
 
 운영 반영은 새 모듈·설정·최소 server 연결을 함께 합친 뒤, 진행 중 작업이 끝났을 때 사용자가 서버를 재시작해야 한다. 다른 담당의 `server.mjs`·`config.json` 변경은 함께 보존한다. 터미널 상한 기본 8을 확인하고, 화면을 새로고침해 API를 연결한다. 이번 작업에서는 운영 허브에 요청을 보내거나 재시작하지 않았다.
+
+## 내주지 않는 파일 · 저장 공간 (2026-10-12)
+- 허브 자료 폴더(`data/` — 화면 쿠키·허브 서명 비밀, 푸시 키, 원격 설정, 브라우저 프로필)와 `.env`·`.env.*` 는 열기 범위 안이어도 읽기·내려받기·폴더 ZIP 에서 뺀다(`opener.isPrivate`, `files.resolveFile` 이 403). 자료 폴더는 탐색기 열기(`isAllowed`)도 안 된다. 첨부는 `/uploads/` 로 따로 내준다.
+- 열기 범위 판정은 정션·심볼릭 링크의 실제 위치로 본다. 드라이브 글자 뒤의 `:`(숨은 자료 줄기)·끝의 점·장치 이름(nul·con …)은 경로로 받지 않는다.
+- 브라우저가 다른 사이트에서 보냈다고 표시한 요청(`Sec-Fetch-Site: cross-site·same-site`)은 `/api`·`/studio/api` 에서 읽기까지 거절한다(`remote.checkRemoteRequest`). 화면·`/view/` 결과 페이지·브라우저가 아닌 호출(머리 없음)·크롬 확장 통로는 그대로.
+- 저장 공간(`lib/retention.mjs`): 하루에 한 번 작업이 없을 때 정리 — 주인 없는 실행 기록 폴더, 7일 지난 CLI 원본 기록, 30일 지난 변경 스냅샷, 꺼져 있는 숨은 브라우저의 캐시, 스냅샷 저장소 묶기. `GET /api/storage`(마지막 정리, `?sizes=1` 이면 지금 쓰는 양), `POST /api/storage/cleanup`(지금 정리 — 제어 기능). 설정 `config.retention { enabled, rawLogDays: 7, checkpointDays: 30 }`.

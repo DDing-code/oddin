@@ -48,6 +48,12 @@ import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installed
 import { timed, startLoadLog, loadReport, requestTimer } from './lib/load-log.mjs';
 import { maintain, lastMaintenance, storageReport } from './lib/retention.mjs';
 
+// 서버 기록(logs/server.log)의 줄마다 시각을 붙인다 — 예전에는 시작 줄만 있고 언제 무슨 일이 있었는지 알 수 없었다
+{
+  const two = (n) => String(n).padStart(2, '0');
+  const stamp = () => { const d = new Date(); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`; };
+  for (const k of ['log', 'warn', 'error']) { const orig = console[k].bind(console); console[k] = (...a) => orig(stamp(), ...a); }
+}
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
 if (!config) { console.error('config.json 을 읽지 못했습니다'); process.exit(1); }
@@ -67,6 +73,7 @@ const hubBusy = () => { for (const j of jobs.jobs.values()) if (j.status === 'pl
 const IDLE_AFTER = (config.idle?.afterMinutes ?? 10) * 60_000;
 const hubActive = () => Date.now() - lastTouch < IDLE_AFTER || hubBusy();
 // 사용자가 아니라 프로그램이 주기적으로 보내는 요청(스튜디오·크롬 확장·어도비 플러그인·다른 PC 허브·작업자 도구)은 "쓰는 중"으로 치지 않는다
+const SLOW_OK = /^\/api\/(chrome-ext\/poll|adobe\/(next|run|check)|download|file|uploads|jobs\/[^/]+\/(wait|stream)|shared\/sync|storage|hub\/(update|version)|peers\/[^/]+\/(update|version|restart)|studio\/install|browser\/act|checkpoints)/;
 const MACHINE_PATH = /^\/api\/(studio\/(hello|bye)|chrome-ext\/|adobe\/(hello|result)|shared\/(changed|file)|browser\/act|peers\/pair-key)/;
 /** 주기 작업: 쉬는 중이면 slow 배 느리게. 쓴 시간은 이름별로 기록한다(lib/load-log.mjs) */
 function every(name, ms, fn, { slow = 5 } = {}) {
@@ -193,7 +200,7 @@ function browserFor(owner, b) {
 process.on('exit', () => { try { oddinBrowser?.proc?.kill(); } catch {} });
 // ODDIN 스튜디오(studio/, 2026-10-10 "오딘과 연동되는 프로그램으로"): 따로 켜는 영상 편집 프로그램. 켜지면 여기에 알리고(hello),
 // 허브는 /studio/ 로 그 화면을 비춘다(폰·원격). 규약 docs/studio.md
-const studio = new StudioLink({ root: ROOT, emit: (ev) => broadcast(ev) });
+const studio = new StudioLink({ root: ROOT, emit: (ev) => broadcast(ev), commit: () => runningCommit(ROOT).commit });
 jobs.browserTool = (job, task) => browsers().length ?{ command: process.execPath, args: [path.join(ROOT, 'scripts', 'oddin-browser-mcp.mjs')], env: { ODDIN_TASK: `${job.id}/${task.id}`, ODDIN_HUB: `http://127.0.0.1:${config.port}` } } : null;
 jobs.machines = () => { const list = peers.list(); return list.length ? { self: peers.self().name, peers: list.map((x) => x.name), handoff: path.join(ROOT, 'scripts', 'handoff.mjs') } : null; };
 /** 세션 실행 PC 옮기기: 대화 기록을 다른 PC(또는 이 PC)에 새 세션으로 가져오고 원래 세션은 보관함으로. machine = 'self' | PC id·이름 */
@@ -349,7 +356,12 @@ const server = http.createServer(async (req, res) => {
     const m = (re) => p.match(re);
     const denial = remote.check(req);
     if (denial) return sendRemoteBlocked(res, denial, p, send);
-    if (p.startsWith('/api/') && p !== '/api/events') res.once('finish', requestTimer(req.method, p)); // 어떤 요청이 시간을 쓰는지(GET /api/hub/load)
+    if (p.startsWith('/api/') && p !== '/api/events') {
+      res.once('finish', requestTimer(req.method, p)); // 어떤 요청이 시간을 쓰는지(GET /api/hub/load)
+      // 서버 기록에 남긴다: 서버 쪽 오류(5xx)와 오래 걸린 요청(5초 넘게 — 기다리는 것이 일인 요청·내려받기는 빼고)
+      const began = Date.now();
+      res.once('finish', () => { const ms = Date.now() - began; if (res.statusCode >= 500 || (ms > 5000 && !SLOW_OK.test(p))) console.warn(`[요청] ${req.method} ${p} → ${res.statusCode} · ${ms}ms`); });
+    }
     // 사용자가 화면에서 한 일(바꾸는 요청)이면 "쓰는 중"으로 본다. 화면은 누르거나 칠 때 /api/hub/touch 로도 알린다(public/activity.js)
     if (req.method !== 'GET' && req.method !== 'HEAD' && !req.headers['x-oddin-machine'] && !MACHINE_PATH.test(p)) touch();
     { // 이 PC를 조작하는 기능: 원격은 화면·연결된 허브만, 다른 PC로 넘기는 제어는 화면만
@@ -500,7 +512,7 @@ const server = http.createServer(async (req, res) => {
     const promptAnswer = p.match(/^\/api\/prompts\/([^/]+)\/answer$/);
     if (promptAnswer && req.method === 'POST') return json(res, jobs.prompts.answer(promptAnswer[1], await readBody(req), req.hubViewer));
     if (p === '/api/ui-version') return json(res, { v: uiVersion() });
-    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force'), maxAgeMs: hubActive() ? 60_000 : 15 * 60_000 }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username, profile: profile.read() } });
+    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force'), maxAgeMs: hubActive() ? 5 * 60_000 : 15 * 60_000 }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username, profile: profile.read() } });
     if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 }, fileAccess: fileAccess.read() });
     // 세션 묶음: 목록·만들기·이름 바꾸기·순서·지우기(세션은 그대로, 묶음에서만 빠짐)
     if (p === '/api/session-groups' && req.method === 'GET') return json(res, groups.list());
@@ -705,6 +717,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// 받아 줄 곳 없이 실패한 약속(저장 실패·끊긴 연결 등)은 기록만 하고 허브를 살려 둔다 — 예전에는 이것 하나로 허브 전체가 꺼질 수 있었다(2026-10-12 점검)
+process.on('unhandledRejection', (e) => { console.error('[처리 안 된 오류]', e?.stack || e); });
 // 마지막 안전장치: 자식 프로세스 통로가 끊겨 생기는 오류는 기록만 하고 허브를 살려 둔다 (다른 오류는 원래대로 종료)
 process.on('uncaughtException', (e) => {
   if (['EPIPE', 'ENOTCONN', 'ECONNRESET', 'ERR_STREAM_DESTROYED'].includes(e?.code)) { console.error(`[무시한 통로 오류] ${e.code}: ${e.message}`); return; }

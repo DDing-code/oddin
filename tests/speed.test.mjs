@@ -15,7 +15,8 @@ fs.writeFileSync(path.join(home, 'models_cache.json'), JSON.stringify({ models: 
 process.env.CODEX_HOME = home;
 process.env.HUB_DATA_DIR = path.join(home, 'data');
 process.env.HUB_RUNS_DIR = path.join(home, 'runs');
-test.after(() => fs.rmSync(home, { recursive: true, force: true }));
+// 시험이 띄운 것들이 폴더를 놓을 때까지 잠깐 걸린다(EBUSY) — 다시 해 보고, 그래도 안 되면 임시 폴더는 남겨 둔다(시험 실패로 치지 않음)
+test.after(() => { try { fs.rmSync(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); } catch {} });
 
 const { raiseToStandalone } = await import('../lib/router.mjs');
 const { JobManager } = await import('../lib/jobs.mjs');
