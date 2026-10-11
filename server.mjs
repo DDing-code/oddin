@@ -258,7 +258,14 @@ jobs.machineName = () => peers.self().name;
 jobs.driveGuard = (job) => job.answer ? Promise.resolve() : guardDriveWrite(drive.folderOf(job.cwd), peers);
 const driveResolve = () => { try { const r = drive.resolve(); if (r.found.length) broadcast({ type: 'drive-folders' }); return r; } catch (e) { return { error: e.message }; } };
 setTimeout(driveResolve, 5000).unref();
-every('drive-folders', 120_000, async () => driveResolve());
+// 이 PC에서 못 찾은 폴더가 있으면 후보 폴더 수백 개의 목록을 읽어 비슷한 것을 찾는다(드라이브를 읽는 일).
+// 못 찾은 폴더가 있는 동안은 다섯 번에 한 번(10분)만 찾는다 — PC 탭을 열거나 "다시 찾기"를 누르면 바로 찾는다
+let resolveSkip = 0;
+every('drive-folders', 120_000, async () => {
+  if (resolveSkip > 0) { resolveSkip--; return; }
+  const r = driveResolve();
+  if (r?.missing?.length) resolveSkip = 4;
+});
 const checkPeers = async () => {
   if (!peers.list().length) return;
   await Promise.all(peers.list().map((x) => peers.check(x)));

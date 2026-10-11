@@ -255,3 +255,18 @@ test('서버: 가벼운 확인·알림 받기·쓰는 중 알림·무엇이 시�
   const st = await get('/api/shared/status');
   assert.equal(st.idle, false); assert.equal(st.drive.waiting, 0); assert.ok(st.recent.length);
 });
+
+test('안 쓰는 브라우저(실제 Edge/Chrome): 쓰는 동안은 그대로, 안 쓰면 꺼지고, 다시 쓰면 켜진다', { skip: !(await import('../lib/browser.mjs')).findBrowser() && '이 PC에 Edge/Chrome 이 없어요', timeout: 60000 }, async (t) => {
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-idle-browser-'));
+  const live = new Set(['job-a/t1']);
+  const b = new BrowserManager({ profile, idleMs: 1500, isLive: (o) => live.has(o) });
+  t.after(async () => { try { await b.stop(); } catch {} await delay(300); try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }); } catch {} });
+  await b.act('job-a/t1', { action: 'open', url: 'about:blank' });
+  await delay(3500);
+  assert.equal(b.running, true, '진행 중인 작업의 탭은 오래 안 써도 둔다'); assert.equal(b.tabs.size, 1);
+  live.clear();
+  assert.ok(await until(() => !b.running, 8000), '작업이 끝나고 안 쓰면 꺼짐');
+  assert.equal(b.tabs.size, 0);
+  assert.equal((await b.act('job-b/t1', { action: 'eval', expression: '40 + 2' })).value, 42, '다시 쓰면 저절로 켜짐');
+  assert.equal(b.running, true);
+});
