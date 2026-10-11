@@ -12,7 +12,8 @@ import { tools, rate, f6, even, sceneMeta } from './media.mjs';
 
 /** 페이지가 읽히기 전에 넣는 스크립트: 고정 씨앗 무작위 */
 export const PRE_JS = `(() => { let s = 0x2f6b9c1d; Math.random = () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; })();`;
-/** 시각 맞추기 도우미(ui/scene-seek.js — 편집기 미리보기와 같은 파일)를 페이지에 심는다 */
+/** 시각 맞추기 도우미(ui/scene-seek.js — 편집기 미리보기와 같은 파일)를 페이지에 심는다. 장면 출처(scene-origin.mjs)가 .html 에 이미 넣어 주지만
+ *  CDP 로 한 번 더 넣는다(이미 있으면 그대로 — 장면이 자기 CSP 로 넣어 준 스크립트를 막아도 렌더는 되게) */
 export const SEEK_JS = () => fs.readFileSync(path.join(UI_DIR, 'scene-seek.js'), 'utf8');
 
 /** 장면 폴더의 파일들(그림·글꼴·스크립트)이 바뀌면 다시 렌더하도록 서명을 만든다 */
@@ -25,7 +26,7 @@ function sceneSig(file, extra) {
 
 /**
  * HTML 장면 → 영상. out 이 .mov 면 투명(PNG 코덱), .mp4·.webm 이면 배경색 위에.
- * browser: lib/browser.mjs BrowserManager, url: 엔진이 내주는 장면 주소(상대 경로 그림이 이어지게).
+ * browser: lib/browser.mjs BrowserManager, url: 장면 출처(scene-origin.mjs)의 장면 주소 — 엔진과 다른 출처(장면 스크립트가 엔진 API 를 못 부르게), 상대 경로 그림은 이어진다.
  */
 export async function renderScene({ browser, config, file, url, out, width, height, fps = 30, duration, background = '#000000', onFrame = null, isCancelled = () => false, children = null, owner = null }) {
   const { ffmpeg } = tools(config); if (!ffmpeg) throw error(500, 'ffmpeg를 찾지 못했어요');

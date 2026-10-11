@@ -1,4 +1,5 @@
-/* HTML 장면 시각 맞추기 — 편집기 미리보기(iframe 에 넣음)와 엔진 렌더(scene.mjs 가 페이지에서 실행)가 같은 이 파일을 쓴다.
+/* HTML 장면 시각 맞추기 — 편집기 미리보기와 엔진 렌더가 같은 이 파일을 쓴다. 장면 출처(engine/scene-origin.mjs)가 장면 .html 을 내줄 때 끝에 넣어 준다
+   (미리보기는 다른 출처의 iframe 이라 postMessage { oddinSeek: 초 } 로 부르고, 렌더는 scene.mjs 가 CDP 로 직접 부른다).
    window.__oddinSeekAny(t초) 순서: 페이지의 window.oddinSeek(t) → HyperFrames 식 window.__timelines(GSAP) → gsap 전역 타임라인 → CSS·Web Animations → <video>·<audio> */
 (() => {
   if (window.__oddinSeekAny) return true;

@@ -47,7 +47,8 @@ const STUDIO = {
 };
 (function connect() {
   const es = new EventSource(`api/events${STUDIO.desktop ? '?app=1' : ''}`);
-  es.onmessage = (m) => { let ev; try { ev = JSON.parse(m.data); } catch { return; } for (const fn of STUDIO.listeners) { try { fn(ev); } catch (e) { console.error(e); } } };
+  // 편집기(editor.js)는 ODDIN 화면에 있던 때처럼 'hub:event' 로도 듣는다(렌더 진행·완료) — 여기서 같이 알려 주지 않으면 렌더가 끝나도 "렌더 중"으로 남는다
+  es.onmessage = (m) => { let ev; try { ev = JSON.parse(m.data); } catch { return; } for (const fn of STUDIO.listeners) { try { fn(ev); } catch (e) { console.error(e); } } try { window.dispatchEvent(new CustomEvent('hub:event', { detail: ev })); } catch {} };
   es.onerror = () => { es.close(); setTimeout(connect, 3000); };
 })();
 async function refreshStatus() { try { STUDIO.status = await api('api/status'); STUDIO.remote = !!STUDIO.status.remote; } catch { STUDIO.status = null; } return STUDIO.status; }

@@ -1,4 +1,5 @@
 // ODDIN 스튜디오(2026-10-10, docs/studio.md): 공용 코어(studio/ui/video-core.js)·ffmpeg 식·원본 넣기·프리미어 변환·허브 비추기·엔진 API·렌더
+// + 장면 출처 분리(2026-10-12): HTML 장면은 엔진과 다른 출처에서만 돌고, 엔진 API 는 다른 출처의 요청을 거절한다
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -12,12 +13,19 @@ import { core, keyExpr, EASE_EXPR } from '../studio/engine/edit.mjs';
 import { tools } from '../studio/engine/media.mjs';
 import { listFonts, fontNames } from '../studio/engine/fonts.mjs';
 import { premiereToEdit, sourceText, levelToDb } from '../studio/engine/premiere.mjs';
+import { SceneOrigin } from '../studio/engine/scene-origin.mjs';
 import { StudioLink } from '../lib/studio-link.mjs';
 import { isControl } from '../lib/hub-auth.mjs';
-import { findBrowser } from '../lib/browser.mjs';
+import { BrowserManager, findBrowser } from '../lib/browser.mjs';
 
 const V = core();
 const plain = (v) => JSON.parse(JSON.stringify(v));
+// 날것 요청: 주소를 정리하지 않고 그대로 보낸다(fetch 는 .. 을 먼저 접고 Host·Sec-Fetch-* 머리를 못 바꾼다)
+const rawReq = (port, p, { method = 'GET', headers = {} } = {}) => new Promise((resolve, reject) => {
+  const q = http.request({ host: '127.0.0.1', port, path: p, method, headers }, (r) => { const c = []; r.on('data', (x) => c.push(x)); r.on('end', () => resolve({ status: r.statusCode, headers: r.headers, body: Buffer.concat(c) })); });
+  q.on('error', reject); q.end();
+});
+const encPath = (p) => String(p).replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
 // ffmpeg 식을 JS 로 풀어 계산(if·lt·gte·pow)
 function evalExpr(expr, t) {
   const js = expr.replace(/\bif\(/g, 'IF(').replace(/\blt\(/g, 'LT(').replace(/\bgte\(/g, 'GTE(').replace(/\bpow\(/g, 'Math.pow(');
@@ -180,8 +188,109 @@ test('허브 비추기(StudioLink.proxy): 원격 표시·클라이언트 x-oddin
   assert.deepEqual([link.status().online, link.status().windows, link.status().version], [true, 2, '9.9']);
 });
 
+test('장면 출처: 등록한 루트 안 파일만 내준다 — 밖·..·절대 경로·정션 너머·모르는 토큰·다른 Host·쓰기는 거절, .html 에는 시각 맞춤 스크립트', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oddin-scene-origin-'));
+  const root = path.join(dir, '편집 폴더'), sub = path.join(root, '장면'), out = path.join(dir, '밖');
+  for (const d of [sub, out]) fs.mkdirSync(d, { recursive: true });
+  const edit = path.join(root, '시험.oddin-edit.json'), scene = path.join(sub, '장면.html'), png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+  fs.writeFileSync(edit, '{}');
+  fs.writeFileSync(scene, '<!doctype html><html><body><p>장면</p></body></html>');
+  fs.writeFileSync(path.join(sub, '조각.html'), '<p>몸통 없음</p>');
+  fs.writeFileSync(path.join(root, '그림.png'), png);
+  fs.writeFileSync(path.join(out, '비밀.txt'), 'secret');
+  fs.writeFileSync(path.join(out, '밖 장면.html'), '<html><body></body></html>');
+  let linked = true; try { fs.symlinkSync(out, path.join(root, '바로가기'), 'junction'); } catch { linked = false; }
+  const so = new SceneOrigin({ port: await freePort() }), port = await so.start();
+  const rel = (url) => decodeURIComponent(new URL(url).pathname).split('/').slice(3).join('/');
+  try {
+    // 주소: 편집 파일 폴더 안의 장면은 그 폴더가 루트(편집 폴더의 그림을 같이 쓴다). 편집 파일을 안 주거나 장면이 그 밖에 있으면 장면 파일의 폴더
+    const u = new URL(so.urlFor(scene, edit)), tok = u.pathname.split('/')[2];
+    assert.equal(u.origin, `http://127.0.0.1:${port}`); assert.match(tok, /^[0-9a-f]{24}$/); assert.equal(rel(u), '장면/장면.html');
+    assert.equal(so.urlFor(scene, edit), u.href, '같은 폴더는 같은 토큰');
+    assert.equal(rel(so.urlFor(scene)), '장면.html'); assert.notEqual(new URL(so.urlFor(scene)).pathname.split('/')[2], tok);
+    assert.equal(rel(so.urlFor(path.join(out, '밖 장면.html'), edit)), '밖 장면.html', '편집 폴더 밖의 장면은 제 폴더가 루트');
+    assert.notEqual(new SceneOrigin().mount(root), tok, '토큰은 엔진을 켤 때 만든 비밀값에 묶인다(밖에서 못 맞힌다)');
+    // .html: 시각 맞춤 스크립트와 postMessage 다리를 </body> 앞에(없으면 끝에). 여기서는 스크립트가 돌아야 하니 sandbox 를 붙이지 않는다
+    const h = await rawReq(port, u.pathname), html = h.body.toString('utf8');
+    assert.equal(h.status, 200); assert.match(h.headers['content-type'], /^text\/html/); assert.equal(h.headers['x-content-type-options'], 'nosniff'); assert.equal(h.headers['content-security-policy'], undefined);
+    assert.ok(html.startsWith('<!doctype html><html><body><p>장면</p>'), '원래 내용은 그대로'); assert.equal(Number(h.headers['content-length']), h.body.length);
+    for (const s of ['__oddinSeekAny', 'oddinSeek', 'oddinSeeked', 'oddinSceneReady']) assert.ok(html.includes(s), s);
+    const at = html.indexOf('<script data-oddin-seek>'); assert.ok(at > 0 && at < html.lastIndexOf('</body>'), '</body> 앞');
+    const frag = (await rawReq(port, `/m/${tok}/${encPath('장면/조각.html')}`)).body.toString('utf8');
+    assert.ok(frag.startsWith('<p>몸통 없음</p>') && frag.trimEnd().endsWith('</script>'), '</body> 가 없으면 끝에');
+    const head = await rawReq(port, u.pathname, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(head.body.length, 0);
+    // 같은 루트의 다른 파일(그림·구간 요청), localhost 이름으로도
+    const g = await rawReq(port, `/m/${tok}/${encPath('그림.png')}`);
+    assert.equal(g.status, 200); assert.equal(g.headers['content-type'], 'image/png'); assert.deepEqual(g.body, png); assert.equal(g.headers['x-content-type-options'], 'nosniff');
+    const part = await rawReq(port, `/m/${tok}/${encPath('그림.png')}`, { headers: { Range: 'bytes=1-3' } });
+    assert.equal(part.status, 206); assert.deepEqual(part.body, png.subarray(1, 4));
+    assert.equal((await rawReq(port, u.pathname, { headers: { Host: `localhost:${port}` } })).status, 200);
+    // 거절: 루트 밖으로 나가려는 주소(.. · 인코딩한 .. · 역슬래시 · 절대 경로 · 빈 칸), 모르는 토큰, 폴더, 없는 파일, API·화면 주소(여기에는 없다)
+    const secret = encPath('밖/비밀.txt');
+    const bad = [`/m/${tok}/../${secret}`, `/m/${tok}/%2e%2e/${secret}`, `/m/${tok}/..%2f${secret}`, `/m/${tok}/..%5c${secret}`, `/m/${tok}/${encPath('장면')}/../../${secret}`,
+      `/m/${tok}/${encodeURIComponent(path.join(out, '비밀.txt'))}`, `/m/${tok}/${encPath(path.join(out, '비밀.txt'))}`, `/m/${tok}//${secret}`,
+      `/m/${'0'.repeat(24)}/${encPath('그림.png')}`, `/m/${tok}`, `/m/${tok}/`, `/m/${tok}/${encPath('장면')}`, `/m/${tok}/${encPath('없는 파일.png')}`, '/api/status', '/api/file?path=x', '/', '/ui/editor.js'];
+    if (linked) { bad.push(`/m/${tok}/${encPath('바로가기/비밀.txt')}`); assert.equal(fs.readFileSync(path.join(root, '바로가기', '비밀.txt'), 'utf8'), 'secret', '정션은 이어져 있다(그래도 거절해야 한다)'); }
+    for (const p of bad) assert.equal((await rawReq(port, p)).status, 404, p);
+    assert.equal((await rawReq(port, u.pathname, { headers: { Host: 'evil.example' } })).status, 403, '다른 이름으로 들어온 요청(DNS 리바인딩)');
+    assert.equal((await rawReq(port, u.pathname, { headers: { Host: `127.0.0.1:${port + 1}` } })).status, 403);
+    for (const method of ['POST', 'PUT', 'DELETE', 'OPTIONS']) assert.equal((await rawReq(port, u.pathname, { method })).status, 405, method);
+    // 쓰는 중인 포트를 달라고 하면 빈 포트를 잡는다
+    const second = new SceneOrigin({ port }), p2 = await second.start(); second.stop(); assert.ok(p2 > 0 && p2 !== port);
+  } finally { so.stop(); try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch {} }
+});
+
+test('장면 출처: 다른 출처의 iframe 에 postMessage 로 시각을 맞춘다 — 부모와 장면은 서로의 안을 못 만진다', { skip: !findBrowser() && '브라우저(Edge·Chrome) 없음', timeout: 120_000 }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oddin-scene-msg-'));
+  fs.mkdirSync(path.join(dir, 'scene'));
+  // 부모 화면 노릇(스튜디오 화면처럼 127.0.0.1 의 다른 포트). 장면이 여기 /api 로 보낸 요청의 Sec-Fetch-Site 도 적어 둔다 — 엔진이 거절하는 값이어야 한다
+  let probeSite = null;
+  const host = http.createServer((req, res) => { if (req.url.startsWith('/api/probe')) probeSite = req.headers['sec-fetch-site'] ?? '(없음)'; res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end('<!doctype html><html><head><title>부모</title></head><body></body></html>'); });
+  const hostPort = await freePort(); await new Promise((r) => host.listen(hostPort, '127.0.0.1', r));
+  fs.writeFileSync(path.join(dir, 'scene', '장면.html'), [
+    '<!doctype html><html data-duration="1" data-width="640" data-height="360"><head><meta charset="utf-8">',
+    '<style>html,body{margin:0}#b{position:absolute;left:0;top:0;height:20px;background:#0f0;animation:g 1s linear both}@keyframes g{from{width:0}to{width:640px}}</style></head><body><div id="b"></div><script>',
+    'let touched = "blocked"; try { touched = "read:" + parent.document.title; } catch (e) {}',
+    `fetch("http://127.0.0.1:${hostPort}/api/probe", { mode: "no-cors" }).catch(() => {});`,
+    'addEventListener("message", (e) => { if (e.data && e.data.measure) e.source.postMessage({ width: document.getElementById("b").getBoundingClientRect().width, touched }, "*"); });',
+    '</script></body></html>'].join('\n'));
+  const so = new SceneOrigin({ port: await freePort() }); await so.start();
+  const B = new BrowserManager({ profile: path.join(dir, 'profile'), headless: true, width: 800, height: 600 });
+  try {
+    const url = so.urlFor(path.join(dir, 'scene', '장면.html'));
+    const tab = await B.tabOf('scene-test');
+    const nav = await B.send('Page.navigate', { url: `http://127.0.0.1:${hostPort}/` }, tab.session, 30_000); assert.ok(!nav.errorText, nav.errorText);
+    for (let i = 0; i < 100; i++) { try { if (await B.evaluate(tab, 'document.readyState === "complete" && document.title === "부모"')) break; } catch {} await new Promise((r) => setTimeout(r, 100)); }
+    // 편집기 미리보기와 같은 흐름: 준비 알림을 기다렸다가 → 시각 보내기 → 끝났다는 답 → (시험용) 막대 너비 묻기
+    const out = await B.evaluate(tab, `new Promise((resolve) => {
+      const out = { ready: false, origin: null, inside: null, seeked: null, width: null, touched: null };
+      const f = document.createElement('iframe'); f.style.cssText = 'width:640px;height:360px;border:0';
+      addEventListener('message', (e) => {
+        if (e.source !== f.contentWindow) return; const d = e.data || {};
+        if (d.oddinSceneReady) { out.ready = true; out.origin = e.origin; try { out.inside = 'read:' + f.contentWindow.document.title; } catch (x) { out.inside = 'blocked'; } f.contentWindow.postMessage({ oddinSeek: 0.5, id: 7 }, e.origin); }
+        else if (d.oddinSeeked != null) { out.seeked = [d.oddinSeeked, d.id]; f.contentWindow.postMessage({ measure: true }, '*'); }
+        else if (d.width != null) { out.width = d.width; out.touched = d.touched; resolve(out); }
+      });
+      f.src = ${JSON.stringify(url)}; document.body.appendChild(f);
+      setTimeout(() => resolve(out), 30000);
+    })`, 60_000);
+    assert.equal(out.ready, true, '장면이 다 읽히면 준비됐다고 알린다'); assert.equal(out.origin, so.origin);
+    assert.equal(out.inside, 'blocked', '부모는 장면 안을 직접 못 만진다(그래서 postMessage)');
+    assert.deepEqual(out.seeked, [0.5, 7], '시각을 맞추면 같은 id 로 답한다');
+    assert.ok(Math.abs(out.width - 320) < 2, `0.5초에 막대가 반: ${out.width}`);
+    assert.equal(out.touched, 'blocked', '장면은 부모 화면을 못 만진다');
+    for (let i = 0; i < 30 && probeSite == null; i++) await new Promise((r) => setTimeout(r, 100));
+    assert.equal(probeSite, 'same-site', '장면이 127.0.0.1 의 다른 포트로 보낸 요청은 same-site — 엔진이 거절하는 값');
+  } finally {
+    try { await B.stop(); } catch {}
+    so.stop(); host.close();
+    // 브라우저 프로필은 꺼진 뒤에도 잠깐 잠겨 있다 — 통째로 다시 지워 본다(rmSync 의 maxRetries 는 새로 생긴 파일을 못 따라가 17초를 쓰고도 남겼다)
+    for (let i = 0; i < 20; i++) { try { fs.rmSync(dir, { recursive: true, force: true }); break; } catch { await new Promise((r) => setTimeout(r, 250)); } }
+  }
+});
+
 const FF = tools({});
-test('엔진: 새 편집(SRT → 자막)·저장 충돌·요청 지키기·원본 넣기·목록·올리기·파형·허브 연결·렌더(그림·HTML 장면·자막)', { skip: (!FF.ffmpeg || !FF.ffprobe) && 'ffmpeg 없음', timeout: 300_000 }, async () => {
+test('엔진: 새 편집(SRT → 자막)·저장 충돌·요청 지키기(다른 출처·HTML sandbox·장면 출처)·원본 넣기·목록·올리기·파형·허브 연결·렌더(그림·HTML 장면·자막)', { skip: (!FF.ffmpeg || !FF.ffprobe) && 'ffmpeg 없음', timeout: 300_000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oddin-studio-'));
   const media = path.join(dir, '영상 시험'), data = path.join(dir, 'data'), hubData = path.join(dir, 'hub-data');
   for (const d of [media, data, hubData, path.join(dir, 'runs')]) fs.mkdirSync(d, { recursive: true });
@@ -191,11 +300,12 @@ test('엔진: 새 편집(SRT → 자막)·저장 충돌·요청 지키기·원�
   spawnSync(FF.ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', "color=c=black:s=120x60,format=rgba,geq=r=255:g=200:b=0:a='if(lt(X,10),0,230)'", '-frames:v', '1', path.join(media, '로고.png')], { windowsHide: true });
   fs.writeFileSync(path.join(media, '원본.srt'), '1\n00:00:00,500 --> 00:00:01,500\n첫 자막\n\n2\n00:00:02,500 --> 00:00:03,500\n둘째 자막\n');
   fs.writeFileSync(path.join(media, '장면.html'), '<!doctype html><html data-duration="1" data-width="640" data-height="360"><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent}#b{position:absolute;left:0;top:300px;height:20px;background:#0f0;animation:g 1s linear both}@keyframes g{from{width:0}to{width:640px}}</style></head><body><div id="b"></div></body></html>');
-  const [port, hubPort] = [await freePort(), await freePort()];
+  // 장면 출처 포트도 따로 정한다(기본값 = 엔진 포트 + 1 은 바로 옆에서 잡은 허브 포트와 겹칠 수 있다)
+  const [port, hubPort, scenePort] = [await freePort(), await freePort(), await freePort()];
   const cfg = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ ...cfg, port: hubPort, studio: { port } }));
   fs.writeFileSync(path.join(hubData, 'file-access.json'), JSON.stringify({ allowAll: true }));
-  const engine = spawn(process.execPath, [fileURLToPath(new URL('../studio/engine/server.mjs', import.meta.url))], { env: { ...process.env, STUDIO_PORT: String(port), STUDIO_DATA_DIR: data, ODDIN_HUB: `http://127.0.0.1:${hubPort}`, HUB_CONFIG_FILE: path.join(dir, 'config.json') }, stdio: 'ignore' });
+  const engine = spawn(process.execPath, [fileURLToPath(new URL('../studio/engine/server.mjs', import.meta.url))], { env: { ...process.env, STUDIO_PORT: String(port), STUDIO_SCENE_PORT: String(scenePort), STUDIO_DATA_DIR: data, ODDIN_HUB: `http://127.0.0.1:${hubPort}`, HUB_CONFIG_FILE: path.join(dir, 'config.json') }, stdio: 'ignore' });
   const hub = spawn(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url))], { env: { ...process.env, HUB_PORT: String(hubPort), HUB_DATA_DIR: hubData, HUB_RUNS_DIR: path.join(dir, 'runs'), HUB_CONFIG_FILE: path.join(dir, 'config.json'), HUB_SKIP_CLI_INSTALL: '1' }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}`;
   const call = async (p, opt = {}) => { const res = await fetch(base + p, { ...opt, headers: { 'Content-Type': 'application/json', ...(opt.headers || {}) } }); const t = await res.text(); let j; try { j = JSON.parse(t); } catch { j = t; } return { status: res.status, body: j }; };
@@ -205,6 +315,10 @@ test('엔진: 새 편집(SRT → 자막)·저장 충돌·요청 지키기·원�
     assert.equal((await call('/api/blank', { method: 'POST', body: '{}', headers: { Origin: 'https://evil.example' } })).status, 403);
     const badHost = await new Promise((res) => { const q = http.request({ host: '127.0.0.1', port, path: '/api/status', headers: { Host: 'evil.example' } }, (x) => { x.resume(); res(x.statusCode); }); q.end(); });
     assert.equal(badHost, 403);
+    // 브라우저가 다른 출처의 페이지에서 보낸 요청(Sec-Fetch-Site)은 API 읽기도 거절 — 이 화면(same-origin)·주소창(none)·브라우저 아닌 호출(머리 없음)·허브가 비춘 요청은 통과
+    for (const [site, want] of [['cross-site', 403], ['same-site', 403], ['same-origin', 200], ['none', 200]]) assert.equal((await rawReq(port, '/api/status', { headers: { 'Sec-Fetch-Site': site } })).status, want, site);
+    assert.equal((await rawReq(port, '/api/status', { headers: { 'Sec-Fetch-Site': 'cross-site', 'x-oddin-via': 'hub' } })).status, 200, '허브가 비춘 요청은 허브가 이미 걸렀다');
+    assert.equal((await rawReq(port, '/', { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 200, '화면 문서는 다른 곳의 링크로도 열린다(API 만 막는다)');
     const made = await call('/api/new', { method: 'POST', body: JSON.stringify({ video }) });
     assert.equal(made.status, 201, JSON.stringify(made.body)); assert.match(made.body.path, /원본\.oddin-edit\.json$/); assert.ok(made.body.srt);
     assert.equal((await call('/api/new', { method: 'POST', body: JSON.stringify({ video }) })).body.existed, true);
@@ -221,6 +335,23 @@ test('엔진: 새 편집(SRT → 자막)·저장 충돌·요청 지키기·원�
     assert.equal(add.status, 200, JSON.stringify(add.body)); assert.equal(add.body.placed.length, 2);
     assert.deepEqual(add.body.placed.map((x) => [x.start, x.end]), [[1, 4], [4, 5]]);
     const chk = (await call(`/api/check${q}`)).body; assert.equal(chk.missingMedia.length, 0); assert.equal(chk.duration, 5);
+    // 장면 출처 분리: 엔진 출처로 내주는 HTML 은 스크립트 없이 보기만(sandbox), 스크립트가 도는 장면 주소는 다른 포트(파일 읽기만)
+    const sceneFile = path.join(media, '장면.html');
+    const rawHtml = await rawReq(port, `/api/raw/${encPath(sceneFile)}`);
+    assert.equal(rawHtml.status, 200); assert.equal(rawHtml.headers['content-security-policy'], 'sandbox');
+    assert.equal((await rawReq(port, `/api/file?path=${encodeURIComponent(sceneFile)}`)).headers['content-security-policy'], 'sandbox');
+    const rawPng = await rawReq(port, `/api/raw/${encPath(path.join(media, '로고.png'))}`);
+    assert.equal(rawPng.status, 200); assert.equal(rawPng.headers['content-security-policy'], undefined, '그림·영상은 그대로');
+    for (const p of ['/', '/ui/render.html']) assert.equal((await rawReq(port, p)).headers['content-security-policy'], undefined, `스튜디오 화면(${p})은 그대로`);
+    assert.equal((await call('/api/status')).body.scenePort, scenePort);
+    const su = (await call(`/api/scene-url?path=${encodeURIComponent(sceneFile)}&edit=${encodeURIComponent(f)}`)).body;
+    assert.equal(su.live, true); const sUrl = new URL(su.url);
+    assert.equal(sUrl.origin, `http://127.0.0.1:${scenePort}`); assert.match(decodeURIComponent(sUrl.pathname), /^\/m\/[0-9a-f]{24}\/장면\.html$/);
+    const served = await rawReq(scenePort, sUrl.pathname);
+    assert.equal(served.status, 200); assert.ok(served.body.toString('utf8').includes('__oddinSeekAny'), '시각 맞춤 스크립트를 넣어 내준다'); assert.equal(served.headers['content-security-policy'], undefined);
+    assert.equal((await rawReq(scenePort, sUrl.pathname.replace(/[^/]+$/, encodeURIComponent('로고.png')))).status, 200, '같은 루트(편집 파일 폴더)의 그림');
+    assert.equal((await rawReq(scenePort, '/api/status')).status, 404, '장면 출처에는 API 가 없다');
+    assert.equal((await call(`/api/scene-url?path=${encodeURIComponent(path.join(media, '로고.png'))}`)).status, 400, 'HTML 장면만');
     const ls = (await call(`/api/list?path=${encodeURIComponent(media)}`)).body;
     assert.deepEqual(ls.entries.map((x) => x.kind).sort(), ['edit', 'html', 'image', 'srt', 'video']);
     const up = await fetch(`${base}/api/upload?dir=${encodeURIComponent(media)}&name=${encodeURIComponent('올린 로고.png')}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: fs.readFileSync(path.join(media, '로고.png')) });
@@ -234,6 +365,10 @@ test('엔진: 새 편집(SRT → 자막)·저장 충돌·요청 지키기·원�
     assert.equal(hs.online, true, '엔진이 허브에 자기를 알린다'); assert.equal(hs.port, port);
     const viaHub = await fetch(`http://127.0.0.1:${hubPort}/studio/api/status`).then((x) => x.json());
     assert.equal(viaHub.app, 'oddin-studio'); assert.equal(viaHub.remote, false);
+    // 원격(허브가 x-oddin-remote 를 붙인 요청)은 이 PC의 장면 출처에 닿을 수 없다 → 스크립트 없는 보기 주소(live:false)
+    const far = await rawReq(port, `/api/scene-url?path=${encodeURIComponent(sceneFile)}`, { headers: { 'x-oddin-via': 'hub', 'x-oddin-remote': '1' } });
+    assert.equal(far.status, 200, far.body.toString()); const farUrl = JSON.parse(far.body);
+    assert.equal(farUrl.live, false); assert.match(farUrl.url, /^api\/raw\/.+\.html$/);
     // 렌더(글자·장면은 브라우저로 — 없으면 둘 다 빼고)
     if (!findBrowser()) {
       const cur = (await call(`/api/edit${q}`)).body; cur.doc.tracks = cur.doc.tracks.filter((t) => t.kind !== 'text').map((t) => ({ ...t, clips: t.clips.filter((c) => cur.doc.media[c.media].kind !== 'html') }));

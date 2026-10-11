@@ -3,19 +3,23 @@
 //   node studio/engine/server.mjs [--port 7710]
 // 127.0.0.1 에만 열린다. 화면(ui/)·API(/api/*)를 내주고, 켜지면 ODDIN 허브에 자기를 알린다(hub.mjs).
 // 원격(폰 등)은 허브의 /studio/ 프록시로만 들어온다 — 허브가 x-oddin-remote 를 붙이면 열 수 있는 폴더를 허브 열기 범위로 줄인다.
-// 다른 웹페이지가 이 주소로 몰래 요청하지 못하게: Host 는 127.0.0.1·localhost 만, 쓰기 요청은 출처가 자기이거나 허브 프록시(x-oddin-via)·명령줄(출처 없음)만.
+// 다른 웹페이지가 이 주소로 몰래 요청하지 못하게: Host 는 127.0.0.1·localhost 만, 쓰기 요청은 출처가 자기이거나 허브 프록시(x-oddin-via)·명령줄(출처 없음)만,
+// 브라우저가 다른 출처에서 보낸 API 요청(Sec-Fetch-Site: cross-site·same-site)은 읽기도 거절.
+// HTML 장면(받아 온 템플릿일 수 있다)은 이 출처에서 돌리지 않는다 — 장면 출처(scene-origin.mjs, 기본 포트+1)에서만 띄우고, 여기서 내주는 HTML 은 스크립트 없이 보기만(sandbox).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { resolveFile, parseRange } from '../../lib/files.mjs';
+import { resolveFile } from '../../lib/files.mjs';
 import { BrowserManager, findBrowser } from '../../lib/browser.mjs';
 import { STUDIO_DIR, HUB_ROOT, UI_DIR, DATA_DIR, VERSION, loadConfig, error } from './env.mjs';
+import { sendFile } from './http.mjs';
 import { tools, probe, peaks, thumbs, mediaKind, VIDEO_RE } from './media.mjs';
 import { listFonts, installableFonts, installFonts } from './fonts.mjs';
 import { Editor, core, plain, relOrAbs, freshEditPath, checkEditName, rawPath, EDIT_EXT } from './edit.mjs';
 import { renderScene } from './scene.mjs';
+import { SceneOrigin } from './scene-origin.mjs';
 import { premiereToEdit } from './premiere.mjs';
 import { HubLink } from './hub.mjs';
 
@@ -25,10 +29,14 @@ if (args.includes('--port')) config.port = Number(args[args.indexOf('--port') + 
 const PORT = config.port, SELF = `http://127.0.0.1:${PORT}`;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+// 장면 출처: HTML 장면만 내주는 두 번째 서버(기본 = 엔진 포트 + 1, STUDIO_SCENE_PORT 로 바꿈, 쓰는 중이면 빈 포트). 미리보기·렌더가 같은 주소를 쓴다
+const sceneOrigin = new SceneOrigin({ port: Number(process.env.STUDIO_SCENE_PORT) || PORT + 1 });
+const sceneUrl = async (file, editFile = null) => { await sceneOrigin.start(); return sceneOrigin.urlFor(file, editFile); };
+
 // 그리는 일이 없으면 브라우저를 끈다(5분 안 쓰면). 렌더·장면 작업이 도는 동안은 탭을 그대로 둔다
 const drawing = () => [...editor.renders.values()].some((r) => r.status === 'running') || [...scenes.values()].some((j) => j.status === 'running');
 const browser = new BrowserManager({ exe: config.browser?.exe || null, profile: path.join(DATA_DIR, 'browser-profile'), headless: true, width: 1080, height: 1920, idleMs: (config.browser?.idleMinutes ?? 5) * 60_000, isLive: () => drawing() });
-const editor = new Editor({ config, browser: findBrowser(config.browser?.exe) ? browser : null, engineUrl: () => SELF });
+const editor = new Editor({ config, browser: findBrowser(config.browser?.exe) ? browser : null, engineUrl: () => SELF, sceneUrl });
 const appWindows = new Map(); // 창(SSE ?app=1) id → res
 const hub = new HubLink({ hubUrl: config.hubUrl, port: PORT, app: () => ({ windows: appWindows.size }) });
 
@@ -47,9 +55,7 @@ function touchRecent(file, title = null) {
   try { fs.writeFileSync(RECENT, JSON.stringify(list.slice(0, 40), null, 1)); } catch {}
 }
 
-/* ---------- HTTP 도우미 ---------- */
-const TYPES = { html: 'text/html; charset=utf-8', htm: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', mjs: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', json: 'application/json; charset=utf-8', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf', mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', ogg: 'audio/ogg', opus: 'audio/ogg', srt: 'text/plain; charset=utf-8', txt: 'text/plain; charset=utf-8', vtt: 'text/vtt; charset=utf-8', lottie: 'application/json' };
-const typeOf = (f) => TYPES[path.extname(f).slice(1).toLowerCase()] || 'application/octet-stream';
+/* ---------- HTTP 도우미 (파일 보내기 sendFile 은 http.mjs — 장면 출처와 같이 쓴다) ---------- */
 function json(res, data, status = 200) { const b = Buffer.from(JSON.stringify(data)); res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': b.length, 'Cache-Control': 'no-store' }); res.end(b); }
 function fail(res, msg, status = 400, code) { if (!res.headersSent) json(res, { error: msg, ...(code ? { code } : {}) }, status); else res.end(); }
 function readBody(req, limit = 20_000_000) {
@@ -59,17 +65,6 @@ function readBody(req, limit = 20_000_000) {
     req.on('end', () => { const t = Buffer.concat(chunks).toString('utf8'); if (!t) return resolve({}); try { resolve(JSON.parse(t)); } catch { reject(error(400, 'JSON 형식이 아니에요')); } });
     req.on('error', reject);
   });
-}
-/** 파일 보내기(구간 요청 지원 — 영상 앞뒤로 옮기기) */
-function sendFile(req, res, file, { cache = 'no-store' } = {}) {
-  const st = fs.statSync(file); if (!st.isFile()) throw error(400, '파일을 골라 주세요');
-  let range = null;
-  try { range = parseRange(req.headers.range, st.size); } catch (e) { res.writeHead(e.status || 416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
-  const headers = { 'Content-Type': typeOf(file), 'Content-Length': range ? range.end - range.start + 1 : st.size, 'Accept-Ranges': 'bytes', 'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff' };
-  if (range) headers['Content-Range'] = `bytes ${range.start}-${range.end}/${st.size}`;
-  res.writeHead(range ? 206 : 200, headers);
-  if (req.method === 'HEAD') return res.end();
-  const s = fs.createReadStream(file, range || {}); s.on('error', () => res.destroy()); res.on('close', () => s.destroy()); s.pipe(res);
 }
 
 /* ---------- 경로 허용 ---------- */
@@ -84,11 +79,16 @@ async function allowedFor(req) {
 const allowedNew = (allowed, file) => path.join(allowed(path.dirname(path.resolve(String(file || '')))), path.basename(String(file || '')));
 
 /* ---------- 요청 지키기 ---------- */
-function guard(req) {
+function guard(req, pathname) {
   const host = String(req.headers.host || '').toLowerCase();
   if (host !== `127.0.0.1:${PORT}` && host !== `localhost:${PORT}`) throw error(403, '이 주소로는 열 수 없어요');
+  const viaHub = req.headers['x-oddin-via'] === 'hub'; // 허브 프록시(허브가 원격 권한·출처를 이미 봄)
+  // 브라우저가 다른 출처의 페이지에서 보낸 API 요청은 읽기(GET)도 받지 않는다 — HTML 장면(장면 출처 = 같은 127.0.0.1 의 다른 포트라 same-site)이나
+  // 바깥 사이트(cross-site)가 fetch·<img>·iframe 으로 엔진 API 를 건드리지 못하게. 이 화면의 요청은 same-origin, 주소창에 직접 친 것은 none,
+  // 머리가 없으면 브라우저가 아닌 호출(명령줄·허브·시험)이라 그대로 둔다
+  if (!viaHub && pathname.startsWith('/api/') && /^(cross-site|same-site)$/i.test(String(req.headers['sec-fetch-site'] || ''))) throw error(403, '다른 페이지에서 온 요청은 받지 않아요');
   if (req.method === 'GET' || req.method === 'HEAD') return;
-  if (req.headers['x-oddin-via'] === 'hub') return; // 허브 프록시(허브가 원격 권한을 이미 봄)
+  if (viaHub) return;
   const origin = req.headers.origin;
   if (origin && origin !== `http://127.0.0.1:${PORT}` && origin !== `http://localhost:${PORT}`) throw error(403, '다른 페이지에서 온 요청은 받지 않아요');
 }
@@ -101,7 +101,8 @@ async function sceneJob({ file, out, width, height, fps, duration, wait }) {
   scenes.set(id, j);
   const pub = () => ({ id, path: j.path, out: j.out, status: j.status, progress: j.progress, error: j.error, result: j.result || null });
   const tell = () => broadcast({ type: 'scene', scene: pub() });
-  const p = renderScene({ browser, config, file, url: `${SELF}/api/raw/${rawPath(file)}`, out, width, height, fps, duration, children: j.children, onFrame: (f, n) => { j.progress = f / n; if (f % 10 === 0 || f === n) tell(); } })
+  // 장면은 장면 출처 주소로 연다(엔진 출처로 열면 장면 스크립트가 엔진 API 를 부를 수 있다). 따로 뽑는 장면의 루트는 장면 파일의 폴더
+  const p = sceneUrl(file).then((url) => renderScene({ browser, config, file, url, out, width, height, fps, duration, children: j.children, onFrame: (f, n) => { j.progress = f / n; if (f % 10 === 0 || f === n) tell(); } }))
     .then((r) => { j.status = 'done'; j.result = r; }).catch((e) => { j.status = 'failed'; j.error = e.message; try { fs.rmSync(out, { force: true }); } catch {} }).finally(tell);
   if (wait) await p;
   return pub();
@@ -210,7 +211,7 @@ async function route(req, res, url) {
   if (!p.startsWith('/api/')) throw error(404, '없는 주소예요');
 
   // 상태·알림
-  if (p === '/api/status') { const t = tools(config); return json(res, { app: 'oddin-studio', version: VERSION, root: HUB_ROOT, port: PORT, pid: process.pid, tools: { ffmpeg: !!t.ffmpeg, ffprobe: !!t.ffprobe, browser: !!findBrowser(config.browser?.exe) }, hub: hub.status(), windows: appWindows.size, installed: !!electronExe(), remote: isRemote(req), renders: editor.list().filter((r) => r.status === 'running').length }); }
+  if (p === '/api/status') { const t = tools(config); return json(res, { app: 'oddin-studio', version: VERSION, root: HUB_ROOT, port: PORT, scenePort: sceneOrigin.port || null, pid: process.pid, tools: { ffmpeg: !!t.ffmpeg, ffprobe: !!t.ffprobe, browser: !!findBrowser(config.browser?.exe) }, hub: hub.status(), windows: appWindows.size, installed: !!electronExe(), remote: isRemote(req), renders: editor.list().filter((r) => r.status === 'running').length }); }
   if (p === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.write(`data: ${JSON.stringify({ type: 'hello', version: VERSION })}\n\n`);
@@ -250,8 +251,9 @@ async function route(req, res, url) {
   if (p === '/api/probe') return json(res, await probe(allowed(q('path')), config));
   if (p === '/api/peaks') { const buf = await peaks(allowed(q('path')), config); return json(res, { rate: 100, peaks: buf.toString('base64') }); }
   if (p === '/api/thumbs') { const meta = await thumbs(allowed(q('path')), config); if (url.searchParams.has('meta')) return json(res, { step: meta.step, count: meta.count, w: meta.w, h: meta.h }); return sendFile(req, res, meta.file, { cache: 'private, max-age=3600' }); }
-  if (p === '/api/file') return sendFile(req, res, allowed(q('path')));
-  if (p.startsWith('/api/raw/')) { let raw; try { raw = decodeURIComponent(p.slice('/api/raw/'.length)); } catch { throw error(400, '읽을 수 없는 경로예요'); } return sendFile(req, res, allowed(raw), { cache: 'no-cache' }); }
+  // 여기(엔진 출처)로 내주는 HTML·SVG 는 스크립트 없이 보기만(sandbox) — 스크립트가 도는 장면은 장면 출처(/api/scene-url)로만 띄운다
+  if (p === '/api/file') return sendFile(req, res, allowed(q('path')), { sandbox: true });
+  if (p.startsWith('/api/raw/')) { let raw; try { raw = decodeURIComponent(p.slice('/api/raw/'.length)); } catch { throw error(400, '읽을 수 없는 경로예요'); } return sendFile(req, res, allowed(raw), { cache: 'no-cache', sandbox: true }); }
   if (p === '/api/list') { const d = q('path') ? allowed(q('path')) : null; if (!d) return json(res, { path: '', parent: null, entries: readRecent().slice(0, 12).map((x) => ({ name: path.basename(path.dirname(x.path)), path: path.dirname(x.path), kind: 'dir' })) }); return json(res, listDir(d)); }
   if (p === '/api/upload' && M === 'POST') return json(res, await receiveUpload(req, allowed(q('dir')), q('name')), 201);
   // 글꼴
@@ -268,6 +270,14 @@ async function route(req, res, url) {
     return json(res, await sceneJob({ file, out, width: Number(b.width) || 0, height: Number(b.height) || 0, fps: Number(b.fps) || 30, duration: Number(b.duration) || 0, wait: b.wait === true }), 202);
   }
   if (p === '/api/scenes') return json(res, [...scenes.values()].map((j) => ({ id: j.id, path: j.path, out: j.out, status: j.status, progress: j.progress, error: j.error })));
+  // 편집기 미리보기가 HTML 장면을 띄울 주소: 장면 출처(다른 출처 — 시각은 postMessage 로 맞춘다, live:true).
+  // 원격(허브 /studio/ 비춤)은 이 PC의 장면 출처에 닿을 수 없어 스크립트 없는 보기 주소를 준다(live:false — 멈춘 화면)
+  if (p === '/api/scene-url' && M === 'GET') {
+    const file = allowed(q('path')); if (mediaKind(file) !== 'html') throw error(400, 'HTML 장면 파일(.html)을 골라 주세요');
+    let edit = null; if (q('edit')) { edit = allowed(q('edit')); checkEditName(edit); }
+    if (isRemote(req)) return json(res, { url: `api/raw/${rawPath(file)}`, live: false });
+    return json(res, { url: await sceneUrl(file, edit), live: true });
+  }
   // 프리미어(이 PC에서만 — 허브의 어도비 명령과 같은 규칙)
   if (p.startsWith('/api/premiere/')) {
     if (isRemote(req)) throw error(403, '프리미어 가져오기는 그 PC 화면에서만 할 수 있어요');
@@ -300,7 +310,7 @@ async function route(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   let url; try { url = new URL(req.url, SELF); } catch { return fail(res, '주소가 이상해요', 400); }
-  try { guard(req); await route(req, res, url); }
+  try { guard(req, url.pathname); await route(req, res, url); }
   catch (e) { const st = e.status || (e.code === 'ENOENT' ? 404 : 500); if (st >= 500) console.error(`[studio] ${req.method} ${url.pathname}:`, e.message); fail(res, e.code === 'ENOENT' ? '파일을 찾지 못했어요' : e.message, st, e.code && typeof e.code === 'string' && !/^E[A-Z]+$/.test(e.code) ? e.code : undefined); }
 });
 server.requestTimeout = 0; // 큰 파일 올리기·오래 걸리는 장면 렌더
@@ -308,9 +318,11 @@ server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') { console.error(`[studio] 포트 ${PORT} 를 이미 쓰고 있어요(스튜디오가 이미 켜져 있을 수 있어요)`); process.exit(3); }
   console.error('[studio] 서버 오류:', e.message); process.exit(1);
 });
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`ODDIN 스튜디오 ${VERSION} — ${SELF} (허브 ${config.hubUrl})`);
-  fs.writeFileSync(path.join(DATA_DIR, 'engine.json'), JSON.stringify({ port: PORT, pid: process.pid, version: VERSION, startedAt: new Date().toISOString() }));
+server.listen(PORT, '127.0.0.1', async () => {
+  // 장면 출처는 엔진 포트를 잡은 뒤에 연다(스튜디오가 이미 켜져 있으면 위에서 끝나 포트를 괜히 잡지 않는다). 못 열면 HTML 장면 미리보기·렌더만 안 된다
+  try { await sceneOrigin.start(); } catch (e) { console.error('[studio] 장면 출처를 열지 못했어요:', e.message); }
+  console.log(`ODDIN 스튜디오 ${VERSION} — ${SELF} · 장면 출처 ${sceneOrigin.port ? sceneOrigin.origin : '없음'} (허브 ${config.hubUrl})`);
+  fs.writeFileSync(path.join(DATA_DIR, 'engine.json'), JSON.stringify({ port: PORT, scenePort: sceneOrigin.port || null, pid: process.pid, version: VERSION, startedAt: new Date().toISOString() }));
   hub.start();
 });
 let closing = false;
@@ -321,6 +333,7 @@ async function shutdown() {
   for (const c of clients) { try { c.end(); } catch {} }
   try { await browser.stop(); } catch {}
   try { fs.rmSync(path.join(DATA_DIR, 'engine.json'), { force: true }); } catch {}
+  sceneOrigin.stop();
   server.close(); setTimeout(() => process.exit(0), 300).unref();
 }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

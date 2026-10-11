@@ -17,6 +17,7 @@ AI 쪽 사용법(합친 공유 스킬): `~/.ai-shared/skills/oddin-studio/` — 
 | 편집 | `engine/edit.mjs` | 편집 파일 읽기·저장(409)·새로(영상·빈 편집)·원본 넣기·SRT·점검·렌더 |
 | 원본 | `engine/media.mjs` | ffprobe 정보(영상·소리·그림·HTML 장면)·파형(초당 100개)·썸네일 띠, 캐시 `studio/data/cache` |
 | HTML 장면 | `engine/scene.mjs` + `ui/scene-seek.js` | HTML 파일 → 프레임마다 시각 맞춰 찍기 → 영상(.mov 투명·.mp4) |
+| 장면 출처 | `engine/scene-origin.mjs` (127.0.0.1:7711 — 엔진 포트 + 1, `STUDIO_SCENE_PORT`) · `engine/http.mjs`(두 서버 공용 파일 보내기) | HTML 장면만 내주는 두 번째 서버. 파일 읽기만, API 없음(아래 "장면 출처 분리") |
 | 글꼴 | `engine/fonts.mjs` | 등록된 글꼴 목록(PowerShell 로 레지스트리 UTF-8) · 등록이 풀린 글꼴 찾기 · 사용자 글꼴로 설치 |
 | 프리미어 | `engine/premiere.mjs` + 플러그인 `ODDIN.pr.editExport`(`adobe/plugin/host/oddin.jsx`) | 열린 시퀀스 → 편집 파일 |
 | 허브 잇기 | `engine/hub.mjs` · 허브 `lib/studio-link.mjs` | hello·열기 범위·AI 작업·프리미어 명령 / 허브의 `/studio/` 비추기·켜기·설치 |
@@ -41,7 +42,7 @@ AI 쪽 사용법(합친 공유 스킬): `~/.ai-shared/skills/oddin-studio/` — 
 - **원본 패널**(왼쪽, "원본" 단추로 열고 닫음): 이 편집에 쓴 원본 · 폴더 둘러보기(편집 폴더부터). 줄을 **타임라인 트랙이나 화면으로 끌어 넣기**, `+`·두 번 누르기 = 재생 헤드에 넣기, SRT 줄 = 자막 트랙으로, 글꼴 파일 = 설치, 다른 편집 파일 = 열기. 올리기 단추 = 이 기기 파일을 편집 폴더로 복사해 넣기(원격·폰).
 - **탐색기에서 끌어 놓기**: 타임라인 트랙(그 시각·그 트랙) 또는 화면(재생 헤드). 프로그램 창이면 실제 경로를 그대로 쓰고, 브라우저(원격 등)면 편집 폴더로 올린 뒤 넣는다. 여러 개면 차례로 이어 붙이고 되돌리기는 한 번.
 - **넣는 규칙**(`video-core.js placeMedia` — 화면·명령줄 공통): 같은 경로 원본은 다시 씀 · 고른 트랙이 맞는 종류이고 비었으면 거기, 아니면 같은 종류의 빈 트랙, 없으면 새 트랙(영상 트랙은 마지막 영상 트랙 바로 뒤 = 위에 그려짐) · 영상을 소리 트랙에 놓으면 소리만 · 그림은 3초, 화면보다 작으면 원래 크기(`fit:"none"`).
-- **미리보기**: 원본 `<video>`(원본마다 A/B 두 개로 컷 경계 끊김을 줄임) · 그림 `<img>` · HTML 장면 `<iframe>`(시각 맞추기) + 글자 레이어. 눌러 고르기는 화면 좌표로 맨 위 클립을 찾는다(회전 포함).
+- **미리보기**: 원본 `<video>`(원본마다 A/B 두 개로 컷 경계 끊김을 줄임) · 그림 `<img>` · HTML 장면 `<iframe>`(장면 출처에서 띄우고 postMessage 로 시각 맞추기) + 글자 레이어. 눌러 고르기는 화면 좌표로 맨 위 클립을 찾는다(회전 포함).
 - **타임라인·속성·단축키**: 이전과 같다(트랙·막대 끌기·가장자리 자르기·자석·리플·자막 붙여 두기·썸네일·파형·마커 / 글·시간·글자 모양·등장/퇴장·위치·크기·회전·불투명도·키프레임·이징 7종·펀치 인/아웃 / Space·←→·S·[ ]·Q W·, .·Delete·T·M·J K L·Ctrl+Z/Y/S). 화면 맞춤에 "원래 크기" 추가. 그림 클립은 앞으로도 늘릴 수 있다. HTML 장면 클립은 "장면 다시 읽기"·"장면 파일 열기".
 - **자막 점검**에 없는 글꼴이 있으면 "글꼴 찾아 설치"(등록이 풀린 파일) · "파일로 설치…".
 - **AI에게**: 고른 것·재생 헤드 시각을 붙여 ODDIN 에 작업으로(엔진 `POST /api/ai` → 허브 `/api/jobs`, `reserve:true` — 그 세션이 작업 중이면 예약). 편집 파일마다 세션을 이 브라우저에 기억해 이어 간다.
@@ -54,13 +55,27 @@ AI 쪽 사용법(합친 공유 스킬): `~/.ai-shared/skills/oddin-studio/` — 
 | POST `/api/open {path, launch}` · `/api/quit {force}` | 창에서 열기(창이 없으면 띄움) · 엔진 끄기 |
 | GET·PUT `/api/edit` · GET `/api/mtime` · POST `/api/new {video}` · `/api/blank {dir,title,width,height,fps}` | 편집 파일 |
 | POST `/api/add {path, files[], at, track, length}` · `/api/import-srt {path, srt\|text, name}` · GET `/api/check` · `/api/srt` | 원본 넣기 · SRT · 점검 |
-| GET `/api/probe` · `/api/peaks` · `/api/thumbs` · `/api/file` · `/api/raw/<경로>` · `/api/list` · POST `/api/upload?dir=&name=` | 원본 · 파일(구간 요청) · 장면(상대 경로 이어짐) · 폴더 목록 · 올리기(20GB 까지, 미디어·SRT·글꼴만) |
+| GET `/api/probe` · `/api/peaks` · `/api/thumbs` · `/api/file` · `/api/raw/<경로>` · `/api/list` · POST `/api/upload?dir=&name=` | 원본 · 파일(구간 요청) · 경로 그대로 읽기 · 폴더 목록 · 올리기(20GB 까지, 미디어·SRT·글꼴만). `/api/file`·`/api/raw` 의 HTML·SVG 는 스크립트 없이 보기만(`Content-Security-Policy: sandbox`) |
 | GET `/api/fonts` · `/api/fonts/installable` · POST `/api/fonts/install {files\|all}` | 글꼴 |
 | POST `/api/render` · `/api/render/:id/cancel` · GET `/api/renders` · POST `/api/scene {path,out,width,height,fps,duration,alpha,wait}` · GET `/api/scenes` | 렌더 · HTML 장면 → 영상 |
+| GET `/api/scene-url?path=<장면>&edit=<편집 파일>` → `{ url, live }` | 미리보기가 HTML 장면을 띄울 주소. 이 PC 는 장면 출처 주소(`live:true`), 원격은 스크립트 없는 `api/raw/…`(`live:false`) |
 | GET `/api/premiere/status` · POST `/api/premiere/import {sequence, outDir}` | 프리미어(이 PC 화면에서만) |
 | POST `/api/ai {goal, sessionId\|cwd}` · GET `/api/ai/:id` · GET `/api/pipelines` · POST `/api/pipelines/run {id, inputs}` | ODDIN 에 맡기기 |
 
-**지키기**: Host 는 `127.0.0.1:포트`·`localhost:포트`만. 쓰기 요청은 출처가 자기이거나 출처 없음(명령줄)이거나 허브 프록시(`x-oddin-via: hub`)만 — 다른 웹페이지가 몰래 부르지 못한다. 허브가 `x-oddin-remote: 1`을 붙인 원격 요청은 허브 열기 범위(`/api/studio/roots`)의 폴더만 연다. 이 PC 창·명령줄은 어디든.
+**지키기**: Host 는 `127.0.0.1:포트`·`localhost:포트`만. 쓰기 요청은 출처가 자기이거나 출처 없음(명령줄)이거나 허브 프록시(`x-oddin-via: hub`)만 — 다른 웹페이지가 몰래 부르지 못한다. 브라우저가 **다른 출처의 페이지에서 보낸 `/api/*` 요청**(`Sec-Fetch-Site: cross-site`·`same-site`)은 읽기도 403(이 화면은 `same-origin`, 주소창은 `none`, 머리가 없으면 브라우저가 아닌 호출 — 통과. 허브가 비춘 요청은 허브가 이미 걸러 통과). 허브가 `x-oddin-remote: 1`을 붙인 원격 요청은 허브 열기 범위(`/api/studio/roots`)의 폴더만 연다. 이 PC 창·명령줄은 어디든.
+
+### 장면 출처 분리 (2026-10-12)
+
+**왜**: HTML 장면은 받아 온 템플릿일 수 있다. 예전에는 미리보기 iframe 과 렌더 탭이 장면을 엔진 주소(`/api/raw/<경로>`)로 열어서, 장면 안의 스크립트가 **엔진과 같은 출처**로 돌았다 — `parent`(편집기 화면)나 `fetch('/api/…')`로 아무 파일 읽기·ODDIN 작업 만들기·렌더·글꼴 설치를 부를 수 있었다.
+
+**어떻게**:
+- 엔진이 두 번째 HTTP 서버(**장면 출처**, `engine/scene-origin.mjs`)를 `127.0.0.1` 의 다른 포트에 띄운다. 기본 = 엔진 포트 + 1(7711), `STUDIO_SCENE_PORT` 로 바꾸고, 쓰는 중이면 빈 포트(`/api/status` 의 `scenePort`). **파일 읽기만** 하고 API 가 없다. GET·HEAD 만, Host 는 `127.0.0.1:포트`·`localhost:포트`만(DNS 리바인딩), `nosniff`.
+- 주소는 `http://127.0.0.1:<장면 포트>/m/<mount>/<루트 기준 상대 경로>` 뿐. `mount` = 엔진이 등록한 폴더(루트)의 토큰 — 엔진을 켤 때 만든 비밀값으로 폴더 경로를 HMAC 한 24자(같은 폴더는 같은 토큰, 엔진을 다시 켜면 바뀜). **루트** = 편집 파일 폴더 안에 장면이 있으면 그 편집 파일 폴더, 아니면 장면 파일의 폴더. 루트 밖(`..`·절대 경로·정션/심볼릭 링크 너머 — realpath 로 확인)은 404. 장면이 쓰는 그림·글꼴·json 은 같은 출처의 상대 경로라 그대로 되고, CDN(https)도 된다.
+- `.html` 은 `</body>` 앞(없으면 끝)에 시각 맞춤 스크립트(`ui/scene-seek.js`)와 postMessage 다리를 넣어 내준다. **미리보기**(`ui/editor.js`)는 `GET /api/scene-url` 로 받은 주소를 iframe 에 넣고(sandbox 속성 없음 — 다른 출처라 안을 못 만진다), 장면의 `{ oddinSceneReady: true }` 를 기다렸다가 `{ oddinSeek: 초, id }` 를 보낸다(답 `{ oddinSeeked: 초, id }`). "장면 다시 읽기"·엔진이 다시 켜졌을 때는 주소를 새로 받는다.
+- **렌더**(`scene.mjs`·`edit.mjs`·`/api/scene`)의 숨은 브라우저 탭도 같은 장면 출처 주소를 연다. 고정 씨앗(`PRE_JS`)·시각 맞춤은 전처럼 CDP 로 넣는다.
+- **엔진 쪽**: 위 "지키기"의 `Sec-Fetch-Site` 거절(장면 출처는 같은 127.0.0.1 의 다른 포트라 `same-site`) + `/api/file`·`/api/raw` 의 HTML·SVG 는 `Content-Security-Policy: sandbox` — 엔진 출처에서는 남의 문서의 스크립트가 돌 길이 없다.
+
+**알아 둘 것**: 장면은 자기 루트 안의 파일은 읽을 수 있다(그림·글꼴을 쓰려면 필요) — 믿지 못할 장면을 중요한 파일과 같은 폴더에 두지 않는다. 루트 밖 자원(`../` 로 편집 폴더 위, 따로 뽑는 장면의 윗 폴더)은 더는 읽히지 않는다. 원격(ODDIN `/studio/` 비춤)은 이 PC의 장면 출처에 닿을 수 없어 미리보기의 HTML 장면이 스크립트 없는 멈춘 화면으로 보인다(렌더는 PC 에서 하므로 그대로).
 
 ## 허브 쪽 (`lib/studio-link.mjs`, `server.mjs`)
 
@@ -80,7 +95,7 @@ AI 쪽 사용법(합친 공유 스킬): `~/.ai-shared/skills/oddin-studio/` — 
 
 ## HTML 장면
 
-장면 = HTML 파일 하나(같은 폴더의 그림·글꼴 상대 경로 가능). 길이·크기 `<html data-duration="5" data-width="1080" data-height="1920">`(또는 `<meta name="oddin-scene" content="duration=5;width=1080;height=1920">`, HyperFrames 식 `data-composition-id` 루트). 시각 맞추기(`ui/scene-seek.js`, 미리보기·렌더 공통): 페이지의 `window.oddinSeek(t)` → HyperFrames 식 `window.__timelines`(GSAP) → `gsap` 전역 타임라인 → CSS·Web Animations → `<video>`. 렌더 때 `Math.random` 은 고정 씨앗. 배경은 투명.
+장면 = HTML 파일 하나(같은 폴더의 그림·글꼴 상대 경로 가능 — 장면은 엔진과 다른 출처에서 뜨고 자기 루트 안만 읽는다, 위 "장면 출처 분리"). 길이·크기 `<html data-duration="5" data-width="1080" data-height="1920">`(또는 `<meta name="oddin-scene" content="duration=5;width=1080;height=1920">`, HyperFrames 식 `data-composition-id` 루트). 시각 맞추기(`ui/scene-seek.js`, 미리보기·렌더 공통): 페이지의 `window.oddinSeek(t)` → HyperFrames 식 `window.__timelines`(GSAP) → `gsap` 전역 타임라인 → CSS·Web Animations → `<video>`. 렌더 때 `Math.random` 은 고정 씨앗. 배경은 투명.
 
 ## 프리미어 가져오기
 
@@ -106,7 +121,8 @@ node studio/cli.mjs fonts [--missing] | fonts install <파일…|--all> | pipeli
 - 영상 클립 불투명도 키프레임은 렌더하지 않는다(고정값만).
 - 브라우저가 못 여는 코덱(일부 HEVC·ProRes)은 미리보기가 안 될 수 있다(렌더는 ffmpeg 라 됨).
 - 다른 PC 의 스튜디오는 그 PC 의 ODDIN `/studio/` 로 연다(허브끼리 넘기지 않음).
+- 원격(`/studio/`)의 HTML 장면 미리보기는 멈춘 화면이다 — 움직이게 하려면 허브가 장면 출처도 다른 출처로 비춰 줘야 한다.
 
 ## 시험
 
-`tests/studio.test.mjs`: 이징·키프레임 식 대조, 정리(원본 종류·그림), 원본 넣기 규칙, SRT 트랙·점검, 프리미어 변환(가짜 시퀀스), 문지기, 글꼴, 허브 비추기(머리·쿠키·꺼짐 안내), 엔진 통합(새 편집·409·요청 지키기·원본 넣기·목록·올리기·파형·허브 hello·`/studio/` 비추기·렌더 150프레임 — 그림·HTML 장면 막대 픽셀·자막).
+`tests/studio.test.mjs`: 이징·키프레임 식 대조, 정리(원본 종류·그림), 원본 넣기 규칙, SRT 트랙·점검, 프리미어 변환(가짜 시퀀스), 문지기, 글꼴, 허브 비추기(머리·쿠키·꺼짐 안내), 장면 출처(루트 안만 — `..`·절대 경로·정션·다른 Host·쓰기 거절, `.html` 에 시각 맞춤 스크립트 / 실제 브라우저에서 다른 출처 iframe 에 postMessage 로 시각 맞추기·부모와 장면이 서로 못 만짐 — 브라우저가 없으면 건너뜀), 엔진 통합(새 편집·409·요청 지키기(`Sec-Fetch-Site`·HTML sandbox·`/api/scene-url`)·원본 넣기·목록·올리기·파형·허브 hello·`/studio/` 비추기·렌더 150프레임 — 그림·HTML 장면 막대 픽셀·자막).

@@ -77,10 +77,11 @@ export function freshEditPath(dir, base) {
 }
 
 export class Editor extends EventEmitter {
-  /** browser: 엔진의 BrowserManager(글자 레이어·HTML 장면 그리기), engineUrl: 엔진 주소(브라우저가 장면·렌더 페이지를 연다) */
-  constructor({ config, browser = null, engineUrl = () => '' }) {
+  /** browser: 엔진의 BrowserManager(글자 레이어·HTML 장면 그리기), engineUrl: 엔진 주소(브라우저가 렌더 페이지를 연다),
+   *  sceneUrl(장면 파일, 편집 파일): HTML 장면을 띄울 주소 — 엔진과 다른 출처(scene-origin.mjs). 장면 스크립트가 엔진 API 에 닿지 못하게 */
+  constructor({ config, browser = null, engineUrl = () => '', sceneUrl = async () => { throw error(500, 'HTML 장면을 띄울 주소(장면 출처)가 없어요'); } }) {
     super();
-    this.config = config; this.browser = browser; this.engineUrl = engineUrl;
+    this.config = config; this.browser = browser; this.engineUrl = engineUrl; this.sceneUrl = sceneUrl;
     this.renders = new Map();
   }
   read(file) {
@@ -208,7 +209,7 @@ export class Editor extends EventEmitter {
       if (r.cancelled) throw new Error('중지');
       r.stage = `HTML 장면 ${++i}/${scenes.length} 그리는 중`; this.tell(r);
       const width = m.width || doc.width, height = m.height || doc.height, duration = m.duration || 5;
-      m.file = await sceneClip({ browser: this.browser, config: this.config, file: m.file, url: `${this.engineUrl()}/api/raw/${rawPath(m.file)}`, width, height, fps: doc.fps, duration, children: r.children, isCancelled: () => r.cancelled });
+      m.file = await sceneClip({ browser: this.browser, config: this.config, file: m.file, url: await this.sceneUrl(m.file, r.path), width, height, fps: doc.fps, duration, children: r.children, isCancelled: () => r.cancelled });
       Object.assign(m, { kind: 'video', width: even(width), height: even(height), duration, audio: false });
     }
   }
@@ -362,5 +363,5 @@ export class Editor extends EventEmitter {
   }
 }
 
-/** 장면·원본 주소의 경로 부분: 폴더 구조를 그대로 따라야 장면 안 상대 경로(그림·글꼴)가 이어진다 */
+/** 엔진 출처의 원본 주소(/api/raw/…)의 경로 부분. HTML 은 여기서 스크립트 없이 보기만 된다 — 스크립트가 도는 장면은 장면 출처(sceneUrl)로 */
 export const rawPath = (file) => String(file).replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');

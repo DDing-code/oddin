@@ -2,7 +2,7 @@
    프리미어·AE에서 그 세 가지에 쓰던 흐름을 새로 짠 것. 편집 파일 *.oddin-edit.json 하나를 AI 와 사용자가 같이 고친다.
    - 여는 곳: 시작 화면(home.js)·주소 ?path=·ODDIN 경로 메뉴(엔진 /api/open). window.studioEditor.open(path)
    - 원본 넣기: 왼쪽 원본 패널(폴더 둘러보기·끌어 넣기·올리기) · 탐색기에서 타임라인/화면으로 끌어 놓기(프로그램 창은 실제 경로, 브라우저는 편집 폴더로 올림)
-   - 미리보기: 원본 <video>(원본마다 A/B 두 개로 컷 경계 끊김을 줄임) · 그림 <img> · HTML 장면 <iframe>(scene-seek.js 로 시각 맞춤) + 글자 레이어(video-core.js renderOverlay — 렌더와 같은 그리기)
+   - 미리보기: 원본 <video>(원본마다 A/B 두 개로 컷 경계 끊김을 줄임) · 그림 <img> · HTML 장면 <iframe>(엔진과 다른 출처에서 띄우고 postMessage 로 시각 맞춤) + 글자 레이어(video-core.js renderOverlay — 렌더와 같은 그리기)
    - 타임라인: 트랙·막대·파형·썸네일·재생 헤드·마커, 끌어 옮기기·가장자리 자르기·자석·리플·자막 붙여 두기
    - 속성: 글·스타일(역할별 공유)·변형·키프레임·이징·등장/퇴장, 영상 클립 확대(펀치 인)·음량·페이드
    - 저장은 자동(바뀐 뒤 0.7초), AI 가 파일을 바꾸면 다시 읽음. 렌더는 엔진(studio/engine/edit.mjs)이 MP4 로 */
@@ -41,7 +41,6 @@
   const isAbs = (p) => /^([A-Za-z]:[\\/]|\\\\|\/)/.test(p);
   const mediaAbs = (id) => { const p = E.doc.media[id]?.path || ''; return isAbs(p) ? p : `${dirOf(E.path)}/${p}`; };
   const fileUrl = (p) => `api/file?path=${enc(p)}`;
-  const rawUrl = (p) => `api/raw/${String(p).replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/')}`;
   const items = () => { const out = []; for (const tr of E.doc.tracks) for (const x of tr.items || tr.clips) out.push({ tr, x }); return out; };
   const find = (id) => { for (const tr of E.doc.tracks) { const x = (tr.items || tr.clips).find((y) => y.id === id); if (x) return { tr, x }; } return null; };
   const startOf = (x) => x.start, endOf = (tr, x) => (tr.kind === 'text' ? x.end : V.clipEnd(x));
@@ -299,12 +298,28 @@
     };
     E.raf = requestAnimationFrame(tick);
   }
-  function pause() { if (!E.playing) return; E.playing = false; cancelAnimationFrame(E.raf); E.t = snapT(E.t); for (const els of POOL.values()) for (const el of els) if (!el.paused) el.pause(); renderTrans(); frame(true); renderInspLive(); }
+  function pause() { if (!E.playing) return; E.playing = false; cancelAnimationFrame(E.raf); E.t = snapT(E.t); for (const els of POOL.values()) for (const el of els) if (isAV(el) && !el.paused) el.pause(); renderTrans(); frame(true); renderInspLive(); }
   function loopRange() { const s = selected(); if (s.length) return [Math.min(...s.map((v) => v.x.start)), Math.max(...s.map((v) => endOf(v.tr, v.x)))]; return [Math.max(0, E.t - 1), E.t + 2]; }
 
   /* ---------- 원본 재생기(원본마다 A/B 두 개) ---------- */
   const POOL = new Map(); // 원본 경로 → [el, el]
-  let SEEK_SRC = null; // HTML 장면 시각 맞추기 스크립트(ui/scene-seek.js — 엔진 렌더와 같은 것)
+  /* HTML 장면은 엔진과 다른 출처(장면 출처 — 엔진 scene-origin.mjs)에서 띄운다: 받아 온 장면의 스크립트가 이 화면(parent)이나 엔진 API 에 닿지 못하게.
+     그래서 iframe 안을 직접 만지지 못하고 postMessage 로만 말한다 — 장면이 다 읽히면 { oddinSceneReady } 가 오고(그 전에는 기다린다), 시각은 { oddinSeek: 초 } 로 보낸다.
+     장면 쪽 받는 코드(ui/scene-seek.js + 다리)는 엔진이 .html 에 넣어 내준다. 원격(ODDIN /studio/ 비춤)은 이 PC의 장면 출처에 닿을 수 없어
+     엔진이 스크립트 없는 보기 주소를 준다(live:false — 멈춘 화면, 렌더는 그대로). reload 가 아니면 주소가 그대로일 때 다시 읽지 않는다 */
+  async function sceneSrc(el, p, reload = false) {
+    try {
+      const r = await api(`api/scene-url?path=${enc(p)}&edit=${enc(E.path)}`);
+      if (!reload && el._url === r.url) return;
+      el._ready = false; el._t = null; el._url = r.url; el._origin = r.live === false ? null : new URL(r.url, location.href).origin;
+      el.src = r.url;
+      if (r.live === false && !sceneSrc.told) { sceneSrc.told = true; toast('원격에서는 HTML 장면이 멈춘 화면으로 보여요 (렌더는 그대로 돼요)'); }
+    } catch (e) { console.warn('HTML 장면 연결 실패', e); }
+  }
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.oddinSceneReady !== true) return;
+    for (const els of POOL.values()) for (const el of els) if (el.tagName === 'IFRAME' && el._origin && el._origin === e.origin && el.contentWindow === e.source) { el._ready = true; el._t = null; frame(true); }
+  });
   function poolFor(c) {
     const p = mediaAbs(c.media), m = E.doc.media[c.media];
     let a = POOL.get(p);
@@ -314,13 +329,8 @@
         const el = document.createElement(tag); el.className = `ve-v k-${m.kind}`; el._clip = null;
         if (tag === 'img') { el.src = fileUrl(p); el.draggable = false; el.alt = ''; }
         else if (tag === 'iframe') {
-          el.src = rawUrl(p); el.setAttribute('tabindex', '-1'); el.setAttribute('title', m.name || 'HTML 장면'); el.style.width = `${m.width || E.doc.width}px`; el.style.height = `${m.height || E.doc.height}px`;
-          el.addEventListener('load', async () => {
-            try {
-              SEEK_SRC ||= await fetch('ui/scene-seek.js').then((r) => r.text());
-              el.contentWindow.eval(SEEK_SRC); el._ready = true; el._t = null; frame(true);
-            } catch (e) { console.warn('HTML 장면 연결 실패', e); }
-          });
+          el.setAttribute('tabindex', '-1'); el.setAttribute('title', m.name || 'HTML 장면'); el.style.width = `${m.width || E.doc.width}px`; el.style.height = `${m.height || E.doc.height}px`;
+          sceneSrc(el, p);
         } else { el.preload = 'auto'; el.playsInline = true; el.src = fileUrl(p); }
         if (tag !== 'audio') $v('.ve-vids').appendChild(el);
         return el;
@@ -352,7 +362,7 @@
           if (!E.master && !el.muted) E.master = { el, clip: c };
         } else { if (!el.paused) el.pause(); if (force || Math.abs(el.currentTime - exp) > 0.02) el.currentTime = exp; }
       } else if (el.tagName === 'IFRAME' && el._ready && (force || el._t == null || Math.abs(el._t - exp) > 0.5 / E.doc.fps)) {
-        el._t = exp; try { el.contentWindow.__oddinSeekAny?.(exp); } catch {}
+        el._t = exp; try { el.contentWindow.postMessage({ oddinSeek: exp }, el._origin); } catch {}
       }
       if (el.tagName !== 'AUDIO') {
         if (tr.hidden || tr.kind !== 'video') { el.style.display = 'none'; continue; }
@@ -929,7 +939,7 @@
         return files.length ? installFonts(files) : toast('이 PC에서 그 글꼴 파일을 찾지 못했어요 — "파일로 설치…"로 글꼴 파일을 골라 주세요', true);
       }
       if (act === 'fontsfile') { const f = await pickPath({ title: '설치할 글꼴 파일', kinds: ['font'], multi: true, start: dirOf(E.path), confirm: '설치' }); if (f?.length) installFonts(f); return; }
-      if (act === 'scenereload' && one) { for (const el of POOL.get(mediaAbs(one.x.media)) || []) { el._ready = false; try { el.contentWindow.location.reload(); } catch { el.src = el.src; } } return toast('장면을 다시 읽어요'); }
+      if (act === 'scenereload' && one) { const p = mediaAbs(one.x.media); for (const el of POOL.get(p) || []) sceneSrc(el, p, true); return toast('장면을 다시 읽어요'); }
       if (act === 'sceneopen' && one) return STUDIO.desktop?.openPath(mediaAbs(one.x.media));
       if (act === 'center' && one) return edit(() => { setProp(one.x, 'x', 0); setProp(one.x, 'y', 0); });
       if (act === 'clearkeys' && one) return edit(() => { for (const p of Object.keys(one.x.keys || {})) { one.x[p] = V.valueAt(one.x[p], one.x.keys[p], E.t - one.x.start); } one.x.keys = {}; });
@@ -1157,6 +1167,8 @@
   STUDIO.on((ev) => {
     if (ev.type === 'open' && ev.path) { if (/\.oddin-edit\.json$/i.test(ev.path)) open(ev.path); else create(ev.path); try { STUDIO.desktop?.focus?.(); } catch {} }
     if (ev.type === 'fonts' && E.open) api('api/fonts').then((l) => { E.fonts = l; renderInsp(); }).catch(() => {});
+    // 엔진이 다시 켜지면 장면 주소(토큰·포트)가 바뀐다 — 실시간 연결이 다시 이어질 때 주소가 달라진 장면만 다시 띄운다
+    if (ev.type === 'hello' && E.open) for (const [p, els] of POOL) for (const el of els) if (el.tagName === 'IFRAME') sceneSrc(el, p);
   });
   window.addEventListener('popstate', () => { const p = new URLSearchParams(location.search).get('path'); if (p && p !== E.path) open(p); else if (!p && E.open) close(true); });
 })();
