@@ -1,4 +1,4 @@
-// 연결된 PC · 공유 기억 동기화: 허브 두 개(7716 "집", 7717 "회사")를 따로 띄워 ~/.ai-shared 를 주고받는다
+// 연결된 PC · 공유 기억 동기화: 허브 두 개("집", "회사")를 빈 포트에 따로 띄워 ~/.ai-shared 를 주고받는다
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,6 +10,7 @@ import { ROOT } from '../lib/util.mjs';
 import { unionLines, safeRel, skipped } from '../lib/shared-sync.mjs';
 import { peerUrl } from '../lib/peers.mjs';
 import { setupStatus, installSharedHooks } from '../lib/shared-setup.mjs';
+import { freePort } from './_port.mjs';
 
 test('목록 파일 합치기: 최근 판 기준, 같은 파일을 가리키는 줄은 하나, 없어진 파일 줄은 뺀다', () => {
   const newer = '# 목록\n- [가](a.md) — 새 설명\n- [나](b.md) — 나\n';
@@ -67,8 +68,9 @@ async function startHub(t, dir, port) {
 test('두 허브가 공유 기억을 주고받는다: 처음 맞추기·한쪽 변경·목록 합치기·충돌·지우기·검사', { timeout: 60000 }, async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-shared-sync-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const A = await startHub(t, path.join(dir, 'home'), 7716), B = await startHub(t, path.join(dir, 'office'), 7717);
-  const a = 'http://127.0.0.1:7716', b = 'http://127.0.0.1:7717';
+  const pa = await freePort(), pb = await freePort(); // 고정 포트는 앞 실행이 남긴 서버·다른 시험과 부딪힌다
+  const A = await startHub(t, path.join(dir, 'home'), pa), B = await startHub(t, path.join(dir, 'office'), pb);
+  const a = `http://127.0.0.1:${pa}`, b = `http://127.0.0.1:${pb}`;
   const put = (root, rel, text, mtime) => { const f = path.join(root, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); if (mtime) fs.utimesSync(f, new Date(mtime), new Date(mtime)); };
   const read = (root, rel) => { try { return fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8'); } catch { return null; } };
   const post = async (base, route, body) => { const r = await fetch(base + route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); return { status: r.status, body: await r.json() }; };

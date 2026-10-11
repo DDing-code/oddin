@@ -551,6 +551,8 @@
       // 보관한 세션은 hello 에 없다. 캐시해 둔 것을 합쳐 두면 보관 세션도 바로 열 수 있다 (app.js 가 이 배열로 S.sessions 를 만든다)
       if (Array.isArray(ev.sessions)) { const ids = new Set(ev.sessions.map((s) => s.id)); for (const s of SU.archived.values()) if (!ids.has(s.id)) ev.sessions.push(s); }
       SU.git.clear(); queueMicrotask(paintBar);
+    } else if (ev.type === 'session_open') {
+      SU.git.delete(ev.sessionId); // 다시 연결하지 않고 세션만 바꿨다 — 이 세션의 깃 상태는 새로 읽는다
     } else if (ev.type === 'session' && ev.session) {
       const s = ev.session; const was = S.sessions.get(s.id);
       if (s.archived) SU.archived.set(s.id, s); else SU.archived.delete(s.id);

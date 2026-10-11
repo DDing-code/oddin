@@ -126,5 +126,6 @@
     } else if (ev.type === 'session' && ev.session?.id && notes.has(ev.session.id)) {
       if (notes.get(ev.session.id).editedAt !== (ev.session.notesEdit?.at || null)) load(ev.session.id);
     } else if (ev.type === 'hello') notes.clear();
+    else if (ev.type === 'session_open') notes.delete(ev.sessionId); // 다시 연결하지 않고 세션만 바꿨다 — 이 세션의 노트는 새로 읽는다(다른 세션을 보는 동안의 소식은 요약으로만 온다)
   });
 })();

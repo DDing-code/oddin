@@ -178,8 +178,8 @@ function renderThread() {
   h += `<div id="notes">${(S.notes.get(sid || 'draft') || []).join('')}</div>`;
   box.innerHTML = h;
   mountPreviews(box);
-  for (const j of jobs) ensureLogs(j);
   const sc = $('#scroll'); sc.scrollTop = sc.scrollHeight;
+  watchTurns(box, jobs);
   scheduleInspector();
 }
 function heroHtml() {
@@ -308,8 +308,53 @@ function logHtml(key, tool) {
   }).join('');
 }
 
-async function ensureLogs(j) {
-  const keys = [...(j.mode === 'auto' ? ['plan'] : []), ...j.tasks.map((t) => t.id)];
+/* 기록은 보이는 카드와 진행 중인 작업 것만 바로 불러온다 (2026-10-11 사용자 "여러 세션을 열 때 엄청 버벅거리던데").
+   예전에는 세션을 열 때마다 지난 작업 전부의 기록을 한꺼번에 불렀다 — 작업 50여 개짜리 세션 하나에 요청 150번·6~13MB,
+   답이 올 때마다 카드를 다시 그려 화면이 3초 가까이 멈췄고, 나눠 보기는 칸마다 같은 일을 했다.
+   - 화면 근처(위아래 800px)에 들어온 카드만 불러온다(올려 보면 그때 불러옴).
+   - 세션 전체 기록이 필요한 곳(오른쪽 패널의 바뀐 파일 목록)은 wantAllLogs() 로 나머지를 뒤에서 하나씩 채운다.
+     화면 밖 카드는 다시 그리지 않고 표시만 해 두었다가 화면에 들어올 때 그린다. */
+const LZ = { io: null, ready: false, near: new Set(), stale: new Set(), queue: [], busy: false, sid: null, inspT: null };
+function watchTurns(box, jobs) {
+  LZ.io?.disconnect(); LZ.io = null; LZ.ready = false; LZ.near.clear(); LZ.stale.clear();
+  if (LZ.sid !== S.current) { LZ.sid = S.current; LZ.queue = []; }
+  if (!jobs.length) return;
+  if (typeof IntersectionObserver !== 'function') { for (const j of jobs) ensureLogs(j); return; }
+  LZ.io = new IntersectionObserver((entries) => {
+    LZ.ready = true;
+    for (const e of entries) {
+      const id = e.target.id.slice(4);
+      if (!e.isIntersecting) { LZ.near.delete(id); continue; }
+      LZ.near.add(id);
+      const j = S.jobs.get(id); if (!j) continue;
+      if (LZ.stale.delete(id)) queueRerender(id);
+      ensureLogs(j);
+    }
+  }, { root: $('#scroll'), rootMargin: '800px 0px' });
+  for (const el of box.querySelectorAll(':scope > .turn')) LZ.io.observe(el);
+  for (const j of jobs) if (LIVE.has(j.status)) ensureLogs(j); // 진행 중인 작업은 화면 밖이어도 이어 받는다
+}
+/** 지금 세션의 모든 작업 기록이 필요할 때(바뀐 파일 목록 등): 아직 안 불러온 것을 뒤에서 하나씩 채운다 */
+function wantAllLogs() {
+  const sid = S.current; if (!sid) return;
+  if (LZ.sid !== sid) { LZ.sid = sid; LZ.queue = []; }
+  const queued = new Set(LZ.queue);
+  for (const j of sessionJobs(sid).reverse()) if (!queued.has(j.id) && logKeys(j).some((k) => !S.loadedLogs.has(`${j.id}/${k}`))) LZ.queue.push(j.id);
+  if (LZ.busy || !LZ.queue.length) return;
+  LZ.busy = true;
+  (async () => {
+    try {
+      while (LZ.queue.length && LZ.sid === S.current) {
+        const j = S.jobs.get(LZ.queue.shift()); if (!j || j.sessionId !== S.current) continue;
+        await ensureLogs(j, { quiet: true });
+        await new Promise((r) => setTimeout(r, 60)); // 화면이 그릴 틈을 준다
+      }
+    } finally { LZ.busy = false; }
+  })();
+}
+const logKeys = (j) => [...(j.mode === 'auto' ? ['plan'] : []), ...j.tasks.map((t) => t.id)];
+async function ensureLogs(j, { quiet = false } = {}) {
+  const keys = logKeys(j);
   let changed = false;
   await Promise.all(keys.map(async (k) => {
     const id = `${j.id}/${k}`; if (S.loadedLogs.has(id)) return; S.loadedLogs.add(id);
@@ -319,7 +364,10 @@ async function ensureLogs(j) {
     const live = S.logs.get(id) || []; const seen = new Set(list.map((e) => e.at + e.kind));
     S.logs.set(id, [...list, ...live.filter((e) => !seen.has(e.at + e.kind))].slice(-1000)); changed = true;
   }));
-  if (changed && j.sessionId === S.current) { rerenderJob(j.id); scheduleInspector(); }
+  if (!changed || j.sessionId !== S.current) return;
+  // 뒤에서 채운 화면 밖 카드는 지금 그리지 않는다(화면에 들어올 때 그림). 오른쪽 패널은 여러 개를 모아 한 번만 다시 그린다
+  if (quiet && !LZ.near.has(j.id) && LZ.io) { LZ.stale.add(j.id); clearTimeout(LZ.inspT); LZ.inspT = setTimeout(scheduleInspector, 700); return; }
+  rerenderJob(j.id); scheduleInspector();
 }
 function rerenderJob(id) {
   const j = S.jobs.get(id); const el = document.getElementById(`job-${id}`); if (!j || !el) return;
@@ -331,7 +379,25 @@ function rerenderJob(id) {
   if (stick) sc.scrollTop = sc.scrollHeight;
 }
 const rq = new Set(); let rt = null;
-function queueRerender(id) { rq.add(id); if (!rt) rt = setTimeout(() => { rt = null; for (const x of rq) rerenderJob(x); rq.clear(); }, 150); }
+function queueRerender(id) { rq.add(id); if (!rt) rt = setTimeout(() => { rt = null; flushRerender(); }, 150); }
+/* 모아 둔 카드를 한 번에 다시 그린다. 예전에는 카드마다 "읽기(스크롤 높이) → 쓰기 → 읽기"를 되풀이해 카드 수만큼 화면 배치를 다시 계산했다
+   — 작업 50여 개짜리 세션에서 한 번에 1.6초 멈춤(다시 연결될 때마다 모든 카드를 다시 그린다).
+   이제 화면 근처 카드만 그리고(읽기 한 번 → 모두 쓰기 → 스크롤 되돌리기 한 번), 화면 밖 카드는 표시만 해 두었다가 화면에 들어올 때 그린다. */
+function flushRerender() {
+  const ids = [...rq]; rq.clear();
+  const sc = $('#scroll'); const stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
+  const targets = [];
+  for (const id of ids) {
+    const j = S.jobs.get(id), el = document.getElementById(`job-${id}`); if (!j || !el) continue;
+    if (LZ.io && LZ.ready && !LZ.near.has(id)) { LZ.stale.add(id); continue; }
+    targets.push({ j, el });
+  }
+  if (!targets.length) return;
+  const keep = targets.map(({ el }) => { const m = {}; el.querySelectorAll('.log, .proc-body').forEach((l) => (m[l.id] = l.scrollHeight - l.scrollTop - l.clientHeight < 30 ? -1 : l.scrollTop)); return m; });
+  for (const { j, el } of targets) { el.innerHTML = jobHtml(j); mountPreviews(el); }
+  targets.forEach(({ el }, i) => el.querySelectorAll('.log, .proc-body').forEach((l) => { const v = keep[i][l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; }));
+  if (stick) sc.scrollTop = sc.scrollHeight;
+}
 
 $('#thread').addEventListener('click', async (e) => {
   const older = e.target.closest('[data-log-before]');
@@ -552,20 +618,50 @@ async function submit({ flip = false } = {}) {
 }
 
 /* ================= 세션 ================= */
+/* 보는 세션이 바뀔 때 실시간 연결은 끊지 않고 "어느 세션을 자세히 받을지"만 바꾼다 (2026-10-11 사용자 "여러 세션을 열 때 엄청 버벅거리던데").
+   예전에는 세션을 열 때마다 연결을 끊었다 다시 이어서, 처음 묶음(큰 세션은 1~2MB)을 또 받아 화면을 한 번 더 그리고
+   기능 화면 열두 곳이 저마다 자료를 다시 불렀다. 나눠 보기 칸도 세션을 바꿀 때마다 처음 상태를 통째로 다시 받았다. */
+const streamLinked = () => (paneHost() ? !!S.paneReady : !!(S.stream && eventStream && eventStream.readyState !== 2));
+function retarget() {
+  const host = paneHost();
+  if (host) { if (!S.paneReady) return connect(); try { return Promise.resolve(host.attach(window, S.opening || S.current)).catch(() => {}); } catch { return Promise.resolve(); } }
+  if (S.stream && eventStream && eventStream.readyState !== 2) return updateEventFilter();
+  return connect();
+}
+let openSeq = 0;
+const jobAt = new Map(); // 작업 id → 실시간 소식으로 마지막에 받은 때(목록을 받는 사이 도착한 더 새 소식을 덮지 않게)
 function newSession(cwd, group = null) {
+  openSeq++; S.opening = null;
+  const linked = streamLinked();
   S.current = null; S.draftCwd = cwd; S.draftGroup = group; S.prefs.cwd = cwd; savePrefs();
   history.replaceState(null, '', location.pathname);
   S.logs.clear(); S.loadedLogs.clear(); S.logBefore.clear();
-  renderTree(); renderThread(); connect(); input.focus();
+  renderTree(); renderThread(); if (linked) retarget(); else connect(); input.focus();
 }
 async function openSession(id) {
   if (!S.sessions.has(id)) { try { for (const x of await api('/api/sessions?all=1')) S.sessions.set(x.id, x); } catch {} }
   if (!S.sessions.has(id)) return newSession(currentCwd());
-  if (!sessionJobs(id).length || sessionJobs(id).some((j) => j.summaryOnly)) { try { for (const j of await api(`/api/sessions/${id}/jobs`)) S.jobs.set(j.id, j); } catch {} }
+  const seq = ++openSeq, linked = streamLinked(), t0 = performance.now();
+  // 먼저 이 세션 소식을 자세히 받기 시작하고, 그다음 작업 목록을 받는다(순서가 반대면 그사이 소식이 요약으로 와서 목록을 덮는다)
+  if (linked) { S.opening = id; await retarget(); if (seq !== openSeq) return; }
+  if (!sessionJobs(id).length || sessionJobs(id).some((j) => j.summaryOnly)) {
+    try {
+      for (const j of await api(`/api/sessions/${id}/jobs`)) {
+        const cur = S.jobs.get(j.id);
+        if (cur && !cur.summaryOnly && (jobAt.get(j.id) || 0) > t0) continue; // 받는 사이 더 새 소식이 왔다
+        if (linked && typeof icMergeJob === 'function') icMergeJob(cur, j);
+        S.jobs.set(j.id, j);
+      }
+    } catch {}
+    if (seq !== openSeq) return; // 그사이 다른 세션을 열었다
+  }
+  S.opening = null;
   S.logs.clear(); S.loadedLogs.clear(); S.logBefore.clear();
   S.current = id; S.draftCwd = null; S.draftGroup = null; S.prefs.cwd = S.sessions.get(id).cwd; savePrefs();
   history.replaceState(null, '', `#s=${id}`);
-  renderTree(); renderThread(); connect(); input.focus();
+  // 기능 화면에 "이 세션을 열었다"고 알린다 — 다시 연결하지 않으므로, 세션별로 모아 둔 자료(바뀐 파일·기억 노트·깃 상태)를 이때 새로 읽게 한다
+  if (linked) { try { window.dispatchEvent(new CustomEvent('hub:event', { detail: { type: 'session_open', sessionId: id } })); } catch {} }
+  renderTree(); renderThread(); if (linked) retarget(); else connect(); input.focus();
   loadPreviews();
 }
 document.addEventListener('click', async (e) => {
@@ -692,7 +788,7 @@ function pvBuild(j) {
       <div class="pv-h">${icon('image')}<b>${esc(p.title)}</b><span class="pv-sub">${p.images.length}장 · ${from}</span><span class="grow"></span>${p.comparison ? `<button type="button" class="btn pv-cmp" data-pv-open="${esc(p.id)}" data-pv-key="${esc(p.comparison.key)}" aria-label="${esc(p.comparison.label)} 크게 보기">${icon('board')}${esc(p.comparison.label)}</button>` : ''}</div>
       <div class="pv-grid">${p.images.map((im) => `<figure class="pv-item is-loading">
         <div class="pv-box"><button type="button" class="pv-open" data-pv-open="${esc(p.id)}" data-pv-key="${esc(im.key)}" aria-label="${esc(im.label)} 크게 보기" title="${esc(im.label)} 크게 보기">
-          <span class="pv-frame" style="aspect-ratio:${im.width}/${im.height}"><img src="${esc(im.url)}" alt="${esc(im.alt)}" width="${im.width}" height="${im.height}" decoding="async" draggable="false"></span>
+          <span class="pv-frame" style="aspect-ratio:${im.width}/${im.height}"><img src="${esc(im.url)}" alt="${esc(im.alt)}" width="${im.width}" height="${im.height}" loading="lazy" decoding="async" draggable="false"></span>
           <span class="pv-zoom" aria-hidden="true">${icon('expand')}</span>
         </button>
         <div class="pv-fail" role="status"><span>${icon('alert')}불러오지 못했어요</span><button type="button" class="btn" data-pv-retry aria-label="${esc(im.label)} 다시 불러오기">${icon('retry')}다시 시도</button></div></div>
@@ -892,7 +988,7 @@ let eventStream = null;
 // 나눠 보기(2026-10-10 "화면분할 찐빠"): 칸마다 실시간 연결을 따로 열면 브라우저의 같은 주소 동시 연결 한도(6개)를 금방 채워
 // 영상·미리보기·API 요청이 멈췄다 → 가운데 창이 연결 하나로 가운데+칸 세션을 함께 받고(session=a,b,c) 칸에 그대로 넘겨 준다(split.js hubForward).
 // 칸(html.embed-pane)은 가운데 창(parent.hubSplit)에 붙어 처음 상태만 /api/events/snapshot 으로 받는다. 가운데 창이 없으면 예전처럼 자기 연결.
-const eventSessions = () => [...new Set([S.current, ...(window.hubSplitSessions?.() || [])].filter(Boolean))].sort();
+const eventSessions = () => [...new Set([S.current, S.opening, ...(window.hubSplitSessions?.() || [])].filter(Boolean))].sort();
 function paneHost() { try { return document.documentElement.classList.contains('embed-pane') && parent !== window && parent.hubSplit?.attach ? parent.hubSplit : null; } catch { return null; } }
 /** 가운데 창: 열린 연결의 거르기 목록을 지금 칸 목록에 맞춘다(다시 연결하지 않음). 실패하면 다시 연결 */
 function updateEventFilter() {
@@ -912,6 +1008,7 @@ async function paneConnect(host) {
   if (seq !== paneSeq) return;
   if (!hello) { setTimeout(() => { if (seq === paneSeq) connect(); }, 2000); return; }
   onHubEvent(hello);
+  S.paneReady = true; // 이제부터 세션을 바꿀 때는 가운데 창에 알리기만 한다(처음 상태를 통째로 다시 받지 않음)
 }
 window.hubPaneEvent = (raw) => { let ev; try { ev = JSON.parse(raw); } catch { return; } if (ev.type !== 'hello') onHubEvent(ev); };
 window.hubPaneResync = () => { const h = paneHost(); if (h) paneConnect(h); };
@@ -956,7 +1053,7 @@ function onHubEvent(ev) {
       S.sessions.delete(ev.sessionId); for (const [id, j] of S.jobs) if (j.sessionId === ev.sessionId) S.jobs.delete(id);
       if (S.current === ev.sessionId) newSession(currentCwd()); else renderTree();
     } else if (ev.type === 'job') {
-      const prev = S.jobs.get(ev.job.id); icMergeJob(prev, ev.job); S.jobs.set(ev.job.id, ev.job);
+      const prev = S.jobs.get(ev.job.id); icMergeJob(prev, ev.job); S.jobs.set(ev.job.id, ev.job); jobAt.set(ev.job.id, performance.now());
       if (ev.job.sessionId === S.current) {
         if (!document.getElementById(`job-${ev.job.id}`)) renderThread(); else queueRerender(ev.job.id);
         renderSend();
@@ -965,7 +1062,7 @@ function onHubEvent(ev) {
       if (prev && LIVE.has(prev.status) && !LIVE.has(ev.job.status)) finished(ev.job);
       if (ev.job.sessionId === S.current) scheduleInspector();
     } else if (ev.type === 'job_removed') {
-      S.jobs.delete(ev.jobId); if (ev.sessionId === S.current) renderThread();
+      S.jobs.delete(ev.jobId); jobAt.delete(ev.jobId); if (ev.sessionId === S.current) renderThread();
     } else if (ev.type === 'log') {
       const j = S.jobs.get(ev.jobId); if (!j || j.sessionId !== S.current) return;
       const key = `${ev.jobId}/${ev.taskId || ev.entry.phase || 'job'}`;

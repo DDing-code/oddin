@@ -270,3 +270,35 @@ test('안 쓰는 브라우저(실제 Edge/Chrome): 쓰는 동안은 그대로, �
   assert.equal((await b.act('job-b/t1', { action: 'eval', expression: '40 + 2' })).value, 42, '다시 쓰면 저절로 켜짐');
   assert.equal(b.running, true);
 });
+
+test('잦은 작업 소식(도구 호출 수)은 0.3초 모아 한 번만 알리고, 그사이 바로 알리면 모아 둔 것은 버린다', async () => {
+  const { JobManager } = await import('../lib/jobs.mjs');
+  const job = { id: 'j1' };
+  let sent = 0;
+  const m = { jobs: new Map([[job.id, job]]), emitJobSoon: JobManager.prototype.emitJobSoon, emitJob(j) { const soon = this._soon?.get(j.id); if (soon) { clearTimeout(soon); this._soon.delete(j.id); } sent++; } };
+  for (let i = 0; i < 8; i++) m.emitJobSoon(job, 60);
+  assert.equal(sent, 0, '바로 보내지 않음');
+  await delay(140);
+  assert.equal(sent, 1, '여덟 번을 한 번으로');
+  m.emitJobSoon(job, 60); m.emitJob(job); // 상태가 바뀌어 바로 알림
+  await delay(140);
+  assert.equal(sent, 2, '모아 둔 것을 또 보내지 않음');
+  m.emitJobSoon(job, 60); m.jobs.delete(job.id); // 그사이 지워진 작업
+  await delay(140);
+  assert.equal(sent, 2);
+});
+
+test('기록 저장: 우리가 쓴 파일은 다시 읽어 검사하지 않지만, 밖에서 망가진 파일은 덮지 않는다', async () => {
+  const { writeJsonAtomic } = await import('../lib/util.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-save-')), file = path.join(dir, 'state.json');
+  try {
+    writeJsonAtomic(file, { n: 1 }); writeJsonAtomic(file, { n: 2 });
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).n, 2);
+    await delay(20); fs.writeFileSync(file, '{ 망가짐'); // 다른 프로그램이 망가뜨림
+    assert.throws(() => writeJsonAtomic(file, { n: 3 }), (e) => e.code === 'STATE_READ_FAILED');
+    assert.equal(fs.readFileSync(file, 'utf8'), '{ 망가짐', '망가진 원본을 그대로 둠');
+    writeJsonAtomic(file, { n: 4 }, { repair: true });
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).n, 4);
+    assert.ok(fs.readdirSync(dir).some((n) => n.includes('.corrupt-')), '망가진 판을 따로 남김');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

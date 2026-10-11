@@ -628,6 +628,10 @@
       CH.session.clear(); CH.diffs.clear(); CH.gaps.clear(); CH.sig.clear();
       for (const j of ev.jobs || []) CH.sig.set(j.id, cpSig(j));
       setTimeout(() => { if (typeof S !== 'undefined' && S.current) refreshPanel(S.current); refreshCmp(); loadBackups(); }, 0);
+    } else if (ev.type === 'session_open') {
+      // 다시 연결하지 않고 세션만 바꿨다(app.js openSession): 이 세션에 모아 둔 것은 새로 읽는다 — 다른 세션을 보는 동안의 소식은 요약으로만 왔다
+      const sid = ev.sessionId; CH.session.delete(sid);
+      for (const j of jobsOf(sid)) { invalidate(j.id, sid); CH.sig.set(j.id, cpSig(j)); }
     } else if (ev.type === 'job_removed') { CH.rewinds.delete(ev.jobId); CH.sig.delete(ev.jobId); invalidate(ev.jobId, ev.sessionId); }
     else if (ev.type === 'session_removed') { CH.session.delete(ev.sessionId); CH.scope.delete(ev.sessionId); }
   });

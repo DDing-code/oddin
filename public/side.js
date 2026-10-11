@@ -399,6 +399,8 @@ function tasksPane(s) {
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 function touchedFiles(s) {
+  // 세션 전체의 도구 기록이 필요하다 — 아직 안 불러온 작업 기록은 뒤에서 채우고, 채워지면 패널을 다시 그린다(app.js wantAllLogs)
+  if (s.id === S.current && typeof wantAllLogs === 'function') wantAllLogs();
   const map = new Map();
   for (const j of sessionJobs(s.id)) for (const t of j.tasks) for (const e of S.logs.get(`${j.id}/${t.id}`) || []) {
     if (e.kind !== 'tool' || !EDIT_TOOLS.has(e.name) || !e.detail) continue;
