@@ -112,7 +112,20 @@ node studio/cli.mjs status | open <편집|영상> | new <영상> | blank <폴더
 node studio/cli.mjs check <편집> | import-srt <편집> <SRT> [이름] | srt <편집> | from-premiere [--seq 이름] [--out 폴더]
 node studio/cli.mjs scene <장면.html> [--dur 초] [--size 1080x1920] [--fps 30] [--out x.mov|x.mp4] | render <편집> [--wait]
 node studio/cli.mjs fonts [--missing] | fonts install <파일…|--all> | pipelines | quit
+node studio/cli.mjs speakers <촬영본> [--words 전사.json] [--keep 구간.json|편집파일] [--out 결과.json] [--all] [--no-video]
 ```
+
+## 누가 말했나 (`studio/engine/speakers.mjs`, 2026-10-12)
+
+촬영본에서 **화면 속 출연자의 말**과 **화면 밖(PD·코치) 목소리**를 가른다. 사용자 "오딘한테 영상편집 맡겼는데 PD 리드멘트가 다 들어갔어" — 작업자 AI는 소리를 못 듣고, 받아쓴 글에는 PD가 먼저 읽어 준 문장과 출연자가 따라 한 문장이 똑같이 나와서, 글자만 보고 고르다 PD 쪽을 넣었다(그 전에는 글자만 보고 지우다 출연자 말을 잘랐다). 엔진을 켜지 않고 명령줄에서 바로 돈다(4K 7분 원본에 40초쯤, 의존성 없음 — ffmpeg 만).
+
+- **말 덩어리**: 10ms 마다 크기를 재서 말 구간을 찾고, 붙어 있어도 크기가 6dB 넘게 다르면 다른 덩어리로 나눈다(선창 바로 뒤에 따라 해도 갈림).
+- **소리 크기**: 덩어리 크기 분포에서 가장 큰 목소리 무리 바로 아래의 골짜기를 가르는 선으로 삼는다(옷깃 마이크면 출연자가 뚜렷이 크다. 출연자·코치·PD 셋이어도 맨 위만 가른다).
+- **화면 움직임**: 영상을 320×320 흑백 15fps 로 줄여 칸(32×32)마다 움직임을 재고, 어느 무리가 말할 때 화면 속 사람이 움직이는지 본다(칸은 절반의 덩어리로 고르고 나머지 절반으로 잰다). 큰 목소리와 맞으면 `level+motion`, 작은 목소리와 맞으면(카메라 옆 PD가 더 크게 녹음됨) `motion`. 골짜기가 없으면 "이 크기 위는 움직이고 아래는 안 움직인다"가 가장 잘 맞는 크기를 선으로 삼는다(`fitByMotion`).
+- **결과**: 덩어리마다 `on`(화면 속)·`off`(화면 밖)·`unsure`(확인 필요). `on`은 확실할 때만 준다 — 선 가까이(2dB 안)이거나 크기와 화면이 어긋나면 `unsure`. 근거(`basis`): `level+motion`·`motion`은 믿을 만하고, `level`(화면 근거 없음)·`single`(한 무리)·`none`은 약하다고 보고에 적는다.
+- **`--words`**: 단어 시각이 있는 전사(Whisper 꼴)를 주면 덩어리에 글을 붙이고 "먼저 읽어 주고 따라 한 쌍"을 찾는다. **`--keep`**: 편집본이 남긴 원본 구간(`[{source,start,end,text}]` 또는 편집 파일)을 주면 그 안에 든 화면 밖 목소리를 적고(같은 문장을 화면 속에서 말한 곳도), 있으면 종료 코드 2.
+- 한계: 두 사람이 비슷한 크기로 녹음됐고 입이 안 보이면 못 가른다. 화면에 두 사람이 나오는 대화는 대상이 아니다. 완성본(배경음·효과음 섞임)이 아니라 촬영 원본에 돌린다.
+- 작업자 절차는 공유 스킬 `oddin-studio`의 edit 파이프라인 "화면 밖 목소리 빼기", 사용자 기준은 그 스킬 `references/quality.md` 4절. 시험 `tests/speakers.test.mjs`.
 
 ## 한계(다음 단계)
 

@@ -12,12 +12,14 @@
 //   node studio/cli.mjs scene <장면.html> [--dur 초] [--size 1080x1920] [--fps 30] [--out x.mp4|x.mov]  HTML 장면 → 영상(.mov 는 투명)
 //   node studio/cli.mjs render <편집파일> [--wait]                MP4 렌더(편집 파일 옆)
 //   node studio/cli.mjs fonts [--missing] | fonts install <글꼴파일…|--all>
+//   node studio/cli.mjs speakers <촬영본> [--words 전사.json] [--keep 구간.json|편집파일] [--out 결과.json] [--all] [--no-video]  누가 말했나: 화면 속 출연자 / 화면 밖(PD) 목소리 가르기, 남긴 구간에 화면 밖 목소리가 들어갔는지 점검
 //   node studio/cli.mjs pipelines                                 파이프라인(합친 스킬의 제작 흐름) 목록
 //   node studio/cli.mjs quit                                      엔진 끄기(렌더 중이면 거절)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureEngine, engineUrl, engineStatus } from './engine/launch.mjs';
+import { loadConfig } from './engine/env.mjs';
 
 const argv = process.argv.slice(2);
 const flags = {}, pos = [];
@@ -39,6 +41,14 @@ const help = () => { console.log(fs.readFileSync(fileURLToPath(import.meta.url),
 try {
   if (!cmd || cmd === 'help') { help(); process.exit(0); }
   if (cmd === 'quit') { const st = await engineStatus(); if (!st) { console.log('스튜디오가 꺼져 있어요'); process.exit(0); } const r = await post('/api/quit', { force: !!flags.force }); console.log(r.quit ? '스튜디오 엔진을 껐어요' : `끄지 않았어요: ${r.reason}`); process.exit(0); }
+  if (cmd === 'speakers' && rest[0]) { // 엔진 없이 이 자리에서 잰다(긴 4K 원본은 몇 분 걸림)
+    const { analyzeSpeakers, speakersReport, readWords, readKeep } = await import('./engine/speakers.mjs');
+    const file = abs(rest[0]);
+    const r = await analyzeSpeakers(file, { words: flags.words ? readWords(abs(flags.words)) : null, keep: flags.keep ? readKeep(abs(flags.keep), file) : null, video: !flags['no-video'], config: loadConfig() });
+    if (flags.out) { fs.writeFileSync(abs(flags.out), JSON.stringify(r, null, 1)); console.log(`결과 파일: ${abs(flags.out)}`); }
+    console.log(speakersReport(r, { all: !!flags.all }));
+    process.exit(r.leaks?.some((l) => l.who === 'off') ? 2 : 0);
+  }
   const st = await ensureEngine();
   if (cmd === 'status') {
     console.log(`ODDIN 스튜디오 ${st.version} · ${BASE}${st.started ? ' (방금 켬)' : ''}`);
