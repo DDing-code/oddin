@@ -96,6 +96,8 @@ const groupsChanged = () => broadcast({ type: 'session-groups', groups: groups.l
 const openRoots = () => fileRoots([config.defaultCwd, ROOT, config.hubDir, ...jobs.workFolders(), ...projectsList().map((p) => p.path), hubInfo()?.root], fileAccess.read());
 const tools = new HubTools({ config, getSession: (id) => jobs.listSessions().find((s) => s.id === id), getRoots: openRoots, emit: broadcast });
 
+// 이 PC 화면들이 보고 있는 세션을 다른 PC 연결에 알린다 — 그 세션만 자세히 받는다(lib/federation.mjs setViewed)
+function syncViewed() { try { fed?.setViewed([...clients.values()].flatMap((r) => r.hubSession || [])); } catch {} }
 function checkClient(res, req) {
   if (res.destroyed || remote.check(req, { log: false })) {
     clients.delete(res); res.end(); return false;
@@ -202,6 +204,8 @@ async function moveSession(id, b) {
   if (!toSelf && !target) throw httpErr(404, '옮길 PC를 찾지 못했어요');
   if (toSelf && !srcPeer) throw httpErr(400, '이미 이 PC 세션이에요');
   if (target && srcPeer && target.id === srcPeer.id) throw httpErr(400, '이미 그 PC 세션이에요');
+  // 비춰 받은 사본은 요약뿐이라, 옮기기 전에 그 PC에서 이 세션의 전체 내용을 받아 온다
+  if (srcPeer) await fed.loadFull(srcPeer, id).catch((e) => { throw httpErr(502, `${srcPeer.name} PC에서 세션 내용을 받지 못했어요: ${e.message}`); });
   const data = srcPeer ? exportMirrored(fed.entry(srcPeer), id, (v) => toRemote(srcPeer, v)) : exportLocal(jobs, id);
   const from = { machine: srcPeer ? srcPeer.name : self.name, sessionId: srcPeer ? toRemote(srcPeer, id) : id, title: data.title };
   let created, sessionId;
@@ -367,10 +371,14 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/hub/restart' && req.method === 'POST') {
       await readBody(req);
       if (process.env.HUB_SKIP_CLI_INSTALL === '1' || process.env.HUB_DATA_DIR || process.env.HUB_PORT) return fail(res, '시험 서버는 재시작하지 않아요', 409);
+      // 이미 바꾸는 중이면 재시작 도구를 또 띄우지 않는다 — 두 도구가 서로 부딪혀 실패했고(기록 5건), 멈춘 작업이 "완료"로 저장됐다(6건)
+      if (jobs.frozen) return json(res, { ok: true, already: true, stopped: jobs.prepareRestart() });
       const stopped = jobs.prepareRestart();
       const child = spawn(process.execPath, [path.join(ROOT, 'scripts', 'restart-hub.mjs'), '--detach', '--now', '--force'], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true });
       child.on('error', () => {}); child.unref();
       broadcast({ type: 'hub-restarting', jobs: stopped.length });
+      // 2분 안에 꺼지지 않았으면 재시작이 실패한 것이다: 멈춤을 풀고 알린다(안 풀면 저장·새 요청·마무리가 막힌 채 떠 있다)
+      setTimeout(() => { if (!jobs.frozen) return; const left = jobs.unfreeze(); console.error(`재시작이 일어나지 않아 멈춤을 풀었어요(멈췄던 작업 ${left.length}개는 "중단됨")`); broadcast({ type: 'hub-restart-failed', jobs: left.length }); }, 120_000).unref();
       return json(res, { ok: true, stopped });
     }
     const peerUpdate = p.match(/^\/api\/peers\/([\w-]+)\/(update|version|restart)$/);
@@ -442,8 +450,9 @@ const server = http.createServer(async (req, res) => {
       req.hubStream = randomBytes(16).toString('hex');
       const hello = { type: 'hello', stream: req.hubStream, sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])], groups: groups.list() };
       writeSse(res, `data: ${JSON.stringify(req.hubCompact ? clientEvent(hello, req.hubSession) : hello)}\n\n`);
-      clients.set(res, req); res.on('close', () => clients.delete(res));
+      clients.set(res, req); res.on('close', () => { clients.delete(res); syncViewed(); });
       if (!req.headers['x-oddin-machine']) touch(); // 화면을 열었다(다른 PC 허브의 비추기 연결은 빼고)
+      syncViewed();
       return;
     }
     // 나눈 칸(?embed=1 iframe)은 자기 연결을 열지 않고 가운데 창의 연결로 이벤트를 받는다(브라우저의 같은 주소 동시 연결 6개 한도) — 처음 상태만 한 번 받아 간다
@@ -456,7 +465,7 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req);
       const hit = [...clients.values()].find((r) => r.hubStream && r.hubStream === String(b.stream || ''));
       if (!hit) return fail(res, '실시간 연결을 찾지 못했어요', 404);
-      hit.hubSession = sessionList(b.sessions);
+      hit.hubSession = sessionList(b.sessions); syncViewed();
       return json(res, { sessions: hit.hubSession });
     }
     // ---- 상태·선택지·사용량 ----
@@ -677,6 +686,8 @@ server.listen(config.port, config.host || '127.0.0.1', () => {
   if (!LOOPBACK.has(config.host || '127.0.0.1')) console.warn('허브는 127.0.0.1에만 바인딩해야 합니다. 비루프백 요청은 원격 게이트에서 차단합니다');
   // "지금 바꾸기"로 멈췄던 작업을 새 버전에서 이어 한다 (다른 준비가 끝난 뒤)
   setTimeout(() => { try { const ids = jobs.resumeAfterRestart(); if (ids.length) console.log(`새 버전에서 이어 하는 작업: ${ids.join(', ')}`); } catch (e) { console.warn('작업 이어 하기 실패:', e.message); } }, 1500);
+  // 꺼지면서 끊긴 기억 정리는 켠 뒤 한 번 다시 한다(작업 이어 하기가 자리를 잡은 뒤에)
+  setTimeout(() => { try { const ids = jobs.resumeCurations(); if (ids.length) console.log(`끊겼던 기억 정리를 다시 해요: ${ids.join(', ')}`); } catch (e) { console.warn('기억 정리 다시 하기 실패:', e.message); } }, 20_000).unref();
   // 어도비 플러그인을 이미 설치한 PC면 ODDIN 업데이트와 함께 플러그인도 새 판으로 (시험 서버는 건너뜀)
   if (process.env.HUB_SKIP_CLI_INSTALL !== '1') { try { const r = refreshAdobePlugins(ROOT, { port: config.port }); if (r) console.log(`어도비 플러그인 갱신: ${r.apps.map((a) => `${a.app} ${a.ok ? r.version : '실패 ' + a.error}`).join(', ')}`); } catch (e) { console.warn('어도비 플러그인 갱신 실패:', e.message); } }
 });

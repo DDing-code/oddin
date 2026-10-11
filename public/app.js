@@ -628,6 +628,19 @@ function retarget() {
   if (S.stream && eventStream && eventStream.readyState !== 2) return updateEventFilter();
   return connect();
 }
+/** 세션의 작업을 전체 내용으로 받아 채운다(요약만 갖고 있을 때). t0 = 받기 시작한 때 */
+async function loadFullJobs(id, t0 = performance.now(), merge = true) {
+  try {
+    for (const j of await api(`/api/sessions/${id}/jobs`)) {
+      const cur = S.jobs.get(j.id);
+      if (cur && !cur.summaryOnly && (jobAt.get(j.id) || 0) > t0) continue; // 받는 사이 더 새 소식이 왔다
+      if (merge && typeof icMergeJob === 'function') icMergeJob(cur, j);
+      S.jobs.set(j.id, j);
+    }
+  } catch {}
+}
+let refillT = null;
+function refillSoon(id) { clearTimeout(refillT); refillT = setTimeout(() => loadFullJobs(id).then(() => { if (S.current === id) for (const j of sessionJobs(id)) queueRerender(j.id); }), 1500); }
 let openSeq = 0;
 const jobAt = new Map(); // 작업 id → 실시간 소식으로 마지막에 받은 때(목록을 받는 사이 도착한 더 새 소식을 덮지 않게)
 function newSession(cwd, group = null) {
@@ -645,14 +658,7 @@ async function openSession(id) {
   // 먼저 이 세션 소식을 자세히 받기 시작하고, 그다음 작업 목록을 받는다(순서가 반대면 그사이 소식이 요약으로 와서 목록을 덮는다)
   if (linked) { S.opening = id; await retarget(); if (seq !== openSeq) return; }
   if (!sessionJobs(id).length || sessionJobs(id).some((j) => j.summaryOnly)) {
-    try {
-      for (const j of await api(`/api/sessions/${id}/jobs`)) {
-        const cur = S.jobs.get(j.id);
-        if (cur && !cur.summaryOnly && (jobAt.get(j.id) || 0) > t0) continue; // 받는 사이 더 새 소식이 왔다
-        if (linked && typeof icMergeJob === 'function') icMergeJob(cur, j);
-        S.jobs.set(j.id, j);
-      }
-    } catch {}
+    await loadFullJobs(id, t0, linked);
     if (seq !== openSeq) return; // 그사이 다른 세션을 열었다
   }
   S.opening = null;
@@ -1046,6 +1052,9 @@ function onHubEvent(ev) {
       // 보던 세션이 잠깐 목록에 없을 수 있다(다른 PC 다시 연결 중 등) — 보던 것을 그대로 두고, 정말 지워졌으면 session_removed 가 온다
       if (S.current && !S.sessions.has(S.current)) { if (prevCur) S.sessions.set(S.current, prevCur); else S.current = null; }
       initSeen(); renderTree(); renderThread(); loadPreviews();
+      // 보고 있는 세션이 요약으로만 왔으면(다른 PC 세션은 처음 묶음에 요약만 온다) 전체를 받아 다시 그린다
+      const cur = S.current;
+      if (cur && sessionJobs(cur).some((j) => j.summaryOnly)) loadFullJobs(cur).then(() => { if (S.current === cur) { renderThread(); loadPreviews(); } });
     } else if (ev.type === 'session') {
       const was = S.sessions.get(ev.session.id); S.sessions.set(ev.session.id, ev.session); renderTree();
       if (ev.session.id === S.current && (was?.title !== ev.session.title || was?.pinned !== ev.session.pinned || JSON.stringify(was?.goal) !== JSON.stringify(ev.session.goal))) { renderTop(); scheduleInspector(); }
@@ -1053,7 +1062,14 @@ function onHubEvent(ev) {
       S.sessions.delete(ev.sessionId); for (const [id, j] of S.jobs) if (j.sessionId === ev.sessionId) S.jobs.delete(id);
       if (S.current === ev.sessionId) newSession(currentCwd()); else renderTree();
     } else if (ev.type === 'job') {
-      const prev = S.jobs.get(ev.job.id); icMergeJob(prev, ev.job); S.jobs.set(ev.job.id, ev.job); jobAt.set(ev.job.id, performance.now());
+      const prev = S.jobs.get(ev.job.id);
+      // 보고 있는 세션의 작업이 요약으로만 왔다(다른 PC 세션을 막 열어 "자세히 받기"가 아직 안 닿았을 때): 갖고 있던 내용에 상태만 얹고 곧 전체를 다시 받는다
+      if (ev.job.summaryOnly && prev && !prev.summaryOnly && ev.job.sessionId === S.current) {
+        const had = new Map((prev.tasks || []).map((t) => [t.id, t]));
+        ev.job = { ...prev, ...ev.job, summaryOnly: false, goal: prev.goal, tasks: (ev.job.tasks || []).map((t) => ({ dependsOn: [], ...(had.get(t.id) || {}), ...t })) };
+        refillSoon(S.current);
+      }
+      icMergeJob(prev, ev.job); S.jobs.set(ev.job.id, ev.job); jobAt.set(ev.job.id, performance.now());
       if (ev.job.sessionId === S.current) {
         if (!document.getElementById(`job-${ev.job.id}`)) renderThread(); else queueRerender(ev.job.id);
         renderSend();

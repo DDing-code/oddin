@@ -45,6 +45,7 @@
   window.addEventListener('hub:event', (e) => {
     const t = e.detail?.type;
     if (t === 'hub-restarting') { V.restarting = true; render(); }
+    else if (t === 'hub-restart-failed') { V.restarting = false; render(); toast(`새 버전으로 바꾸지 못했어요. 멈췄던 작업${e.detail.jobs ? ` ${e.detail.jobs}개` : ''}은 "다시 시도"로 이어 주세요`, true); }
     else if (t === 'hello') { V.restarting = false; check(); }
     else if (t === 'peers' || t === 'job') render();
   });

@@ -12,7 +12,8 @@ const logFile = path.join(ROOT, 'logs', 'restart.log');
 const live = new Set(['queued', 'planning', 'running', 'reporting']);
 export function isIdle(jobs, sessions) {
   if (!Array.isArray(jobs) || !Array.isArray(sessions)) return false;
-  return !jobs.some((j) => live.has(j.status) || j.tasks?.some((t) => t.status === 'running')) && !sessions.some((s) => s.goal?.status === 'active' || s.goal?.checking === true);
+  // 요청은 끝났어도 기억 정리가 도는 중이면 쉬는 것이 아니다(끊으면 그 요청의 결정 노트·장기 기억이 빠진다)
+  return !jobs.some((j) => live.has(j.status) || j.tasks?.some((t) => t.status === 'running') || j.curation?.status === 'running') && !sessions.some((s) => s.goal?.status === 'active' || s.goal?.checking === true);
 }
 function log(message) {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
@@ -57,7 +58,9 @@ export async function main(args = process.argv.slice(2)) {
   const initial = await listener(port);
   log(`재시작 대상 허브 PID ${initial.pid}. 유휴 상태를 확인합니다`);
   if (args.includes('--now')) {
-    if (!await idleSnapshot(target) && !args.includes('--force')) throw new Error('진행 중인 작업이 있어 즉시 재시작을 거부합니다');
+    // --force("지금 바꾸기"): 허브가 이미 작업을 멈춰 두었으니 상태를 못 읽어도 계속한다 — 여기서 그만두면 허브가 멈춘 채 떠 있다
+    let idle = false; try { idle = await idleSnapshot(target); } catch (e) { if (!args.includes('--force')) throw e; }
+    if (!idle && !args.includes('--force')) throw new Error('진행 중인 작업이 있어 즉시 재시작을 거부합니다');
   } else {
     let consecutive = 0, done = false;
     const deadline = Date.now() + 6 * 60 * 60 * 1000;
