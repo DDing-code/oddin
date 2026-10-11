@@ -86,9 +86,12 @@ test('두 PC가 같은 드라이브 폴더를 쓰면 PC끼리 맞추기는 쉰�
     const calls = [];
     const peer = { id: 'p1', name: '회사' };
     let remoteHub = h.id;
+    let old = false; // 상대가 예전 버전이면 가벼운 확인(/api/shared/hello)을 모른다
     const call = async (_p, route, opts = {}) => {
       calls.push(`${opts.method || 'GET'} ${route}`);
+      if (route === '/api/shared/hello') { if (old) throw Object.assign(new Error('예전 버전'), { status: 501 }); return { machine: '회사', driveHub: remoteHub, markers: true }; }
       if (route === '/api/shared/manifest') return { machine: '회사', driveHub: remoteHub, files: {} };
+      if (route === '/api/shared/changed') return { ok: true };
       if (opts.method === 'POST') return { rel: opts.body.rel, sha: 'x' };
       throw new Error('여기까지 오면 안 됨');
     };
@@ -97,12 +100,20 @@ test('두 PC가 같은 드라이브 폴더를 쓰면 PC끼리 맞추기는 쉰�
     calls.length = 0;
     const res = await sa.syncAll();
     assert.deepEqual(res.find((r) => r.peer === 'p1'), { peer: 'p1', ok: true, via: 'drive' });
-    assert.deepEqual(calls, ['GET /api/shared/manifest'], '목록만 묻고 파일은 주고받지 않음');
+    assert.deepEqual(calls, ['GET /api/shared/hello'], '가볍게 묻기만 하고 목록·파일은 주고받지 않음');
     assert.equal(read(A, 'memory/global/a.md'), '가 1');
     assert.equal(sa.status().peers[0].via, 'drive');
     remoteHub = null; // 상대 드라이브가 멈추면 다시 직접 맞춘다
     calls.length = 0; await sa.syncAll();
     assert.ok(calls.some((c) => c.startsWith('POST /api/shared/file')), '직접 맞추기로 돌아감');
+    // 상대가 예전 버전이면 예전처럼 목록으로 확인하고 쉰다
+    const sb = new SharedSync({ root: A, peers: peersOf('home', '집', [peer], call), intervalMs: 0, watch: false, driveIntervalMs: 0, hub: () => hub.info(), stateFile: path.join(dir, 'a.json') });
+    old = true; remoteHub = h.id; calls.length = 0;
+    const res2 = await sb.syncAll();
+    assert.deepEqual(res2.find((r) => r.peer === 'p1'), { peer: 'p1', ok: true, via: 'drive' });
+    assert.deepEqual(calls, ['GET /api/shared/hello', 'GET /api/shared/manifest']);
+    calls.length = 0; await sb.syncAll();
+    assert.deepEqual(calls, ['GET /api/shared/manifest'], '예전 버전인 것을 안 뒤로는 다시 묻지 않음(30분 뒤 다시)');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

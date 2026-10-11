@@ -25,7 +25,9 @@ if (args.includes('--port')) config.port = Number(args[args.indexOf('--port') + 
 const PORT = config.port, SELF = `http://127.0.0.1:${PORT}`;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const browser = new BrowserManager({ exe: config.browser?.exe || null, profile: path.join(DATA_DIR, 'browser-profile'), headless: true, width: 1080, height: 1920 });
+// 그리는 일이 없으면 브라우저를 끈다(5분 안 쓰면). 렌더·장면 작업이 도는 동안은 탭을 그대로 둔다
+const drawing = () => [...editor.renders.values()].some((r) => r.status === 'running') || [...scenes.values()].some((j) => j.status === 'running');
+const browser = new BrowserManager({ exe: config.browser?.exe || null, profile: path.join(DATA_DIR, 'browser-profile'), headless: true, width: 1080, height: 1920, idleMs: (config.browser?.idleMinutes ?? 5) * 60_000, isLive: () => drawing() });
 const editor = new Editor({ config, browser: findBrowser(config.browser?.exe) ? browser : null, engineUrl: () => SELF });
 const appWindows = new Map(); // 창(SSE ?app=1) id → res
 const hub = new HubLink({ hubUrl: config.hubUrl, port: PORT, app: () => ({ windows: appWindows.size }) });

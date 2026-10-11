@@ -44,6 +44,7 @@ import { ChromeExtBrowser, isExtRequest } from './lib/chrome-ext.mjs';
 import { HubAuth, controlGate, canonicalRoute } from './lib/hub-auth.mjs';
 import { SessionGroups, listDirs, makeDir, renameDir } from './lib/session-groups.mjs';
 import { adobeInstallStatus, installAdobePlugins, refreshAdobePlugins, installedHost } from './lib/adobe-install.mjs';
+import { timed, startLoadLog, loadReport, requestTimer } from './lib/load-log.mjs';
 
 const configFile = process.env.HUB_CONFIG_FILE ? path.resolve(process.env.HUB_CONFIG_FILE) : path.join(ROOT, 'config.json');
 const config = readJson(configFile, null);
@@ -56,6 +57,25 @@ config.defaultCwd = path.resolve(ROOT, expandHome(config.defaultCwd || '../oddin
 fs.mkdirSync(config.defaultCwd, { recursive: true });
 
 const jobs = new JobManager(config);
+// 쓰는 중인지(작업이 돌고 있거나 방금 사용자가 화면을 썼는지). 아니면 주기 작업을 느리게 돈다
+// (2026-10-11 사용자 "작업을 안할 때도 자원을 많이 먹는데?" — 맞추기·상태 확인·사용량 조회가 쉬는 동안에도 같은 주기로 돌았다)
+let lastTouch = Date.now();
+const touch = () => { lastTouch = Date.now(); };
+const hubBusy = () => { for (const j of jobs.jobs.values()) if (j.status === 'planning' || j.status === 'running' || j.status === 'reporting') return true; return false; };
+const IDLE_AFTER = (config.idle?.afterMinutes ?? 10) * 60_000;
+const hubActive = () => Date.now() - lastTouch < IDLE_AFTER || hubBusy();
+// 사용자가 아니라 프로그램이 주기적으로 보내는 요청(스튜디오·크롬 확장·어도비 플러그인·다른 PC 허브·작업자 도구)은 "쓰는 중"으로 치지 않는다
+const MACHINE_PATH = /^\/api\/(studio\/(hello|bye)|chrome-ext\/|adobe\/(hello|result)|shared\/(changed|file)|browser\/act|peers\/pair-key)/;
+/** 주기 작업: 쉬는 중이면 slow 배 느리게. 쓴 시간은 이름별로 기록한다(lib/load-log.mjs) */
+function every(name, ms, fn, { slow = 5 } = {}) {
+  let last = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    if (now - last < (hubActive() ? ms : ms * slow) - 500) return;
+    last = now; timed(name, fn).catch(() => {});
+  }, ms).unref();
+}
+startLoadLog();
 const remote = new RemoteAccess({ port: config.port });
 const clients = new Map(); // SSE도 설정 변경·계정 취소 때 다시 검증한다.
 jobs.on('event', (ev) => broadcast(ev));
@@ -96,14 +116,15 @@ function broadcast(ev) {
 }
 setInterval(() => { for (const [res, req] of clients) { if (checkClient(res, req)) { try { writeSse(res, ': ping\n\n'); } catch {} } } }, 25_000).unref();
 setInterval(() => { for (const [res, req] of clients) checkClient(res, req); }, 2000).unref();
-// 사용량: 작업이 도는 동안엔 1분 30초, 아니면 3분마다 갱신해서 화면·자동 분배에 반영
+// 사용량: 작업이 도는 동안엔 1분 30초, 화면을 쓰는 중이면 3분, 화면만 열려 있고 안 쓰면 15분마다 갱신해서 화면·자동 분배에 반영
+// (조회 한 번이 Claude CLI 를 한 번 띄운다 — 쉬는 동안 3분마다 띄우지 않게)
 let lastUsageAt = 0;
 setInterval(async () => {
-  const busy = jobs.list().some((j) => ['planning', 'running', 'reporting'].includes(j.status));
+  const busy = hubBusy();
   if (!clients.size && !busy) return;
-  if (Date.now() - lastUsageAt < (busy ? 90_000 : 180_000)) return;
+  if (Date.now() - lastUsageAt < (busy ? 90_000 : hubActive() ? 180_000 : 15 * 60_000)) return;
   lastUsageAt = Date.now();
-  try { broadcast({ type: 'usage', usage: await usageStatus(config, { force: busy }) }); } catch {}
+  try { await timed('usage', async () => broadcast({ type: 'usage', usage: await usageStatus(config, { force: busy }) })); } catch {}
 }, 15_000).unref();
 
 // 연결된 PC(다른 ODDIN 허브)와 공유 기억(~/.ai-shared) 동기화 — 집·회사 PC 두 대를 한 대시보드로 (docs/peers.md)
@@ -124,16 +145,23 @@ const driveHubOff = () => config.driveHub?.enabled === false || (process.env.HUB
 let hubCache = { at: 0, info: null };
 const hubInfo = (fresh = false) => {
   if (driveHubOff()) return null;
-  if (fresh || Date.now() - hubCache.at > 10_000) hubCache = { at: Date.now(), info: driveHub.info() };
+  // 드라이브의 표식 파일을 읽는 일이라 자주 하지 않는다(만들기·지우기 직후는 fresh 로 바로 다시 읽는다)
+  if (fresh || Date.now() - hubCache.at > 60_000) hubCache = { at: Date.now(), info: driveHub.info() };
   return hubCache.info;
 };
 const sharedCfg = config.sharedSync || {};
-const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false, hub: hubInfo, driveIntervalMs: (sharedCfg.driveIntervalSeconds ?? 20) * 1000 });
+// 평소에는 드라이브를 훑지 않고 표시 파일만 확인한다(driveIntervalSeconds). 전체 훑기는 안전망(coreScanSeconds·skillScanSeconds), 쉬는 중이면 idleFactor 배 느리게
+const shared = sharedCfg.enabled === false ? null : new SharedSync({ root: config.hubDir, peers, intervalMs: (sharedCfg.intervalSeconds ?? 60) * 1000, watch: sharedCfg.watch !== false, hub: hubInfo, driveIntervalMs: (sharedCfg.driveIntervalSeconds ?? 20) * 1000,
+  coreScanMs: (sharedCfg.coreScanSeconds ?? 300) * 1000, skillScanMs: (sharedCfg.skillScanSeconds ?? 600) * 1000, idleFactor: sharedCfg.idleFactor ?? 6, active: hubActive, notify: sharedCfg.notify !== false, meter: timed });
 shared?.on('status', (status) => broadcast({ type: 'shared-sync', status }));
 const peersView = () => ({ self: peers.self(), peers: peers.list(), sync: shared?.status() || null });
 // 작업자 지시문에 넣을 PC 정보(planner.buildWorkerPrompt 의 [여러 PC]) — 연결된 PC가 있을 때만
 // ODDIN 브라우저(lib/browser.mjs): ODDIN 이 관리하는 브라우저 하나를 두 작업자가 같이 쓰고 사용자는 화면 "브라우저" 탭에서 본다
-const oddinBrowser = config.browser?.oddin === false ? null : new BrowserManager({ exe: config.browser?.exe || null, headless: config.browser?.headless !== false });
+// 안 쓰면 끈다(2026-10-11: 끝난 작업의 탭 하나 때문에 숨은 브라우저가 36시간 떠 있었다) — 진행 중인 작업의 탭은 두고, idleMinutes 동안 안 쓴 탭은 닫고, 탭이 없으면 브라우저를 끈다. 다음에 쓸 때 저절로 다시 켜진다(로그인은 프로필에 남는다)
+const liveOwner = (owner) => { const j = jobs.jobs.get(String(owner || '').split('/')[0]); return !!j && (j.status === 'planning' || j.status === 'running' || j.status === 'reporting'); };
+const oddinBrowser = config.browser?.oddin === false ? null : new BrowserManager({ exe: config.browser?.exe || null, headless: config.browser?.headless !== false, idleMs: (config.browser?.idleMinutes ?? 10) * 60_000, isLive: liveOwner });
+// 허브가 다시 켜지기 전에 띄운 브라우저가 남아 있으면 붙어서, 안 쓰면 끄기가 그것도 정리하게 한다(시험 서버는 건드리지 않음)
+if (oddinBrowser && process.env.HUB_SKIP_CLI_INSTALL !== '1') setTimeout(() => oddinBrowser.attachIfRunning().catch(() => {}), 15_000).unref();
 // 크롬 연결(lib/chrome-ext.mjs): 사용자 크롬(로그인된 상태)에 깐 ODDIN 확장. 작업자가 browser_open 에 chrome:true 를 주면 여기서 탭을 연다
 const chromeExt = config.browser?.chrome === false ? null : new ChromeExtBrowser();
 const browsers = () => [oddinBrowser, chromeExt].filter(Boolean);
@@ -209,7 +237,7 @@ async function handoff(b) {
   return { machine: peer.name, sessionId: r.sessionId, jobId: r.id, note: r.note || null };
 }
 // 공유 폴더(읽기용 사본): 이 PC가 공유하는 폴더를 연결된 PC가 ~/.ai-shared/peer-files 로 받아 간다 (lib/shared-folders.mjs)
-const folders = new SharedFolders({ hubDir: config.hubDir, peers, intervalMs: (config.sharedFolders?.intervalSeconds ?? 120) * 1000, hub: hubInfo });
+const folders = new SharedFolders({ hubDir: config.hubDir, peers, intervalMs: (config.sharedFolders?.intervalSeconds ?? 120) * 1000, hub: hubInfo, active: hubActive, meter: timed });
 folders.on('status', (s) => broadcast({ type: 'shared-folders', ...s }));
 setTimeout(() => { if (peers.list().length || hubInfo()) folders.pullAll().catch(() => {}); }, 8000).unref();
 // 드라이브 작업 폴더(구글 드라이브로 두 PC가 함께 쓰는 폴더): 다른 PC 경로 찾기·같은 메모리로 잇기·작업 순서 (lib/drive-folders.mjs)
@@ -230,19 +258,19 @@ jobs.machineName = () => peers.self().name;
 jobs.driveGuard = (job) => job.answer ? Promise.resolve() : guardDriveWrite(drive.folderOf(job.cwd), peers);
 const driveResolve = () => { try { const r = drive.resolve(); if (r.found.length) broadcast({ type: 'drive-folders' }); return r; } catch (e) { return { error: e.message }; } };
 setTimeout(driveResolve, 5000).unref();
-setInterval(driveResolve, 120_000).unref();
+every('drive-folders', 120_000, async () => driveResolve());
 const checkPeers = async () => {
   if (!peers.list().length) return;
   await Promise.all(peers.list().map((x) => peers.check(x)));
   broadcast({ type: 'peers', ...peersView() });
 };
 setTimeout(checkPeers, 2000).unref(); // 켜자마자 한 번 (안 그러면 1분 동안 상태 모름)
-setInterval(checkPeers, 60_000).unref();
+every('peers-check', 60_000, checkPeers);
 
 // 공통 커맨드·서브 에이전트를 Claude Code·Codex 에 설치하고, 원본이 바뀌면 다시 설치
 if (process.env.HUB_SKIP_CLI_INSTALL !== '1') {
   try { const r = installToClis(config.hubDir); console.log(`공통 커맨드 ${r.commands}개 · 서브 에이전트 ${r.agents}개 · 스킬 ${r.skills}개 (새로 쓴 파일 ${r.write}개)`); } catch (e) { console.error('커맨드 설치 실패:', e.message); }
-  watchCatalog(config.hubDir, (r) => broadcast({ type: 'catalog', install: r }));
+  watchCatalog(config.hubDir, (r) => broadcast({ type: 'catalog', install: r }), { active: hubActive, meter: timed });
 }
 
 // 화면 파일(html·js·css) 버전 표시. 열린 화면이 예전 파일을 쥐고 있는지 비교하는 데 쓴다(public/ui-refresh.js)
@@ -286,6 +314,9 @@ const server = http.createServer(async (req, res) => {
     const m = (re) => p.match(re);
     const denial = remote.check(req);
     if (denial) return sendRemoteBlocked(res, denial, p, send);
+    if (p.startsWith('/api/') && p !== '/api/events') res.once('finish', requestTimer(req.method, p)); // 어떤 요청이 시간을 쓰는지(GET /api/hub/load)
+    // 사용자가 화면에서 한 일(바꾸는 요청)이면 "쓰는 중"으로 본다. 화면은 누르거나 칠 때 /api/hub/touch 로도 알린다(public/activity.js)
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !req.headers['x-oddin-machine'] && !MACHINE_PATH.test(p)) touch();
     { // 이 PC를 조작하는 기능: 원격은 화면·연결된 허브만, 다른 PC로 넘기는 제어는 화면만
       const proxied = toPeer(p, url);
       const gate = controlGate(req, { pathname: p, route: canonicalRoute(p + url.search), method: req.method, remote: !!req.hubViewer?.remote, proxied, auth: hubAuth, knownIds: knownPeerIds() });
@@ -321,6 +352,9 @@ const server = http.createServer(async (req, res) => {
     if (peerRoute && req.method === 'POST') { const r = peers.rename(peerRoute[1], (await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     // 업데이트: 이 허브(/api/hub/…)와 연결된 PC(/api/peers/:id/update — 그 PC 허브에 대신 요청)
     if (p === '/api/hub/version' && req.method === 'GET') return json(res, url.searchParams.get('check') === '1' ? await checkUpdate(ROOT) : runningCommit(ROOT));
+    // 쓰는 중 알림(화면에서 누르거나 칠 때)·허브가 무엇에 시간을 쓰는지(lib/load-log.mjs)
+    if (p === '/api/hub/touch' && req.method === 'POST') { await readBody(req); return json(res, { ok: true }); }
+    if (p === '/api/hub/load' && req.method === 'GET') return json(res, { active: hubActive(), busy: hubBusy(), idleSeconds: Math.round((Date.now() - lastTouch) / 1000), windows: clients.size, ...loadReport(), sync: shared?.status().recent || [] });
     if (p === '/api/hub/update' && req.method === 'POST') { await readBody(req); const r = await applyUpdate(ROOT); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     // 지금 바꾸기: 진행 중인 작업을 멈춰 저장하고(새 버전에서 같은 대화로 이어 함) 이 허브만 바로 재시작한다
     if (p === '/api/hub/restart' && req.method === 'POST') {
@@ -368,6 +402,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (p.startsWith('/api/shared/') && !shared) return fail(res, '공유 기억 동기화가 꺼져 있어요 (config.sharedSync.enabled)', 503);
     if (p === '/api/shared/manifest' && req.method === 'GET') return json(res, { machine: peers.self().name, driveHub: shared?.driveHubId() || null, files: scanShared(config.hubDir) });
+    // 가벼운 확인(목록 전체를 보내지 않음)과 "드라이브에 올렸다" 알림 받기 — 연결된 PC 허브끼리
+    if (p === '/api/shared/hello' && req.method === 'GET') return json(res, shared.hello());
+    if (p === '/api/shared/changed' && req.method === 'POST') return json(res, shared.onChanged(await readBody(req, 400_000)));
     // 구글 드라이브 ODDIN 폴더
     if (p === '/api/drive-hub' && req.method === 'GET') return json(res, driveHubOff() ? { enabled: false, drive: null, hub: null, sync: null, assets: { categories: [], total: 0 } } : { drive: driveHub.drive(), hub: hubInfo(true), sync: shared?.status().drive || null, assets: driveHub.assets(), enabled: true });
     if (p === '/api/drive-hub' && req.method === 'POST') {
@@ -398,7 +435,9 @@ const server = http.createServer(async (req, res) => {
       req.hubStream = randomBytes(16).toString('hex');
       const hello = { type: 'hello', stream: req.hubStream, sessions: [...jobs.listSessions(), ...(fed?.sessions() || [])], jobs: [...jobs.list().map(publicJob), ...(fed?.jobs() || [])], groups: groups.list() };
       writeSse(res, `data: ${JSON.stringify(req.hubCompact ? clientEvent(hello, req.hubSession) : hello)}\n\n`);
-      clients.set(res, req); res.on('close', () => clients.delete(res)); return;
+      clients.set(res, req); res.on('close', () => clients.delete(res));
+      if (!req.headers['x-oddin-machine']) touch(); // 화면을 열었다(다른 PC 허브의 비추기 연결은 빼고)
+      return;
     }
     // 나눈 칸(?embed=1 iframe)은 자기 연결을 열지 않고 가운데 창의 연결로 이벤트를 받는다(브라우저의 같은 주소 동시 연결 6개 한도) — 처음 상태만 한 번 받아 간다
     if (p === '/api/events/snapshot' && req.method === 'GET') {
@@ -418,7 +457,7 @@ const server = http.createServer(async (req, res) => {
     const promptAnswer = p.match(/^\/api\/prompts\/([^/]+)\/answer$/);
     if (promptAnswer && req.method === 'POST') return json(res, jobs.prompts.answer(promptAnswer[1], await readBody(req), req.hubViewer));
     if (p === '/api/ui-version') return json(res, { v: uiVersion() });
-    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force') }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username, profile: profile.read() } });
+    if (p === '/api/status') return json(res, { capabilities: { ...INTERCEPT_CAPABILITIES, ...SESSION_CAPABILITIES, prompts: true, toolRecords: true, memoryCuration: true }, tools: await toolStatus(config, { force: url.searchParams.has('force'), maxAgeMs: hubActive() ? 60_000 : 15 * 60_000 }), config: { port: config.port, hubDir: config.hubDir, defaultCwd: config.defaultCwd, maxParallel: config.maxParallel, planner: config.planner, boardDir: hubBoardDir(config.hubDir), limits: LIMITS, autoFloor: config.autoFloor || null, configFile, root: ROOT, user: os.userInfo().username, profile: profile.read() } });
     if (p === '/api/options') return json(res, { ...modelOptions(config), permission: { default: permissionSetting(config), values: PERMISSIONS, autoAnswerMinutes: config.prompts?.autoAnswerMinutes ?? 20 }, fileAccess: fileAccess.read() });
     // 세션 묶음: 목록·만들기·이름 바꾸기·순서·지우기(세션은 그대로, 묶음에서만 빠짐)
     if (p === '/api/session-groups' && req.method === 'GET') return json(res, groups.list());
