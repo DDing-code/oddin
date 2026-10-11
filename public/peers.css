@@ -48,3 +48,9 @@
 .handoff-row .ico{width:15px;height:15px;color:var(--run);flex:none}
 .handoff-row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .handoff-row b{color:var(--fg)}
+/* 다른 AI 의견(consult-ui.js): 같은 줄 모양에 걸린 시간·상태를 덧붙인다 */
+.consult-row .st{flex:none;font-size:12px;color:var(--fg2)}
+.consult-row.failed .st{color:var(--err)}
+.consult-row.running .ico{animation:consult-pulse 1.4s ease-in-out infinite}
+@keyframes consult-pulse{50%{opacity:.35}}
+.consult-answer{margin-top:6px;padding:10px 12px;border:1px solid var(--line2);border-left:2px solid var(--run);border-radius:10px;font-size:13px;max-height:420px;overflow:auto}

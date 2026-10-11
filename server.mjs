@@ -73,7 +73,7 @@ const hubBusy = () => { for (const j of jobs.jobs.values()) if (j.status === 'pl
 const IDLE_AFTER = (config.idle?.afterMinutes ?? 10) * 60_000;
 const hubActive = () => Date.now() - lastTouch < IDLE_AFTER || hubBusy();
 // 사용자가 아니라 프로그램이 주기적으로 보내는 요청(스튜디오·크롬 확장·어도비 플러그인·다른 PC 허브·작업자 도구)은 "쓰는 중"으로 치지 않는다
-const SLOW_OK = /^\/api\/(chrome-ext\/poll|adobe\/(next|run|check)|download|file|uploads|jobs\/[^/]+\/(wait|stream)|shared\/sync|storage|hub\/(update|version)|peers\/[^/]+\/(update|version|restart)|studio\/install|browser\/act|checkpoints)/;
+const SLOW_OK = /^\/api\/(chrome-ext\/poll|adobe\/(next|run|check)|download|file|uploads|jobs\/[^/]+\/(wait|stream)|shared\/sync|storage|hub\/(update|version)|peers\/[^/]+\/(update|version|restart)|studio\/install|browser\/act|consult\/wait|checkpoints)/;
 const MACHINE_PATH = /^\/api\/(studio\/(hello|bye)|chrome-ext\/|adobe\/(hello|result)|shared\/(changed|file)|browser\/act|peers\/pair-key)/;
 /** 주기 작업: 쉬는 중이면 slow 배 느리게. 쓴 시간은 이름별로 기록한다(lib/load-log.mjs) */
 function every(name, ms, fn, { slow = 5 } = {}) {
@@ -202,6 +202,8 @@ process.on('exit', () => { try { oddinBrowser?.proc?.kill(); } catch {} });
 // 허브는 /studio/ 로 그 화면을 비춘다(폰·원격). 규약 docs/studio.md
 const studio = new StudioLink({ root: ROOT, emit: (ev) => broadcast(ev), commit: () => runningCommit(ROOT).commit });
 jobs.browserTool = (job, task) => browsers().length ?{ command: process.execPath, args: [path.join(ROOT, 'scripts', 'oddin-browser-mcp.mjs')], env: { ODDIN_TASK: `${job.id}/${task.id}`, ODDIN_HUB: `http://127.0.0.1:${config.port}` } } : null;
+// 다른 AI에게 묻기(lib/consult.mjs): 요청에서 켰을 때만 작업자에 ask_other_ai 도구를 붙인다. 도구는 /api/consult 로 부탁만 한다
+jobs.askTool = (job, task) => jobs.consults.toolSpec(job, task, { script: path.join(ROOT, 'scripts', 'oddin-ask-mcp.mjs'), hub: `http://127.0.0.1:${config.port}` });
 jobs.machines = () => { const list = peers.list(); return list.length ? { self: peers.self().name, peers: list.map((x) => x.name), handoff: path.join(ROOT, 'scripts', 'handoff.mjs') } : null; };
 /** 세션 실행 PC 옮기기: 대화 기록을 다른 PC(또는 이 PC)에 새 세션으로 가져오고 원래 세션은 보관함으로. machine = 'self' | PC id·이름 */
 async function moveSession(id, b) {
@@ -394,6 +396,13 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/peers/pair-key' && req.method === 'POST') { const b = await readBody(req); if (!knownPeerIds().includes(String(b.from || ''))) return fail(res, '연결된 PC가 아니에요', 403); return json(res, hubAuth.accept(String(b.from), String(b.key || ''))); }
     // 작업 넘기기: 이 PC의 AI 작업자가 다른 PC에만 있는 것이 필요할 때 그 PC로 작업을 넘긴다(그 PC 세션에 보이게 진행)
     if (p === '/api/handoff' && req.method === 'POST') { if (req.hubViewer?.remote) return fail(res, '작업 넘기기는 이 PC 안에서만 부를 수 있어요', 403); return json(res, await handoff(await readBody(req)), 201); }
+    // 다른 AI에게 묻기: 이 PC의 작업자 도구(scripts/oddin-ask-mcp.mjs)만 부른다 — 시작은 바로 돌아오고 답은 wait 로 길게 기다려 받는다
+    if (p === '/api/consult' || p === '/api/consult/wait') {
+      if (req.method !== 'POST') return fail(res, '없는 기능이에요', 404);
+      if (req.hubViewer?.remote) return fail(res, '의견 요청은 이 PC의 작업자만 부를 수 있어요', 403);
+      const b = await readBody(req);
+      return json(res, p === '/api/consult' ? await jobs.consults.start(b) : await jobs.consults.wait(b));
+    }
     const peerRoute = p.match(/^\/api\/peers\/([\w-]+)$/);
     if (peerRoute && req.method === 'DELETE') { const gone = peers.get(peerRoute[1]); if (gone) hubAuth.forget(gone.id, gone.remoteId); const r = peers.remove(peerRoute[1]); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
     if (peerRoute && req.method === 'POST') { const r = peers.rename(peerRoute[1], (await readBody(req)).name); broadcast({ type: 'peers', ...peersView() }); return json(res, r); }
@@ -655,6 +664,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'GET') return json(res, jobs.getIntercepts(r[1]));
       if (req.method === 'POST') { const result = jobs.acceptIntercept(r[1], await readBody(req)); return json(res, result, result.duplicate ? 200 : 202); }
     }
+    if ((r = m(/^\/api\/jobs\/([\w-]+)\/consults\/([\w-]+)\/([\w-]+)$/)) && req.method === 'GET') return json(res, jobs.consults.answer(r[1], r[2], r[3])); // 다른 AI 의견의 답 전체
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/cancel$/)) && req.method === 'POST') return json(res, jobs.cancel(r[1]));
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/send-now$/)) && req.method === 'POST') { await readBody(req); return json(res, jobs.sendReservedNow(r[1])); } // 예약한 요청 지금 보내기
 

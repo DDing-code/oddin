@@ -302,6 +302,7 @@ function logHtml(key, tool) {
     else if (k === 'tool_error' || k === 'error') { cls += ' err'; mark = '오류'; }
     else if (k === 'stderr') { cls += ' warn'; mark = '경고'; }
     else if (k === 'intercept') { cls += ' ic'; mark = '수정 지시'; }
+    else if (k === 'consult') { cls += ' ic'; mark = '의견'; }
     else if (k === 'init') { mark = '시작'; text = `${e.model || ''}${e.effort ? ' · ' + e.effort : ''}`; }
     text = String(text); if (text.length > 800) text = text.slice(0, 800) + '…';
     return `<div class="${cls}"><span class="k">${esc(mark)}</span><span>${esc(text)}</span></div>`;
@@ -449,7 +450,7 @@ function note(html, cls = '') {
 function renderBarPills() {
   const m = S.prefs.mode;
   const cl = toolPref('claude'), cx = toolPref('codex');
-  $('#pMode').innerHTML = `${icon('split')}<span class="v">${MODES[m].label}${S.prefs.pace === 'speed' ? ' · 속도 우선' : ''}</span>${icon('down')}`;
+  $('#pMode').innerHTML = `${icon('split')}<span class="v">${MODES[m].label}${S.prefs.pace === 'speed' ? ' · 속도 우선' : ''}${CONSULT_PILL[S.prefs.consult] || ''}</span>${icon('down')}`;
   $('#pClaude').innerHTML = `<span class="dot" style="background:var(--claude)"></span><span class="v"><span class="nm">Claude · </span>${esc(prefLabel('claude', cl))}</span>${icon('down')}`;
   $('#pCodex').innerHTML = `<span class="dot" style="background:var(--codex)"></span><span class="v"><span class="nm">Codex · </span>${esc(prefLabel('codex', cx))}</span>${icon('down')}`;
   $('#pClaude').classList.toggle('off', m === 'codex');
@@ -541,6 +542,9 @@ document.addEventListener('keydown', (e) => {
 });
 window.addEventListener('resize', closePop);
 
+// 다른 AI 의견(lib/consult.mjs): 작업 도중 다른 쪽 AI에게 읽기 전용으로 묻는다 — 필요할 때만 / 꼭 받기(고치기 전 분석 + 끝내기 전 검토)
+const CONSULT_PILL = { ask: ' · 의견', committee: ' · 함께 판단' };
+const consultPref = () => (CONSULT_PILL[S.prefs.consult] ? S.prefs.consult : 'off');
 function openModePicker(anchor) {
   const items = Object.entries(MODES).map(([k, v]) => ({ label: v.label, desc: v.desc, checked: S.prefs.mode === k, run: () => { S.prefs.mode = k; savePrefs(); renderBarPills(); closePop(); } }));
   items.push({ sep: true }, { header: '자동 분배일 때 계획 담당' });
@@ -548,6 +552,8 @@ function openModePicker(anchor) {
   // 작업 방식: 품질 우선(기본) = 평소 단독으로 쓸 때의 추론 강도, 속도 우선 = 근거 없으면 high로 낮춤
   items.push({ sep: true }, { header: '작업 방식' });
   for (const [p, l, d] of [['quality', '품질 우선 (기본)', '평소 단독으로 쓸 때와 같은 추론 강도 · 느려도 꼼꼼하게'], ['speed', '속도 우선', '근거가 없으면 강도를 high로 낮춤 · 빠르지만 얕게']]) items.push({ label: l, desc: d, checked: (S.prefs.pace || 'quality') === p, run: () => { S.prefs.pace = p; savePrefs(); renderBarPills(); closePop(); } });
+  items.push({ sep: true }, { header: '다른 AI 의견' });
+  for (const [p, l, d] of [['off', '안 받기 (기본)', '맡은 AI가 혼자 판단'], ['ask', '필요할 때만', '막히거나 위험한 결정 앞에서 다른 AI에게 물어봄 · 한도를 조금 더 씀'], ['committee', '꼭 받기', '고치기 전에 따로 분석받고, 끝내기 전에 바뀐 것을 검토받음 · 느리고 한도를 더 씀']]) items.push({ label: l, desc: d, checked: consultPref() === p, run: () => { S.prefs.consult = p; savePrefs(); renderBarPills(); closePop(); } });
   openPop(anchor, items, { sel: Object.keys(MODES).indexOf(S.prefs.mode), kind: 'mode' });
 }
 function openModelPicker(tool, anchor) {
@@ -613,7 +619,7 @@ async function submit({ flip = false } = {}) {
   // 진행 중이면 방식(intercept.js icWant)에 따라: 끼어들기 = 현재 작업에 수정 지시, 예약 = 끝난 뒤 시작할 새 요청(아래로)
   if (live && icWant(live, flip) === 'intercept') return icSubmit(live);
   if (S.submitting) return; // 앞선 보내기가 아직 응답을 기다리는 중 (중복 Enter·클릭)
-  const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission, pace: S.prefs.pace === 'speed' ? 'speed' : 'quality' }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
+  const body = { goal: text, mode: S.prefs.mode, planner: S.prefs.planner, settings: { claude: toolPref('claude'), codex: toolPref('codex'), permission: S.prefs.permission, pace: S.prefs.pace === 'speed' ? 'speed' : 'quality', consult: consultPref() }, attachments: atts.map((a) => ({ id: a.id, name: a.name })) };
   if (S.current) body.sessionId = S.current; else { body.cwd = currentCwd(); if (S.draftGroup) body.group = S.draftGroup; }
   if (live) body.reserve = true;
   // 실행 PC(machines.js): 새 세션을 다른 PC에서 시작하면 그 PC가 작업한다(다른 PC 세션은 sessionId 로 그 PC에 이어 감)
