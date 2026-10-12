@@ -63,7 +63,12 @@ test('단순 질문·작은 수정은 하한 강도, 나머지 품질 우선과 
   assert.equal(run({ id: 't1', title: '적용했어?', prompt: '적용했어?', assignee: 'codex' }, { answer: true }), 'high');
   assert.equal(run({ id: 't1', title: '오타 수정', prompt: '오타 수정', assignee: 'codex' }, { fast: true }), 'high');
   assert.equal(run({ id: 't1', title: '적용했어?', prompt: '적용했어?', assignee: 'codex' }, { answer: true, settings: { ...AUTO(), codex: { model: 'auto', effort: 'xhigh' } } }), 'xhigh');
-  assert.equal(run({ id: 't1v', title: '눈으로 확인: 시안', prompt: '확인', assignee: 'codex', visualCheck: true }), 'xhigh');
+  // 눈으로 확인과 목표 모드 라운드는 자동 강도를 high 까지만(2026-10-12 토큰 아끼기) — 직접 고른 강도와 설정으로 올린 상한은 그대로
+  assert.equal(run({ id: 't1v', title: '눈으로 확인: 시안', prompt: '확인', assignee: 'codex', visualCheck: true }), 'high');
+  assert.equal(run({ id: 't1', title: '로그 파서 수정', prompt: '파서', assignee: 'codex' }, { goalRound: 3 }), 'high');
+  assert.equal(run({ id: 't1', title: '로그 파서 수정', prompt: '파서', assignee: 'codex' }, { goalRound: 1 }), 'high');
+  assert.equal(run({ id: 't1', title: '로그 파서 수정', prompt: '파서', assignee: 'codex' }, { goalRound: 2, settings: { ...AUTO(), codex: { model: 'auto', effort: 'xhigh' } } }), 'xhigh');
+  { const up = manager({ goalMode: { maxEffort: 'xhigh' }, designRule: { check: { maxEffort: 'xhigh' } } }); const t = { id: 't1', title: '로그 파서 수정', prompt: '파서', assignee: 'codex' }; up.applyChoice({ mode: 'auto', settings: { ...AUTO(), pace: 'quality' }, tasks: [t], input: '', goalRound: 2 }, t, { model: 'gpt-6.1-sol', effort: 'high', reason: '' }, usage()); assert.equal(t.settings.effort, 'xhigh'); }
   assert.equal(run({ id: 't1d', title: '디자인 기획: 시안', prompt: '기획', assignee: 'codex', designPlan: true }), 'xhigh');
   assert.equal(run({ id: 't1i', title: '화면 구현', prompt: '구현', assignee: 'codex', designImpl: true }), 'xhigh');
   assert.equal(run({ id: 't1v', title: '눈으로 확인: 시안', prompt: '확인', assignee: 'codex', visualCheck: true }, { settings: { ...AUTO(), pace: 'speed' } }), 'high');
