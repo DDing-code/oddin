@@ -13,6 +13,7 @@
 //   node studio/cli.mjs render <편집파일> [--wait]                MP4 렌더(편집 파일 옆)
 //   node studio/cli.mjs fonts [--missing] | fonts install <글꼴파일…|--all>
 //   node studio/cli.mjs speakers <촬영본> [--words 전사.json] [--keep 구간.json|편집파일] [--out 결과.json] [--all] [--no-video] [--on a|b]  누가 말했나: 화면 속 출연자 / 화면 밖(PD) 목소리 가르기, 남긴 구간에 화면 밖 목소리가 들어갔는지 점검
+//   node studio/cli.mjs paper <촬영본> --script 대본.txt --words 전사.json [--on a|b] [--out 표.md]  종이 편집표: 대본 줄마다 출연자 테이크·PD 목소리(선창/지시/내용) 맞추기
 //   node studio/cli.mjs pipelines                                 파이프라인(합친 스킬의 제작 흐름) 목록
 //   node studio/cli.mjs quit                                      엔진 끄기(렌더 중이면 거절)
 import fs from 'node:fs';
@@ -36,7 +37,7 @@ async function call(p, opt = {}) {
 const post = (p, body) => call(p, { method: 'POST', body: JSON.stringify(body) });
 const fmt = (t) => { const s = Math.max(0, Number(t) || 0); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${(s % 60).toFixed(2).padStart(5, '0')}`; };
 const size = (v) => { const m = String(v || '').match(/^(\d+)\s*[x×*]\s*(\d+)$/i); return m ? [Number(m[1]), Number(m[2])] : [0, 0]; };
-const help = () => { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 17).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); };
+const help = () => { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 18).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); };
 
 try {
   if (!cmd || cmd === 'help') { help(); process.exit(0); }
@@ -48,6 +49,17 @@ try {
     if (flags.out) { fs.writeFileSync(abs(flags.out), JSON.stringify(r, null, 1)); console.log(`결과 파일: ${abs(flags.out)}`); }
     console.log(speakersReport(r, { all: !!flags.all }));
     process.exit(r.leaks?.some((l) => l.who === 'off') ? 2 : 0);
+  }
+  if (cmd === 'paper' && rest[0]) { // 컷을 자르기 전에: 대본과 촬영본을 줄 단위로 맞춘 표
+    if (!flags.script || !flags.words) throw new Error('--script <대본.txt> 와 --words <단어 시각이 있는 전사.json> 이 필요해요');
+    const { analyzeSpeakers, readWords } = await import('./engine/speakers.mjs');
+    const { paperEdit, paperReport, paperKeep, readScriptFile } = await import('./engine/paper.mjs');
+    const file = abs(rest[0]);
+    const sp = await analyzeSpeakers(file, { words: readWords(abs(flags.words)), video: !flags['no-video'], on: flags.on === 'a' || flags.on === 'b' ? flags.on : null, config: loadConfig() });
+    const p = paperEdit(sp, readScriptFile(abs(flags.script))), md = paperReport(p);
+    if (flags.out) { const o = abs(flags.out), base = o.replace(/\.md$/i, ''); fs.writeFileSync(o, md); fs.writeFileSync(`${base}.json`, JSON.stringify({ paper: p, speakers: sp }, null, 1)); fs.writeFileSync(`${base}.keep.json`, JSON.stringify(paperKeep(p, file), null, 1)); console.log(`표: ${o} · 자료: ${base}.json · 고른 구간: ${base}.keep.json`); }
+    console.log(md);
+    process.exit(0);
   }
   const st = await ensureEngine();
   if (cmd === 'status') {

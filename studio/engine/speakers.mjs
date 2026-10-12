@@ -119,7 +119,11 @@ export function levelSplit(islands) {
     if (total - below < need) continue;
     if (best == null || smooth[b] + eps < (smooth[best] + eps) * 0.8) best = b;
   }
-  if (best == null) return { ok: false, reason: '목소리 크기가 한 무리예요', top };
+  // 얕은 골짜기 후보들(분포가 살짝 꺼진 자리 전부): 확정은 못 하지만, 화면 움직임이 가장 잘 갈리는 후보를 고르는 데 쓴다
+  const cands = [];
+  for (let b = bT - 4; b >= Math.max(1, bT - 36); b--) if (cum[b] >= need && total - cum[b] >= need && smooth[b] <= smooth[b - 1] && smooth[b] < smooth[b + 1]) cands.push({ th: lo + b / 2, d: smooth[b] });
+  const weak = cands.sort((x, y) => x.d - y.d).slice(0, 6).map((x) => x.th);
+  if (best == null) return { ok: false, reason: '목소리 크기가 한 무리예요', top, weak };
   let a = best, z = best; const flat = smooth[best] * 1.5 + eps; // 골짜기 한가운데를 가르는 선으로
   while (a - 1 > 0 && smooth[a - 1] <= flat) a--;
   while (z + 1 < bT && smooth[z + 1] <= flat) z++;
@@ -128,7 +132,8 @@ export function levelSplit(islands) {
   for (let b = mid; b < bins; b++) if (smooth[b] > smooth[up]) up = b;
   for (let b = mid; b >= Math.max(0, mid - 24); b--) if (smooth[b] > smooth[dn]) dn = b;
   const depth = (smooth[mid] + eps) / (Math.min(smooth[up], smooth[dn]) + eps), gap = (up - dn) / 2;
-  if (gap < 4 || depth > 0.6) return { ok: false, reason: `크기 차이가 뚜렷하지 않아요(무리 사이 ${gap}dB)`, top };
+  // 골짜기가 얕으면 확정하지 않되 후보로 넘긴다 — 화면 움직임이 그 선을 뒷받침하면 쓴다(출연자와 읽어 주는 사람의 크기가 가까운 촬영)
+  if (gap < 4 || depth > 0.6) return { ok: false, reason: `크기 차이가 뚜렷하지 않아요(무리 사이 ${gap}dB)`, top, weak };
   return { ok: true, threshold: lo + mid / 2, loud: lo + up / 2, quiet: lo + dn / 2, gap, top };
 }
 
@@ -211,10 +216,14 @@ function fitByMotion(islands, top, quietFrames, mv) {
   if (!tries.length) return null;
   const k = tries.reduce((b, t, n) => (t.j > tries[b].j ? n : b), 0), max = tries[k].j;
   if (max < 0.45) return null;
-  let a = k, z = k; // 비슷하게 잘 맞는 구간의 한가운데
-  while (a > 0 && tries[a - 1].j >= max - 0.03) a--;
-  while (z + 1 < tries.length && tries[z + 1].j >= max - 0.03) z++;
-  const threshold = (tries[a].th + tries[z].th) / 2;
+  // 비슷하게 잘 맞는 선들(가장 좋은 것에서 0.1 안) 가운데 그 크기의 말이 가장 드문 자리를 고른다 — 두 무리 사이의 빈 곳.
+  // 한가운데를 고르면 출연자의 보통 말소리 바로 위에 선이 걸려 온통 '확인 필요'가 됐다(분당 5번).
+  let a = k, z = k;
+  while (a > 0 && tries[a - 1].j >= max - 0.1) a--;
+  while (z + 1 < tries.length && tries[z + 1].j >= max - 0.1) z++;
+  const dens = (th) => pts.reduce((s, q) => s + (Math.abs(q.level - th) <= 1 ? q.w : 0), 0);
+  let pick = k; for (let n = a; n <= z; n++) if (dens(tries[n].th) < dens(tries[pick].th) - 1e-9) pick = n;
+  const threshold = tries[pick].th;
   const wmed = (list) => { const v = list.sort((x, y) => x.level - y.level); let acc = 0; const half = v.reduce((p, q) => p + q.w, 0) / 2; for (const q of v) { acc += q.w; if (acc >= half) return q.level; } return v.at(-1)?.level ?? threshold; };
   const loud = wmed(pts.filter((q) => q.level >= threshold)), quiet = wmed(pts.filter((q) => q.level < threshold));
   return { ok: true, threshold, loud: round(loud, 1), quiet: round(quiet, 1), gap: round(loud - quiet, 1), top, fit: round(max) };
@@ -251,12 +260,13 @@ export function readKeep(file, mediaFile = '') {
     return out;
   }
   const list = Array.isArray(j) ? j : j.ranges || j.keep || j.clips || [];
-  return list.filter((r) => same(r.source || r.path || r.file)).map((r) => ({ start: Number(r.start ?? r.in ?? r.source_start), end: Number(r.end ?? r.out ?? r.source_end), text: r.text || r.id || '' })).filter((r) => Number.isFinite(r.start) && r.end > r.start);
+  return list.filter((r) => same(r.source || r.path || r.file)).map((r) => ({ start: Number(r.start ?? r.in ?? r.source_start), end: Number(r.end ?? r.out ?? r.source_end), text: r.text || r.id || '', ...(r.speaker === 'pd' || r.allowOff ? { speaker: 'pd' } : {}) })).filter((r) => Number.isFinite(r.start) && r.end > r.start);
 }
 /** 남긴 구간 안에 들어간 화면 밖 목소리(0.2초 이상 겹치거나 덩어리의 절반 이상) */
 export function checkKeep(islands, keep) {
   const out = [];
   keep.forEach((k, idx) => {
+    if (k.speaker === 'pd') return; // 종이 편집표에서 '내용'으로 정한 PD 목소리(질문·대화)는 일부러 남긴 것이다
     for (const i of islands) {
       if (i.who === 'on') continue;
       const ov = Math.min(k.end, i.end) - Math.max(k.start, i.start);
@@ -318,6 +328,21 @@ export async function analyzeSpeakers(file, { words = null, keep = null, video =
     const busy = new Uint8Array(mv.frames);
     for (const i of islands) for (let f = Math.max(0, Math.floor((i.start - 0.2) * VFPS)); f < Math.min(mv.frames, Math.ceil((i.end + 0.2) * VFPS)); f++) busy[f] = 1;
     const quiet = []; for (let f = 1; f < mv.frames; f++) if (!busy[f]) quiet.push(f);
+    if (single && split.weak?.length) { // 얕은 골짜기 후보들 가운데 "위쪽이 말할 때만 화면이 움직인다"가 가장 뚜렷한 선을 고른다(출연자·읽어 주는 사람·PD 셋이 가까울 때)
+      let pickW = null;
+      for (const th of split.weak) {
+        const Lw = motionFor(islands.filter((i) => i.level >= th), quiet, mv), Qw = motionFor(islands.filter((i) => i.level < th), quiet, mv);
+        if (!Lw || Lw.strength < 0.6) continue;
+        const ratio = Lw.strength / Math.max(0.2, Qw?.strength ?? 0);
+        if (ratio >= 1.5 && (!pickW || ratio > pickW.ratio)) pickW = { th, ratio };
+      }
+      if (pickW) {
+        const wm = (list) => median(list.filter((i) => i.end - i.start >= 0.3).map((i) => i.level));
+        const up = wm(islands.filter((i) => i.level >= pickW.th)), dn = wm(islands.filter((i) => i.level < pickW.th));
+        split = { ok: true, threshold: pickW.th, loud: round(up, 1), quiet: round(dn, 1), gap: round(up - dn, 1), top: split.top, fit: round(pickW.ratio) };
+        single = false; basis = 'level'; for (const i of islands) i.side = i.level >= split.threshold ? 'loud' : 'quiet';
+      }
+    }
     if (single) { // 골짜기가 없으면 화면 움직임으로 가르는 선을 찾는다
       const fit = fitByMotion(islands, split.top, quiet, mv);
       if (fit) { split = fit; single = false; basis = 'level'; for (const i of islands) i.side = i.level >= split.threshold ? 'loud' : 'quiet'; }
