@@ -823,6 +823,13 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 .ubig-h b.mid{color:var(--warn)}.ubig-h b.hi{color:var(--err)}
 .ubig small.u-reset{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg2);margin-top:5px}
 .ubig small.u-reset .ico{width:12px;height:12px;flex:none;color:var(--muted)}
+/* 초기화권(side.js resetCredits): 사이드바 이름 줄 오른쪽의 작은 표시 · 사용량 탭 카드 안 한 줄 */
+.u-grid .u-name small.u-rc{margin-left:auto;padding:1px 6px;border-radius:999px;letter-spacing:0;color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.u-grid .u-name small.u-rc.soon{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.u-credit{display:flex;align-items:center;gap:6px;margin:8px 0 4px;font-size:12.5px;color:var(--muted)}
+.u-credit .ico{width:13px;height:13px;flex:none}
+.u-credit.has{color:var(--ok);font-weight:550}
+.u-credit.soon{color:var(--warn)}
 /* 한도 막대 위 눈금 = 초기화까지 남은 시간 비율 (2026-10-04) */
 .meter.has-tick{position:relative;overflow:visible}
 .u-tick{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;border-radius:var(--r2);background:var(--fg);box-shadow:0 0 0 1px color-mix(in srgb,var(--shadow) 60%,transparent);pointer-events:none;transition:left .4s}

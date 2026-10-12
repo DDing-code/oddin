@@ -122,7 +122,9 @@ function renderWarnings() {
   for (const k of Object.keys(S.warnLevel)) if (!ws.some((w) => w.key === k)) delete S.warnLevel[k];
   if (!ws.length) { el.hidden = true; el.innerHTML = ''; return; }
   const crit = ws.some((w) => w.level === 'crit');
-  const what = (w) => w.model ? `${w.label} 한도 — 자동 선택이 ${w.model === 'fable' ? 'Opus로 바꿔요' : '다른 모델로 바꿔요'}` : w.level === 'crit' ? '한도 거의 소진 — 새 작업은 다른 AI로 보내요' : '자동 분배가 이쪽 비중을 줄여요';
+  // 그 AI에 초기화권(한도를 한 번 되돌리는 쿠폰, 지금은 Codex 만)이 있으면 경고 옆에 알려 준다
+  const credit = (w) => { const n = Number(S.usage?.[w.tool]?.resets?.available) || 0; return n > 0 && !w.model ? ` · 초기화권 ${n}장 있음` : ''; };
+  const what = (w) => (w.model ? `${w.label} 한도 — 자동 선택이 ${w.model === 'fable' ? 'Opus로 바꿔요' : '다른 모델로 바꿔요'}` : w.level === 'crit' ? '한도 거의 소진 — 새 작업은 다른 AI로 보내요' : '자동 분배가 이쪽 비중을 줄여요') + credit(w);
   el.hidden = false; el.className = crit ? 'crit' : 'warn';
   const canHideUntilReset = ws.every(w => Date.parse(w.resetsAt) > Date.now());
   el.innerHTML = `${icon('alert')}<div class="wb-list">${ws.slice(0, 3).map((w) => `<span><b>${w.tool === 'claude' ? 'Claude' : 'Codex'} ${esc(w.label)} ${w.left}% 남음</b> ${esc(what(w))}${w.resetsAt ? ` · ${esc(resetPhrase(w.resetsAt))}` : ''}</span>`).join('')}${canHideUntilReset ? '<button type="button" class="wb-hide" data-wb-hide title="현재 경고를 각 한도의 초기화 시각까지 숨깁니다">다음 초기화까지 숨기기</button>' : ''}</div><button type="button" class="icon-btn" data-wb-close title="잠시 숨기기" aria-label="한도 경고 잠시 숨기기">${icon('x')}</button>`;

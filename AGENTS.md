@@ -13,7 +13,7 @@
 - `lib/tools.mjs` CLI 설치·로그인 상태 (60초 캐시)
 - `lib/memory.mjs` 공유 메모리 읽기, 허브 보드(`~/.ai-shared/hub/BOARD.md`, `jobs/<id>.md`) 기록
 - `lib/options.mjs` 작업별 모델·추론 강도 선택지(Codex는 `~/.codex/models_cache.json`·`config.toml`)와 검증
-- `lib/usage.mjs` 구독 한도: Claude는 CLI 제어 프로토콜 `get_usage`(모델 호출 없음), Codex는 최신 `~/.codex/sessions` 기록의 `rate_limits`
+- `lib/usage.mjs` 구독 한도: Claude는 CLI 제어 프로토콜 `get_usage`(모델 호출 없음), Codex는 앱 서버 `account/rateLimits/read` 실시간 조회(모델 호출 없음, 뒤에서 10분에 한 번·쉴 때 1시간, 값이 바뀌면 `usageEvents` → 화면) + 최신 `~/.codex/sessions` 기록의 `rate_limits` 중 더 새 쪽. **초기화권**(`codex.resets` = 한도를 한 번 되돌리는 쿠폰의 장수·만료일)은 실시간 조회에서만 나오고 읽기만 한다(쓰는 기능은 넣지 않는다). **실시간 조회는 `usageStatus(config, { live: true })`로 부른 곳에서만 시작한다 — 서버의 주기 갱신과 `/api/usage` 둘뿐(`CODEX_LIVE`, 시험용 허브는 끔). 작업 시작 같은 다른 호출은 받아 둔 값만 읽는다**(시험·작업마다 진짜 Codex 를 띄워 전체 시험이 흔들렸다). 화면 `side.js resetCredits`, 시험 `tests/usage-resets.test.mjs`
 - `lib/catalog.mjs` 공통 커맨드(`~/.ai-shared/commands`)·서브 에이전트(`~/.ai-shared/agents`)·공유 스킬(`~/.ai-shared/skills` — 모든 스킬의 원본, 세 스킬 폴더에 정션으로 연결하고 새로 생긴 진짜 폴더는 옮겨 합침)·입력 해석(`/goal`·`/커맨드`·`/스킬`·`@에이전트`)·CLI 설치(표식 `ai-hub:managed` 파일만 덮어씀). 자세한 것 `docs/structure.md`
 - `lib/goals.mjs` 목표 모드: 라운드 지시문·달성 판정(진행 상태는 세션 `goal`, 반복은 `jobs.afterGoalRound`). 빈 계획이면 멈춤(`EMPTY_PLAN`), 일시정지·정지·이어서. 시험 `tests/goal-empty-plan.test.mjs`·`goal-pause.test.mjs`. 자세한 것 `docs/structure.md`
 - `lib/memory-blocks.mjs` 기억 블록(전역 MEMORY.md 의 `## 제목`·프로젝트 폴더), 공유/이 PC만(`memory-local`), 세션별 연결·저장 위치. 화면 `public/memory-blocks.js`, 규약 `docs/memory.md`. 자세한 것 `docs/structure.md`

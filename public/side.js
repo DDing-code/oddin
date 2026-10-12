@@ -294,6 +294,15 @@ function uRow(tool, { tag, label, w }) {
   if (r == null) return `<span class="u-l" ${tip}>${esc(tag)}</span><div class="meter" ${meterAria(tool, label, r, w)} ${tip}><i style="width:0"></i></div><span class="p na" aria-hidden="true" ${tip}>–</span><span class="u-rs na" aria-hidden="true" ${tip}>기록 없음</span>`;
   return `<span class="u-l" ${tip}>${esc(tag)}</span><div class="meter ${tool} ${leftTone(r)}${tp == null ? '' : ' has-tick'}" ${meterAria(tool, label, r, w)} ${tip}><i style="width:${r}%"></i>${tickHtml(tp)}</div><span class="p ${leftTone(r)}" aria-hidden="true" ${tip}>${Math.round(r)}%</span><span class="u-rs" aria-hidden="true" ${tip}>${esc(resetIn(w?.resetsAt) || '–')}</span>`;
 }
+// 초기화권(lib/usage.mjs 의 resets — 지금은 Codex 만 알려 준다): 한도를 한 번 통째로 되돌리는 쿠폰.
+// null = 모름(조회 전·실패), n 0 = 없음. 만료가 가장 가까운 것 기준으로 며칠 남았는지 보여 준다(3일 이하면 강조)
+function resetCredits(x) {
+  const r = x?.resets; if (!r) return null;
+  const n = Math.max(0, Number(r.available) || 0), first = (r.items || []).find((i) => i.expiresAt);
+  const days = first ? Math.ceil((new Date(first.expiresAt).getTime() - Date.now()) / 86_400_000) : null;
+  const until = first ? new Date(first.expiresAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }) : '';
+  return { n, soon: n > 0 && days != null && days <= 3, text: n ? `초기화권 ${n}장${until ? ` · ${until}까지${days != null ? ` (${days <= 0 ? '오늘 만료' : `${days}일 남음`})` : ''}` : ''}` : '초기화권 없음' };
+}
 function renderUsage() {
   const u = S.usage; const el = $('#usage');
   if (!u) { el.innerHTML = '<div class="c-muted u-load">사용량 불러오는 중…</div>'; return; }
@@ -304,7 +313,8 @@ function renderUsage() {
     // 기록 없는 창(대개 Codex 5시간)은 줄을 차지하지 않는다. 전부 없으면 주간 한 줄만 '기록 없음' — 자세한 건 오른쪽 사용량 탭
     let shown = all.filter((c) => quotaLeft(c.w) != null);
     if (!shown.length) shown = [all[1]];
-    rows.push(`<span class="u-name"><i style="background:var(--${tool})"></i>${name}${x?.plan ? `<small>${esc(String(x.plan).toUpperCase())}</small>` : ''}</span>`, ...shown.map((c) => uRow(tool, c)));
+    const rc = resetCredits(x); // 있을 때만 이름 줄 오른쪽에 작게 — 없으면 줄을 늘리지 않는다
+    rows.push(`<span class="u-name"><i style="background:var(--${tool})"></i>${name}${x?.plan ? `<small>${esc(String(x.plan).toUpperCase())}</small>` : ''}${rc?.n ? `<small class="u-rc${rc.soon ? ' soon' : ''}" title="${esc(rc.text + ' — 한도를 한 번 통째로 되돌려요')}">초기화권 ${rc.n}</small>` : ''}</span>`, ...shown.map((c) => uRow(tool, c)));
   };
   add('claude', 'Claude', u.claude); add('codex', 'Codex', u.codex);
   el.innerHTML = `<div class="u-grid"><span class="u-cap">남은 한도</span><span class="u-cap r" title="막대 위 눈금 = 초기화까지 남은 시간 비율. 막대가 눈금보다 길면 지금 속도로 초기화까지 넉넉해요"><i class="u-tick-key"></i>초기화까지</span>${rows.join('')}</div>`;
@@ -439,11 +449,13 @@ function usagePane() {
       if (r == null) { h += `<div class="ubig na"><div class="ubig-h"><span>${esc(w)} 한도</span><span>기록 없음</span></div><div class="meter" ${meterAria(name, w, r, v)}><i style="width:0"></i></div></div>`; continue; }
       h += `<div class="ubig"><div class="ubig-h"><span>${esc(w)} 한도</span><b class="${leftTone(r)}">${Math.round(r)}%<span class="u-unit">남음</span></b></div><div class="meter lg ${name} ${leftTone(r)}${timeLeftPct(v) == null ? '' : ' has-tick'}" ${meterAria(name, w, r, v)}><i style="width:${r}%"></i>${tickHtml(timeLeftPct(v))}</div>${v.resetsAt ? `<small class="u-reset">${icon('clock')}${esc(resetPhrase(v.resetsAt) + tickText(timeLeftPct(v)))}</small>` : ''}</div>`;
     }
+    const rc = resetCredits(x);
+    if (rc) h += `<div class="u-credit${rc.n ? ' has' : ''}${rc.soon ? ' soon' : ''}" title="한도를 한 번 통째로 되돌리는 쿠폰이에요. 쓰는 것은 ${label}에서 직접 해요">${icon('refresh')}<span>${esc(rc.text)}</span></div>`;
     if (x?.observedAt) h += `<small class="c-muted">${hm(x.observedAt)} 기준${x.status === 'stale' ? ' · 지난 기록' : ''}</small>`;
     return h + '</div>';
   };
   return (!u ? '<div class="insp-empty"><p>불러오는 중…</p></div>' : block('claude', 'Claude', u.claude) + block('codex', 'Codex', u.codex))
-    + `<button class="btn wide" data-usage-refresh>${icon('refresh')}새로고침</button><p class="fine">Claude는 CLI에서 실시간으로 조회해요. Codex는 최근 실행 기록에 남은 값이라 5시간 한도가 비어 있을 수 있어요. 숫자와 막대는 남은 한도이고, 막대 위 흰 눈금은 초기화까지 남은 시간의 비율이에요. 막대가 눈금보다 길면 지금 속도로 초기화까지 넉넉하고, 짧으면 그 전에 바닥날 수 있어요. 자동 분배는 남은 한도에 맞춰 Claude·Codex 비중을 나누고, 남은 한도가 5% 이하인 쪽 작업은 다른 AI로 넘겨요. Fable 주간 한도가 25% 이하로 남으면 자동 선택이 Opus로 바꾸고, 디자인 기획은 Codex의 GPT-6-Astra에 넘겨요.</p>`;
+    + `<button class="btn wide" data-usage-refresh>${icon('refresh')}새로고침</button><p class="fine">Claude와 Codex 모두 실시간으로 조회해요(Codex는 조회가 안 되면 최근 실행 기록의 값). 초기화권은 한도를 한 번 통째로 되돌리는 쿠폰으로, 지금은 Codex만 알려 줘요 — 여기서는 있는지와 만료일만 보여 주고 쓰지는 않아요. 숫자와 막대는 남은 한도이고, 막대 위 흰 눈금은 초기화까지 남은 시간의 비율이에요. 막대가 눈금보다 길면 지금 속도로 초기화까지 넉넉하고, 짧으면 그 전에 바닥날 수 있어요. 자동 분배는 남은 한도에 맞춰 Claude·Codex 비중을 나누고, 남은 한도가 5% 이하인 쪽 작업은 다른 AI로 넘겨요. Fable 주간 한도가 25% 이하로 남으면 자동 선택이 Opus로 바꾸고, 디자인 기획은 Codex의 GPT-6-Astra에 넘겨요.</p>`;
 }
 function infoPane(s) {
   const jobs = sessionJobs(s.id);

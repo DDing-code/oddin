@@ -17,7 +17,7 @@ import { PERMISSIONS, permissionSetting } from './lib/prompts.mjs';
 import { toolStatus } from './lib/tools.mjs';
 import { memoryOverview, memoryFiles, readMemoryFile, hubBoardDir } from './lib/memory.mjs';
 import { modelOptions } from './lib/options.mjs';
-import { usageStatus } from './lib/usage.mjs';
+import { usageStatus, usageEvents } from './lib/usage.mjs';
 import { saveUpload, uploadPath, LIMITS, MIME_BY_EXT } from './lib/attachments.mjs';
 import { catalog, installToClis, watchCatalog } from './lib/catalog.mjs';
 import { openLocal, normalizeLocalPath, isAllowed, resolveRelative } from './lib/opener.mjs';
@@ -130,13 +130,18 @@ setInterval(() => { for (const [res, req] of clients) checkClient(res, req); }, 
 // 사용량: 작업이 도는 동안엔 1분 30초, 화면을 쓰는 중이면 3분, 화면만 열려 있고 안 쓰면 15분마다 갱신해서 화면·자동 분배에 반영
 // (조회 한 번이 Claude CLI 를 한 번 띄운다 — 쉬는 동안 3분마다 띄우지 않게)
 let lastUsageAt = 0;
+// Codex 실시간 조회(lib/usage.mjs): 진짜 허브에서만. 시험용 허브(HUB_SKIP_CLI_INSTALL)는 실제 Codex 를 띄우지 않는다 — 꼭 필요하면 config.usage.codexLive: true
+const CODEX_LIVE = config.usage?.codexLive ?? !process.env.HUB_SKIP_CLI_INSTALL;
 setInterval(async () => {
   const busy = hubBusy();
   if (!clients.size && !busy) return;
   if (Date.now() - lastUsageAt < (busy ? 90_000 : hubActive() ? 180_000 : 15 * 60_000)) return;
   lastUsageAt = Date.now();
-  try { await timed('usage', async () => broadcast({ type: 'usage', usage: await usageStatus(config, { force: busy }) })); } catch {}
+  // Codex 실시간 조회(초기화권 포함)는 앱 서버를 한 번 띄운다 — 쓰는 중이면 10분, 화면만 열려 있으면 1시간에 한 번
+  try { await timed('usage', async () => broadcast({ type: 'usage', usage: await usageStatus(config, { force: busy, live: CODEX_LIVE, liveTtlMs: busy || hubActive() ? 600_000 : 3_600_000 }) })); } catch {}
 }, 15_000).unref();
+// 뒤에서 돌린 Codex 실시간 조회가 끝나 값(한도·초기화권)이 바뀌면 화면에 바로 다시 보낸다
+usageEvents.on('change', () => { if (clients.size) usageStatus(config).then((usage) => broadcast({ type: 'usage', usage })).catch(() => {}); });
 
 // 연결된 PC(다른 ODDIN 허브)와 공유 기억(~/.ai-shared) 동기화 — 집·회사 PC 두 대를 한 대시보드로 (docs/peers.md)
 const peers = new Peers({ version: readJson(path.join(ROOT, 'package.json'), {}).version || '', commit: () => runningCommit(ROOT) });
@@ -608,7 +613,7 @@ const server = http.createServer(async (req, res) => {
     // 파일 열기·보기 범위: 허브가 아는 폴더만(기본) / 모든 폴더
     if (p === '/api/file-access' && req.method === 'GET') return json(res, fileAccess.read());
     if (p === '/api/file-access' && req.method === 'POST') { const v = fileAccess.save({ allowAll: (await readBody(req)).allowAll === true }); broadcast({ type: 'file-access', ...v }); return json(res, v); }
-    if (p === '/api/usage') return json(res, await usageStatus(config, { force: url.searchParams.has('force') }));
+    if (p === '/api/usage') return json(res, await usageStatus(config, { force: url.searchParams.has('force'), live: CODEX_LIVE, fresh: url.searchParams.has('force') })); // force = 사용자가 누른 새로고침(Codex 실시간 조회도 기다림)
     if (p === '/api/projects') return json(res, projectsList());
     if (p === '/api/catalog') { const c = catalog(config.hubDir); return json(res, { commands: c.commands.map(({ body, file, ...x }) => x), agents: c.agents.map(({ body, file, ...x }) => x), skills: c.skills.map(({ file, ...x }) => x) }); }
     if (p === '/api/open' && req.method === 'POST') {
