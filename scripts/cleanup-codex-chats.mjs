@@ -47,11 +47,12 @@ export async function cleanup({ apply = false } = {}) {
     if (apply) {
       // 삭제 전에 대상 ID만 기록한다. 다른 대화에는 손대지 않는다.
       const dir = path.join(process.env.HUB_DATA_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data'), 'codex-chat-cleanup');
+      const jobsFile = path.join(dir, '../jobs.json'), jobsKnown = fs.existsSync(jobsFile);
       let jobs = [];
-      try { jobs = JSON.parse(fs.readFileSync(path.join(dir, '../jobs.json'), 'utf8')); }
+      try { jobs = JSON.parse(fs.readFileSync(jobsFile, 'utf8')); }
       catch (e) { if (e.code !== 'ENOENT') throw e; }
       const busy = new Set();
-      for (const j of jobs) if (['planning', 'running', 'reporting'].includes(j.status)) {
+      for (const j of jobs) if (['planning', 'running', 'reporting'].includes(j.status) || j.curation?.status === 'running') {
         for (const t of j.tasks || []) if (t.status === 'running' && t.sessionId) busy.add(t.sessionId);
         for (const phase of Object.values(j.phaseRuns || {})) if (phase.cliSessionId) busy.add(phase.cliSessionId);
       }
@@ -59,7 +60,8 @@ export async function cleanup({ apply = false } = {}) {
       const file = path.join(dir, new Date().toISOString().replace(/[:.]/g, '-') + '.json');
       fs.writeFileSync(file, JSON.stringify({ found, deleted, errors }, null, 2));
       for (const t of found) {
-        if (t.status === 'active' || busy.has(t.id)) { errors.push({ id: t.id, error: '실행 중이므로 이번 정리에서 제외' }); continue; }
+        // CLI 종료 뒤에도 Codex에 active 표시가 남을 수 있어 허브의 실제 실행 기록을 우선한다.
+        if (busy.has(t.id) || (!jobsKnown && t.status === 'active')) { errors.push({ id: t.id, error: '실행 중이므로 이번 정리에서 제외' }); continue; }
         try { await rpc('thread/delete', { threadId: t.id }); deleted.push(t.id); }
         catch (e) { errors.push({ id: t.id, error: e.message }); }
         if ((deleted.length + errors.length) % 100 === 0) {
