@@ -23,7 +23,7 @@ test('시작 직후 일시적 잠금 오류는 한 번 다시 시작해서 성�
   assert.ok(events.some((e) => /일시적인 잠금 오류/.test(e.text || '')));
 });
 
-test('실행 도중 모델 용량 초과로 끊기면 같은 대화를 이어서 다시 시도해 성공', async () => {
+test('임시 exec가 용량 초과로 끊기면 원문을 다시 전달해 재시도', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-hub-capacity-'));
   process.env.CAPACITY_COUNTER = path.join(dir, 'count.txt');
   process.env.CAPACITY_ARGS = path.join(dir, 'args.jsonl');
@@ -40,12 +40,12 @@ test('실행 도중 모델 용량 초과로 끊기면 같은 대화를 이어서
   assert.equal(fs.readFileSync(process.env.CAPACITY_COUNTER, 'utf8'), '2');
   assert.ok(events.some((e) => /붐벼/.test(e.text || '')), '재시도 안내 이벤트가 있어야 한다');
   const lines = fs.readFileSync(process.env.CAPACITY_ARGS, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  // 두 번째 실행은 새 대화가 아니라 같은 대화(cap-thread) 이어 쓰기여야 하고, 이어서 진행하라는 안내를 받는다.
-  assert.ok(Array.isArray(lines[2]) && lines[2].includes('resume') && lines[2].includes('cap-thread'), JSON.stringify(lines[2]));
-  assert.match(lines[3].prompt, /붐벼 직전 턴이 중간에 끊겼습니다/);
+  assert.ok(lines[2].includes('--ephemeral') && !lines[2].includes('resume'), JSON.stringify(lines[2]));
+  assert.match(lines[3].prompt, /영상을 다시 만들어 주세요/);
+  assert.match(lines[3].prompt, /모델 서버 혼잡으로 중간에 끊겨/);
 });
 
-test('대화 재개도 초기화 잠금 오류를 재시도하며 기존 스레드를 보존한다', async () => {
+test('임시 Codex는 과거 스레드를 재개하지 않고 초기화 잠금 오류를 재시도', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-hub-resume-flaky-'));
   const fixture = fileURLToPath(new URL('./fixtures/intercept-cli.mjs', import.meta.url));
   const cap = path.join(dir, 'cap.jsonl'), marker = path.join(dir, 'once');
@@ -56,11 +56,11 @@ test('대화 재개도 초기화 잠금 오류를 재시도하며 기존 스레�
   });
   try {
     const res = await h.promise;
-    assert.equal(res.ok, true, JSON.stringify(res)); assert.equal(res.sessionId, 'existing-thread');
+    assert.equal(res.ok, true, JSON.stringify(res)); assert.notEqual(res.sessionId, 'existing-thread');
     assert(fs.existsSync(path.join(dir, 'run', 'attempt-2')));
     const calls = fs.readFileSync(cap, 'utf8').trim().split('\n').map(JSON.parse).filter((e) => e.kind === 'input');
-    assert.equal(calls.filter((e) => e.message.method === 'thread/start').length, 0);
-    assert.equal(calls.find((e) => e.message.method === 'thread/resume').message.params.threadId, 'existing-thread');
+    assert.equal(calls.filter((e) => e.message.method === 'thread/resume').length, 0);
+    assert.equal(calls.find((e) => e.message.method === 'thread/start').message.params.ephemeral, true);
   } finally { h.close?.(); }
 });
 

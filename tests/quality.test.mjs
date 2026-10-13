@@ -108,22 +108,22 @@ test('대화 이어 쓰기 후보: 직전 완료 요청의 같은 AI·같은 폴
   const s = { id: 's1', cwd: defaultCwd, jobIds: [] }; m.sessions.set('s1', s);
   const now = Date.now();
   const add = (id, createdAt, extra) => { const j = { id, sessionId: 's1', cwd: project, status: 'done', createdAt, finishedAt: new Date(now - 60_000).toISOString(), tasks: [], ...extra }; m.jobs.set(id, j); s.jobIds.push(id); return j; };
-  add('j1', '2026-10-04T00:00:00.000Z', { tasks: [{ id: 't1', assignee: 'codex', status: 'done', sessionId: 'cx-old', finishedAt: '1' }] });
+  add('j1', '2026-10-04T00:00:00.000Z', { tasks: [{ id: 't1', assignee: 'claude', status: 'done', sessionId: 'cx-old', finishedAt: '1' }] });
   add('j2', '2026-10-04T01:00:00.000Z', { tasks: [
-    { id: 't1', assignee: 'codex', status: 'done', sessionId: 'cx-a', finishedAt: '2026-10-04T01:01:00Z' },
-    { id: 't2', assignee: 'codex', status: 'done', sessionId: 'cx-b', finishedAt: '2026-10-04T01:05:00Z' },
-    { id: 't3', assignee: 'claude', status: 'failed', sessionId: 'cl-x', finishedAt: '2026-10-04T01:06:00Z' },
+    { id: 't1', assignee: 'claude', status: 'done', sessionId: 'cx-a', finishedAt: '2026-10-04T01:01:00Z' },
+    { id: 't2', assignee: 'claude', status: 'done', sessionId: 'cx-b', finishedAt: '2026-10-04T01:05:00Z' },
+    { id: 't3', assignee: 'codex', status: 'failed', sessionId: 'cl-x', finishedAt: '2026-10-04T01:06:00Z' },
   ] });
   const job = { id: 'j3', sessionId: 's1', cwd: project, createdAt: '2026-10-04T02:00:00.000Z' };
-  assert.deepEqual(m.continuation(job, { assignee: 'codex' }), { jobId: 'j2', taskId: 't2', sessionId: 'cx-b' });
-  assert.equal(m.continuation(job, { assignee: 'codex' }), null, '같은 AI·역할은 한 작업만');
-  assert.equal(m.continuation(job, { assignee: 'claude' }), null, '실패한 작업은 이어 쓰지 않음');
-  assert.equal(m.continuation({ ...job, id: 'j4', cwd: other }, { assignee: 'codex' }), null, '다른 폴더');
+  assert.deepEqual(m.continuation(job, { assignee: 'claude' }), { jobId: 'j2', taskId: 't2', sessionId: 'cx-b' });
+  assert.equal(m.continuation(job, { assignee: 'claude' }), null, '같은 AI·역할은 한 작업만');
+  assert.equal(m.continuation(job, { assignee: 'codex' }), null, '실패한 작업은 이어 쓰지 않음');
+  assert.equal(m.continuation({ ...job, id: 'j4', cwd: other }, { assignee: 'claude' }), null, '다른 폴더');
   m.jobs.get('j2').finishedAt = new Date(now - 30 * 3_600_000).toISOString();
-  assert.equal(m.continuation({ ...job, id: 'j5' }, { assignee: 'codex' }), null, '24시간 지남');
+  assert.equal(m.continuation({ ...job, id: 'j5' }, { assignee: 'claude' }), null, '24시간 지남');
   m.jobs.get('j2').finishedAt = new Date(now).toISOString();
   m.config.continuity = { resume: false };
-  assert.equal(m.continuation({ ...job, id: 'j6' }, { assignee: 'codex' }), null, '끔');
+  assert.equal(m.continuation({ ...job, id: 'j6' }, { assignee: 'claude' }), null, '끔');
 });
 
 test('세션 맥락 다이어트: 최근 N건·건당 글자 제한, 노트만', () => {
@@ -145,22 +145,22 @@ test('세션 맥락 다이어트: 최근 N건·건당 글자 제한, 노트만',
 test('구현 후속 요청은 화면 검수·디자인 기획 대신 구현 대화를 이어 쓴다', () => {
   const m = fakeManager(config()), now = new Date().toISOString();
   const prev = { id: 'p', cwd: project, createdAt: '2026-01-01T00:00:00Z', finishedAt: now, status: 'done', tasks: [
-    { id: 'd', assignee: 'codex', status: 'done', sessionId: 'design-thread', designPlan: true, finishedAt: '1' },
-    { id: 'i', assignee: 'codex', status: 'done', sessionId: 'implementation-thread', finishedAt: '2' },
-    { id: 'v', assignee: 'codex', status: 'done', sessionId: 'review-thread', visualCheck: true, finishedAt: '3' },
+    { id: 'd', assignee: 'claude', status: 'done', sessionId: 'design-thread', designPlan: true, finishedAt: '1' },
+    { id: 'i', assignee: 'claude', status: 'done', sessionId: 'implementation-thread', finishedAt: '2' },
+    { id: 'v', assignee: 'claude', status: 'done', sessionId: 'review-thread', visualCheck: true, finishedAt: '3' },
   ] };
   m.jobs.set('p', prev); m.sessions.set('s', { id: 's', jobIds: ['p'] });
   const job = () => ({ id: 'next', sessionId: 's', cwd: project, createdAt: now });
   const next = job();
-  assert.equal(m.continuation(next, { assignee: 'codex', designPlan: true }).sessionId, 'design-thread');
-  assert.equal(m.continuation(next, { assignee: 'codex' }).sessionId, 'implementation-thread', '기획 대화를 이었다고 같은 AI의 구현을 막지 않음');
-  assert.equal(m.continuation(next, { assignee: 'codex', visualCheck: true }), null, '눈으로 확인은 늘 새 대화(지금 결과만 보면 된다)');
+  assert.equal(m.continuation(next, { assignee: 'claude', designPlan: true }).sessionId, 'design-thread');
+  assert.equal(m.continuation(next, { assignee: 'claude' }).sessionId, 'implementation-thread', '기획 대화를 이었다고 같은 AI의 구현을 막지 않음');
+  assert.equal(m.continuation(next, { assignee: 'claude', visualCheck: true }), null, '눈으로 확인은 늘 새 대화(지금 결과만 보면 된다)');
   m.config.continuity = { check: true };
-  assert.equal(m.continuation(next, { assignee: 'codex', visualCheck: true }).sessionId, 'review-thread', '설정으로 켜면 확인 대화도 잇는다');
+  assert.equal(m.continuation(next, { assignee: 'claude', visualCheck: true }).sessionId, 'review-thread', '설정으로 켜면 확인 대화도 잇는다');
   m.config.continuity = undefined;
-  assert.equal(m.continuation(next, { assignee: 'codex' }), null, '같은 CLI를 두 작업에 주지 않음');
+  assert.equal(m.continuation(next, { assignee: 'claude' }), null, '같은 CLI를 두 작업에 주지 않음');
   prev.tasks = prev.tasks.filter((t) => t.visualCheck);
-  assert.equal(m.continuation(job(), { assignee: 'codex' }), null, '다른 역할의 대화로 대신 잇지 않음');
+  assert.equal(m.continuation(job(), { assignee: 'claude' }), null, '다른 역할의 대화로 대신 잇지 않음');
 });
 
 test('계획 지시문: 기본 작업 1개·요청 원문 인용·비율 맞추려 쪼개지 않기, 작업 폴더 안내는 기본 폴더 세션에서만', () => {
@@ -257,12 +257,12 @@ test('대화 이어 쓰기: 직전 요청에 그 역할이 없으면 더 앞의 
   const s = { id: 's1', cwd: defaultCwd, jobIds: [] }; m.sessions.set('s1', s);
   const fin = new Date(Date.now() - 60_000).toISOString();
   const add = (id, createdAt, tasks) => { const j = { id, sessionId: 's1', cwd: project, status: 'done', createdAt, finishedAt: fin, tasks }; m.jobs.set(id, j); s.jobIds.push(id); };
-  add('j1', '2026-10-04T00:00:00.000Z', [{ id: 't1', assignee: 'claude', status: 'done', sessionId: 'cl-plan', designPlan: true, finishedAt: '1' }, { id: 't2', assignee: 'codex', status: 'done', sessionId: 'cx-review', agent: 'reviewer', finishedAt: '2' }]);
-  add('j2', '2026-10-04T01:00:00.000Z', [{ id: 't1', assignee: 'codex', status: 'done', sessionId: 'cx-work', finishedAt: '3' }]);
+  add('j1', '2026-10-04T00:00:00.000Z', [{ id: 't1', assignee: 'claude', status: 'done', sessionId: 'cl-plan', designPlan: true, finishedAt: '1' }, { id: 't2', assignee: 'claude', status: 'done', sessionId: 'cx-review', agent: 'reviewer', finishedAt: '2' }]);
+  add('j2', '2026-10-04T01:00:00.000Z', [{ id: 't1', assignee: 'claude', status: 'done', sessionId: 'cx-work', finishedAt: '3' }]);
   const job = { id: 'j3', sessionId: 's1', cwd: project, createdAt: '2026-10-04T02:00:00.000Z' };
   assert.deepEqual(m.continuation(job, { assignee: 'claude', designPlan: true }), { jobId: 'j1', taskId: 't1', sessionId: 'cl-plan' }, '직전 요청에 기획이 없으면 그 앞 요청의 기획 대화');
-  assert.deepEqual(m.continuation(job, { assignee: 'codex', agent: 'reviewer' }), { jobId: 'j1', taskId: 't2', sessionId: 'cx-review' }, '@리뷰어는 리뷰어 대화끼리');
-  assert.deepEqual(m.continuation(job, { assignee: 'codex' }), { jobId: 'j2', taskId: 't1', sessionId: 'cx-work' }, '일반 작업은 작업 대화');
+  assert.deepEqual(m.continuation(job, { assignee: 'claude', agent: 'reviewer' }), { jobId: 'j1', taskId: 't2', sessionId: 'cx-review' }, '@리뷰어는 리뷰어 대화끼리');
+  assert.deepEqual(m.continuation(job, { assignee: 'claude' }), { jobId: 'j2', taskId: 't1', sessionId: 'cx-work' }, '일반 작업은 작업 대화');
 });
 
 test('토큰 아끼기: 커진 대화는 잇지 않고, 목표 모드 라운드는 새 대화로 시작한다', async () => {
@@ -271,30 +271,30 @@ test('토큰 아끼기: 커진 대화는 잇지 않고, 목표 모드 라운드�
   assert.equal(contextTokens({ usage: { last: { totalTokens: 193134 }, total: { totalTokens: 68894929 } } }), 193134);
   assert.equal(contextTokens({ usage: { cache_read_input_tokens: 8964764, iterations: [{ input_tokens: 2, output_tokens: 1255, cache_read_input_tokens: 501691, cache_creation_input_tokens: 325 }] } }), 503273);
   assert.equal(contextTokens({}), 0); assert.equal(contextTokens({ usage: { input_tokens: 5 } }), 0, '모르면 0 — 한도를 걸지 않는다');
-  assert.equal(contextLimit({}, 'claude'), 150_000);
+  assert.equal(contextLimit({}, 'codex'), 150_000);
   assert.equal(contextLimit({ continuity: { maxContextTokens: { claude: 300_000, codex: 100_000 } } }, 'codex'), 100_000);
-  assert.equal(contextLimit({ continuity: { maxContextTokens: 0 } }, 'claude'), 0);
+  assert.equal(contextLimit({ continuity: { maxContextTokens: 0 } }, 'codex'), 0);
 
   const m = fakeManager(config()), now = new Date().toISOString();
   const big = { last: { totalTokens: 213_517 } }, small = { last: { totalTokens: 60_000 } };
-  const prev = { id: 'p', cwd: project, createdAt: '2026-01-01T00:00:00Z', finishedAt: now, status: 'done', tasks: [{ id: 't1', assignee: 'codex', status: 'done', sessionId: 'cx-big', finishedAt: '1', usage: big }] };
+  const prev = { id: 'p', cwd: project, createdAt: '2026-01-01T00:00:00Z', finishedAt: now, status: 'done', tasks: [{ id: 't1', assignee: 'claude', status: 'done', sessionId: 'cx-big', finishedAt: '1', usage: big }] };
   m.jobs.set('p', prev); m.sessions.set('s', { id: 's', jobIds: ['p'] });
   const job = (extra = {}) => ({ id: 'next', sessionId: 's', cwd: project, createdAt: now, ...extra });
-  const t = { assignee: 'codex' };
+  const t = { assignee: 'claude' };
   assert.equal(m.continuation(job(), t), null, '21만 토큰짜리 대화는 잇지 않는다');
   assert.match(t.reason, /대화가 커져서\(214천 토큰 > 150천\) 새 대화로/);
   prev.tasks[0].usage = small;
-  assert.equal(m.continuation(job(), { assignee: 'codex' }).sessionId, 'cx-big', '작은 대화는 그대로 잇는다');
+  assert.equal(m.continuation(job(), { assignee: 'claude' }).sessionId, 'cx-big', '작은 대화는 그대로 잇는다');
   prev.tasks[0].usage = big; m.config.continuity = { maxContextTokens: 0 };
-  assert.equal(m.continuation(job(), { assignee: 'codex' }).sessionId, 'cx-big', '한도 0 = 끔');
+  assert.equal(m.continuation(job(), { assignee: 'claude' }).sessionId, 'cx-big', '한도 0 = 끔');
   m.config.continuity = undefined; prev.tasks[0].usage = small;
   // 목표 모드: 2라운드부터는 새 대화(한 라운드가 수백 번 호출한다), 1라운드는 평소대로
-  const r2 = { assignee: 'codex' };
+  const r2 = { assignee: 'claude' };
   assert.equal(m.continuation(job({ goalRound: 2 }), r2), null);
   assert.match(r2.reason, /목표 모드 라운드는 새 대화/);
-  assert.equal(m.continuation(job({ goalRound: 1 }), { assignee: 'codex' }).sessionId, 'cx-big');
+  assert.equal(m.continuation(job({ goalRound: 1 }), { assignee: 'claude' }).sessionId, 'cx-big');
   m.config.goalMode = { freshRounds: false };
-  assert.equal(m.continuation(job({ goalRound: 4 }), { assignee: 'codex' }).sessionId, 'cx-big', '설정으로 끌 수 있다');
+  assert.equal(m.continuation(job({ goalRound: 4 }), { assignee: 'claude' }).sessionId, 'cx-big', '설정으로 끌 수 있다');
 });
 
 test('토큰 아끼기: 작은 손질(계획 check:self)에는 눈으로 확인 작업을 붙이지 않고 만든 작업자가 스스로 본다', () => {

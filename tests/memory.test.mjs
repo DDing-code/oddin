@@ -145,24 +145,26 @@ test('새 자동 작업·의존 작업 분배·본문 갱신·보고·세션 후
   const newHash = JSON.parse(fs.readFileSync(path.join(first.runDir, 't2/memory-context.json'))).selected.find((x) => x.file === f.probe).hash;
   assert.notEqual(oldHash, newHash);
   const next = await completed(manager, manager.create({ goal: 'probe 메모리 이어서', mode: 'codex', sessionId: first.sessionId }));
-  // 이어 쓰는 대화에는 그 대화에 이미 넣은 메모리(내용 그대로)를 다시 넣지 않는다
+  // 임시 Codex 호출은 새 대화이므로 기억 본문과 이전 결과를 다시 전달한다.
   const nextPrompt = fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8');
   const nextMemory = nextPrompt.match(/# 공유 메모리 요약\n([\s\S]*?)\n# 규칙/)?.[1];
-  assert.ok(nextMemory); assert.doesNotMatch(nextMemory, /PROBE_NEW/); assert.match(nextMemory, /이미 넣은 공유 메모리/);
-  assert.match(nextPrompt, /결과 요약: PROBE_NEW 확인/, '최종 결과는 공유 메모리 중복과 별도로 전달');
-  // 같은 CLI를 이어 쓰되, 마지막 요청의 최종 결과와 그 뒤의 수정 사항도 함께 전달한다.
+  assert.ok(nextMemory); assert.match(nextMemory, /PROBE_NEW/); assert.doesNotMatch(nextMemory, /이미 넣은 공유 메모리/);
+  assert.match(nextPrompt, /#### 결과\nPROBE_NEW 확인/, '최종 결과는 공유 메모리와 별도로 전달');
+  // 허브의 대화 맥락을 넘기며 삭제되거나 종료된 Codex 대화를 다시 열지 않는다.
   const nextTask = next.tasks[0];
-  assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /\[이어서\]/);
-  assert.equal(nextTask.continuedFrom?.jobId, first.id);
-  assert.equal(nextTask.continuedFrom.sessionId, first.tasks.find((t) => t.assignee === 'codex').sessionId);
+  assert.match(nextPrompt, /이전 명령/);
+  assert.equal(nextTask.continuedFrom, undefined);
   // 이어 쓰기를 끄면 예전처럼 이전 명령을 지시문에 붙인다
   manager.config.continuity = { resume: false };
   const third = await completed(manager, manager.create({ goal: 'probe 메모리 새로', mode: 'codex', sessionId: first.sessionId }));
   assert.match(fs.readFileSync(path.join(third.runDir, 't1/prompt.md'), 'utf8'), /이전 명령/);
   assert.equal(third.tasks[0].continuedFrom, undefined);
   delete manager.config.continuity;
+  nextTask.resumeSessionId = '정리된-과거-대화';
+  nextTask.continuedFrom = { jobId: first.id, taskId: 't2', sessionId: nextTask.resumeSessionId };
   write(f.probe, fact('probe', 'probe', 'PROBE_RETRY'));
   await completed(manager, manager.retryTask(next.id, 't1'));
+  assert.equal(nextTask.resumeSessionId, undefined); assert.equal(nextTask.continuedFrom, undefined);
   assert.match(fs.readFileSync(path.join(next.runDir, 't1/prompt.md'), 'utf8'), /PROBE_RETRY/);
   // 오래된 job의 재시도도 작업 중 바뀐 별칭을 재해석한다.
   write(path.join(f.hubDir, 'sync/config.json'), JSON.stringify({ memoryAliases: { [f.cwd]: 'new-project' } }));

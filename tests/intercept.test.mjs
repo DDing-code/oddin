@@ -48,6 +48,7 @@ test('두 네이티브 CLI: 현재 턴 전달·동일 세션·연속 지시·중
       assert.equal((await a).status, 'delivered'); assert.equal((await b).status, 'delivered');
       const r = await h.settle(); assert.equal(r.ok, true, r.error); assert.equal(r.sessionId, sid); assert.match(r.text, /DIRECTION_B/); assert.doesNotMatch(r.text, /^STALE_INTERRUPTED_RESULT$/);
       const rows = f.rows().filter((r) => r.kind === 'input');
+      if (tool === 'codex') assert.equal(rows.find((r) => r.message.method === 'thread/start').message.params.ephemeral, true);
       const ordered = rows.filter((r) => (r.message.type === 'user' || r.message.method === 'turn/steer') && /DIRECTION_[AB]/.test(JSON.stringify(r.message))).map((r) => JSON.stringify(r.message).match(/DIRECTION_[AB]/)[0]);
       assert.deepEqual(ordered, ['DIRECTION_A', 'DIRECTION_B']);
       assert.equal(rows.filter((r) => r.message.method === 'turn/steer').length, tool === 'codex' ? 2 : 0);
@@ -129,13 +130,14 @@ test('Claude init 누락과 잔여 큐: 수신 확인 없이 전달 성공으로
     finally { h.cancel(); h.close(); clearTimeout(f.manager._saveTimer); }
   }
 });
-test('legacy exec: 소유한 PID close 후 같은 thread 재개, cwd·모델·강도 유지', async () => {
+test('임시 exec: 소유한 PID close 후 원문·수정 지시·cwd·모델·강도 유지', async () => {
   const f = fixture(), h = worker(f, 'codex', 'SLOW ORIGINAL', { toolCfg: { ...f.config.tools.codex, transport: 'legacy' } });
   try { await until(() => h.getState().sessionId); const sid = h.getState().sessionId;
     const receipt = await h.intercept({ text: 'RESUME_DIRECTION', messageId: randomUUID() }); assert.equal(receipt.status, 'delivered'); assert.equal(receipt.mode, 'resume');
-    const r = await h.settle(); assert.equal(r.ok, true); assert.equal(r.sessionId, sid); assert.match(r.text, /RESUME_DIRECTION/);
-    const row = f.rows().find((x) => x.kind === 'legacy' && x.args.includes('resume'));
-    assert(row); assert(!row.args.includes('-C')); assert.equal(row.args.at(-2), sid); assert(row.args.includes('gpt-6.1-sol')); assert(row.args.includes('model_reasoning_effort=high'));
+    const r = await h.settle(); assert.equal(r.ok, true); assert.match(r.text, /RESUME_DIRECTION/);
+    const row = f.rows().filter((x) => x.kind === 'legacy').at(-1);
+    assert(row); assert(row.args.includes('--ephemeral')); assert(!row.args.includes('resume')); assert(row.args.includes('-C')); assert(row.args.includes('gpt-6.1-sol')); assert(row.args.includes('model_reasoning_effort=high'));
+    assert.match(row.prompt, /SLOW ORIGINAL/); assert.match(row.prompt, /RESUME_DIRECTION/);
   } finally { h.cancel(); h.close(); clearTimeout(f.manager._saveTimer); }
 });
 test('네이티브의 미지원 모델 오류도 고정 선택과 명시적 오류 종류를 유지', async () => {
@@ -232,7 +234,7 @@ test('전체 계획 실행의 보고 중 지시: 완료 작업 보존·같은 jo
   await until(() => j.activePhase === 'report' && f.manager.running.has(`${j.id}/phase:report`), 30000);
   const originalTasks = [...j.tasks]; f.manager.acceptIntercept(j.id, request(j, 'IMPLEMENT_CHANGE'));
   await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 30000);
-  assert.equal(j.status, 'done', j.error || JSON.stringify(j.tasks)); assert.equal(j.tasks.length, 3); assert.equal(j.tasks[0], originalTasks[0]); assert.match(j.tasks[2].resultText, /SUPPLEMENT_WORK/); assert.equal(j.tasks[2].sessionId, j.tasks[0].sessionId);
+  assert.equal(j.status, 'done', j.error || JSON.stringify(j.tasks)); assert.equal(j.tasks.length, 3); assert.equal(j.tasks[0], originalTasks[0]); assert.match(j.tasks[2].resultText, /SUPPLEMENT_WORK/); assert.notEqual(j.tasks[2].sessionId, j.tasks[0].sessionId);
   clearTimeout(f.manager._saveTimer);
 });
 test('계획·배정 단계에도 지시 전달, 단계 완료 채택 전에 수신 확인', async () => {
@@ -250,7 +252,7 @@ test('마지막 워커 완료 경계에서 먼저 접수하면 같은 job에 보
   const onEvent = (e) => { if (e.type !== 'job') return; const j = f.manager.get(e.job.id); if (j?.goal === 'COMPLETION_BOUNDARY' && j.status === 'running' && j.tasks.length === 1 && j.tasks[0].status === 'done' && !sent) { sent = true; f.manager.acceptIntercept(j.id, request(j, 'BOUNDARY_CHANGE')); } };
   f.manager.on('event', onEvent); const first = f.manager.create({ goal: 'COMPLETION_BOUNDARY', mode: 'codex' }), j = f.manager.get(first.id);
   await until(() => !['queued', 'planning', 'running', 'reporting'].includes(j.status), 30000);
-  assert(sent); assert.equal(j.status, 'done', j.error); assert.equal(j.tasks.length, 2); assert.equal(j.tasks[1].sessionId, j.tasks[0].sessionId); f.manager.off('event', onEvent); clearTimeout(f.manager._saveTimer);
+  assert(sent); assert.equal(j.status, 'done', j.error); assert.equal(j.tasks.length, 2); assert.notEqual(j.tasks[1].sessionId, j.tasks[0].sessionId); f.manager.off('event', onEvent); clearTimeout(f.manager._saveTimer);
 });
 test('목표 판정 중 전달·다음 라운드 상속·라운드 수 유지', async () => {
   const f = fixture(); invalidateToolStatus();

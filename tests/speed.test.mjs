@@ -147,10 +147,11 @@ test('빠른 처리 통합: 질문은 짧은 새 대화, 작은 화면 수정은
     assert.equal(waits, 0); assert.equal(curations, 0);
     const edit = await run('버튼 문구 오타만 수정해줘');
     assert.equal(edit.fast, true); assert.equal(edit.tasks.length, 1, '별도 디자인 기획·검수 없음');
-    assert.equal(edit.tasks[0].continuedFrom?.sessionId, 'implementation-thread', '질문용 대화가 기존 구현 대화를 대체하지 않음');
+    assert.equal(edit.tasks[0].continuedFrom, undefined, 'Codex는 임시 실행이라 기존 대화를 다시 열지 않음');
     assert.equal(edit.tasks[0].effort, 'high');
     assert.equal(edit.phaseRuns.plan, undefined); assert.equal(edit.phaseRuns.report, undefined);
     assert.match(fs.readFileSync(path.join(edit.runDir, 't1/prompt.md'), 'utf8'), /실제 화면도 확인/);
+    assert.match(fs.readFileSync(path.join(edit.runDir, 't1/prompt.md'), 'utf8'), /기존 색상은 유지/);
     assert.equal(waits, 1); assert.equal(curations, 1); assert.equal(checkpoints, 1, '읽기 전용 질문은 생략하고 작은 수정의 변경 복원 기록은 유지');
     const calls = fs.readFileSync(capture, 'utf8').trim().split('\n').map((x) => JSON.parse(x));
     const starts = calls.map((x) => x.message).filter((x) => x?.method === 'thread/start');
