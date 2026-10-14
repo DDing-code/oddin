@@ -8,7 +8,7 @@ import { codexCommand, childEnv, guardChild, killChildTree, lineSplitter } from 
 
 export function isOddinChat(thread) {
   const first = thread.preview || thread.first_user_message || thread.title || '';
-  return thread.originator === 'ai-hub' || /^(?:\[AI Hub (?:작업|계획|보고|안내)\]|당신은 (?:로컬 AI 작업 허브의 플래너|AI 작업 허브(?:\(ODDIN\))?의 (?:기억 정리|보고) 담당|작업마다.*담당))/.test(first);
+  return thread.originator === 'ai-hub' || /^(?:\[AI Hub (?:작업|계획|보고|안내)\]|당신은 (?:로컬 AI 작업 허브의 플래너|AI 작업 허브(?:\(ODDIN\))?의 (?:기억 정리|보고) 담당|목표 달성 판정 담당|작업마다.*담당))/.test(first);
 }
 
 export async function cleanup({ apply = false } = {}) {

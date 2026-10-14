@@ -9,9 +9,10 @@ test('채팅 정리: ODDIN 내부 지시문만 선택하고 사용자 대화는 
     '당신은 로컬 AI 작업 허브의 플래너입니다. 사용자의 목표를 처리할 계획을 세우세요.',
     '당신은 AI 작업 허브의 보고 담당입니다.',
     '당신은 AI 작업 허브(ODDIN)의 기억 정리 담당입니다.',
+    '당신은 목표 달성 판정 담당입니다. 작업은 하지 말고, 아래 기록만 보고 판정하세요.',
     '당신은 작업마다 AI 담당을 정합니다.',
   ]) assert.equal(isOddinChat({ preview }), true, preview);
-  for (const preview of ['오딘 채팅 생성 막고 정리', '오딘 버그 고쳐줘', '내 프로젝트 구현', '이 문서에는 [AI Hub 작업] 예시가 있다']) {
+  for (const preview of ['오딘 채팅 생성 막고 정리', '오딘 버그 고쳐줘', '내 프로젝트 구현', '이 문서에는 [AI Hub 작업] 예시가 있다', '목표 달성 판정 채팅이 남아있어', '이 문서에는 당신은 목표 달성 판정 담당이라는 예시가 있다']) {
     assert.equal(isOddinChat({ preview }), false, preview);
   }
   assert.equal(isOddinChat({ originator: 'ai-hub', title: '이름을 바꾼 내부 채팅' }), true);
