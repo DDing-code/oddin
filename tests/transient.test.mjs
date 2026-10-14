@@ -45,6 +45,27 @@ test('임시 exec가 용량 초과로 끊기면 원문을 다시 전달해 재�
   assert.match(lines[3].prompt, /모델 서버 혼잡으로 중간에 끊겨/);
 });
 
+test('429 요청 많음(잠깐 몰린 거절)도 기다렸다가 다시 시도한다', async () => {
+  // 2026-10-14 회사 PC: 플래너가 "exceeded retry limit, last status: 429 Too Many Requests"로 6초 만에 실패(그때 Codex 주간 한도 42%)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-hub-429-'));
+  process.env.CAPACITY_COUNTER = path.join(dir, 'count.txt');
+  process.env.CAPACITY_ARGS = path.join(dir, 'args.jsonl');
+  process.env.CAPACITY_MESSAGE = 'exceeded retry limit, last status: 429 Too Many Requests';
+  try {
+    const script = fileURLToPath(new URL('./fixtures/capacity-codex.mjs', import.meta.url));
+    const events = [];
+    const { promise } = runWorker({
+      tool: 'codex', prompt: '계획을 세워 주세요', cwd: dir, runDir: path.join(dir, 'run'),
+      toolCfg: { command: `node "${script}"`, transport: 'legacy' }, settings: {}, timeoutMs: 60_000, capacityWaitsMs: [30],
+      onEvent: (ev) => events.push(ev),
+    });
+    const res = await promise;
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(fs.readFileSync(process.env.CAPACITY_COUNTER, 'utf8'), '2', '한 번 다시 시도');
+    assert.ok(events.some((e) => /429 Too Many Requests/.test(e.text || '') && /붐벼/.test(e.text || '')));
+  } finally { delete process.env.CAPACITY_MESSAGE; }
+});
+
 test('임시 Codex는 과거 스레드를 재개하지 않고 초기화 잠금 오류를 재시도', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-hub-resume-flaky-'));
   const fixture = fileURLToPath(new URL('./fixtures/intercept-cli.mjs', import.meta.url));

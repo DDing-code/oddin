@@ -53,6 +53,12 @@ function complete() {
     }, 350);
   }
   else if (tool === 'claude') emit({ type: 'result', result: text, session_id: sid, is_error: false });
+  // PLAN_429: Codex 계획 단계가 늘 "429 요청 많음"으로 실패한다(다시 시도해도) — 계획 담당 바꾸기 시험
+  else if (stage === 'plan' && original.includes('PLAN_429')) {
+    const error = { message: 'exceeded retry limit, last status: 429 Too Many Requests' };
+    emit({ method: 'error', params: { threadId: sid, error } });
+    emit({ method: 'turn/completed', params: { threadId: sid, turn: { id: tid, status: 'failed', error } } });
+  }
   // CAPACITY_ONCE: 첫 턴만 모델 서버 혼잡으로 실패한다(같은 스레드의 다음 턴은 정상) — 실행 도중 혼잡 오류 재시도 시험
   else if (original.includes('CAPACITY_ONCE') && serial === 1) {
     const error = { message: 'Selected model is at capacity. Please try a different model.' };

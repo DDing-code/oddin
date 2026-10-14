@@ -13,7 +13,7 @@ process.stdin.on('end', () => {
   out({ type: 'thread.started', thread_id: 'cap-thread' });
   if (n === 1) {
     out({ type: 'item.completed', item: { id: 'i0', type: 'agent_message', text: '다시 만드는 중' } });
-    out({ type: 'turn.failed', error: { message: 'Selected model is at capacity. Please try a different model.' } });
+    out({ type: 'turn.failed', error: { message: process.env.CAPACITY_MESSAGE || 'Selected model is at capacity. Please try a different model.' } });
     process.exit(1);
   }
   out({ type: 'item.completed', item: { id: 'i1', type: 'agent_message', text: '이어서 완료' } });

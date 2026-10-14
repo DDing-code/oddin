@@ -167,7 +167,7 @@ Claude 데스크탑에 있던 기능을 허브에도 넣었습니다. 자세한 
 
 ## 설정 (`config.json`)
 - `port`, `maxParallel`(동시 실행 수), `taskTimeoutMinutes`
-- `planner`: `auto`(Codex 우선) | `claude` | `codex`
+- `planner`: `auto`(Claude 우선 — 계획·보고는 Claude, 실제 작업은 계획에서 잘하는 쪽. Claude 를 못 쓰거나 한도 95% 넘으면 Codex) | `claude` | `codex`
 - `defaults.<claude|codex>.model/effort`: 화면에서 고르기 전 기본값 (`auto` = 알잘딱 자동, 빈 값 = 각 CLI 평소 설정)
 - `autoFloor`: 자동 선택의 하한. 기본 Claude `opus`·`high`, Codex `gpt-6.1-sol`·`high`. 자동은 이보다 낮은 모델·강도를 고르지 않는다.
 - Codex CLI는 Codex 앱이 받아 둔 최신판(`~/.codex/packages/app-server-daemon/releases/<버전>/bin/codex.exe`)을 자동으로 쓴다. 오래된 CLI는 `gpt-6.1-sol`을 거부한다.

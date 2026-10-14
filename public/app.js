@@ -548,7 +548,7 @@ const consultPref = () => (CONSULT_PILL[S.prefs.consult] ? S.prefs.consult : 'of
 function openModePicker(anchor) {
   const items = Object.entries(MODES).map(([k, v]) => ({ label: v.label, desc: v.desc, checked: S.prefs.mode === k, run: () => { S.prefs.mode = k; savePrefs(); renderBarPills(); closePop(); } }));
   items.push({ sep: true }, { header: '자동 분배일 때 계획 담당' });
-  for (const [p, d] of [['auto', 'Codex 우선, 안 되면 Claude'], ['codex', 'Codex가 계획·보고'], ['claude', 'Claude가 계획·보고']]) items.push({ label: p === 'auto' ? '자동' : p === 'codex' ? 'Codex' : 'Claude', desc: d, checked: S.prefs.planner === p, run: () => { S.prefs.planner = p; savePrefs(); openModePicker(anchor); } });
+  for (const [p, d] of [['auto', 'Claude 우선, 안 되면 Codex'], ['codex', 'Codex가 계획·보고'], ['claude', 'Claude가 계획·보고']]) items.push({ label: p === 'auto' ? '자동' : p === 'codex' ? 'Codex' : 'Claude', desc: d, checked: S.prefs.planner === p, run: () => { S.prefs.planner = p; savePrefs(); openModePicker(anchor); } });
   // 작업 방식: 품질 우선(기본) = 평소 단독으로 쓸 때의 추론 강도, 속도 우선 = 근거 없으면 high로 낮춤
   items.push({ sep: true }, { header: '작업 방식' });
   for (const [p, l, d] of [['quality', '품질 우선 (기본)', '평소 단독으로 쓸 때와 같은 추론 강도 · 느려도 꼼꼼하게'], ['speed', '속도 우선', '근거가 없으면 강도를 high로 낮춤 · 빠르지만 얕게']]) items.push({ label: l, desc: d, checked: (S.prefs.pace || 'quality') === p, run: () => { S.prefs.pace = p; savePrefs(); renderBarPills(); closePop(); } });
