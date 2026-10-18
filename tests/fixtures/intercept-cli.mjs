@@ -99,6 +99,13 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
     } else if (x.type === 'user') {
       const prompt = x.message.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n');
       if (!original && !prompt.includes('NO_INIT')) emit({ type: 'system', subtype: 'init', session_id: args.includes('--resume') ? value('--resume') : sid, model: 'opus' });
+      // LATE_ECHO·NEVER_ECHO: 수정 지시(두 번째 메시지부터)를 받으면 앞선 턴의 결과를 먼저 하나 내보내고, 받은 메시지는 0.8초 뒤에야 되돌린다(NEVER 는 끝내 안 되돌림)
+      // — 실제 Claude: 백그라운드 작업 알림 턴을 먼저 처리하고, 받은 메시지의 되돌림은 생각을 시작한 뒤에 온다(2026-10-18)
+      if (original && /LATE_ECHO|NEVER_ECHO/.test(original)) {
+        emit({ type: 'result', result: 'STALE_OTHER_TURN', session_id: sid, is_error: false });
+        if (original.includes('LATE_ECHO')) setTimeout(() => { emit({ ...x, session_id: sid }); begin(prompt); }, 800);
+        continue;
+      }
       if (!prompt.includes('ACK_LOSS')) emit({ ...x, session_id: sid });
       begin(prompt);
     }

@@ -130,6 +130,77 @@ test('Claude init 누락과 잔여 큐: 수신 확인 없이 전달 성공으로
     finally { h.cancel(); h.close(); clearTimeout(f.manager._saveTimer); }
   }
 });
+// 2026-10-18 목표 3라운드: 수정 지시를 넣자 Claude 가 백그라운드 작업 알림 턴을 먼저 처리했고, 새 지시를 꺼내기 전에 나온 그 결과를
+// "새 지시까지 끝남"으로 읽어 아직 일하던 Claude 를 껐다. 받았다는 표시(되돌림)도 10초를 넘겨 작업이 실패로 바뀌었다.
+test('Claude 수정 지시: 새 지시를 꺼내기 전에 나온 앞선 턴 결과로 끝내지 않고, 늦게 온 확인은 전달됨으로 알린다', async () => {
+  const f = fixture(), events = [], id = randomUUID();
+  const h = worker(f, 'claude', 'SLOW LATE_ECHO 원래 일', { ackTimeoutMs: 300, onEvent: (e) => events.push(e) });
+  try {
+    await until(() => h.getState().ready);
+    const receipt = await h.intercept({ text: 'NEW_DIRECTION', messageId: id });
+    assert.equal(receipt.status, 'uncertain', '확인이 기다림보다 늦게 온다');
+    const r = await h.settle();
+    assert.equal(r.ok, true, r.error); assert.match(r.text, /NEW_DIRECTION/); assert.doesNotMatch(r.text, /STALE_OTHER_TURN/);
+    assert.ok(events.some((e) => e.kind === 'intercept' && e.mode === 'late' && e.messageId === id), '늦게 온 확인을 알린다');
+  } finally { h.cancel(); h.close(); clearTimeout(f.manager._saveTimer); }
+});
+test('Claude 수정 지시를 끝내 꺼내지 않고 조용해지면 잠시 뒤 앞선 결과로 마친다(무한 대기 없음)', async () => {
+  const f = fixture(), events = [];
+  const h = worker(f, 'claude', 'SLOW NEVER_ECHO 원래 일', { ackTimeoutMs: 300, echoGraceMs: 400, onEvent: (e) => events.push(e) });
+  try {
+    await until(() => h.getState().ready);
+    assert.equal((await h.intercept({ text: 'LOST_DIRECTION', messageId: randomUUID() })).status, 'uncertain');
+    const r = await h.settle();
+    assert.equal(r.ok, true, r.error); assert.match(r.text, /STALE_OTHER_TURN/);
+    assert.ok(events.some((e) => e.kind === 'stderr' && /꺼내지 않은 채 조용해져서/.test(e.text || '')));
+    assert.ok(!events.some((e) => e.kind === 'intercept' && e.mode === 'late'));
+  } finally { h.cancel(); h.close(); clearTimeout(f.manager._saveTimer); }
+});
+test('수신 확인이 늦어도: 정상으로 끝난 실행은 처음 지시문의 수정 지시를 받은 것으로, 도중 지시는 실패 대신 알림으로', async () => {
+  const now = new Date().toISOString();
+  const instruction = (seq) => ({ id: `i-${seq}`, clientRequestId: `c-${seq}`, seq, revision: seq, text: `지시 ${seq}`, attachments: [], status: 'accepted', acceptedAt: now, updatedAt: now, deliveries: [], error: null });
+  // ① 목표 판정처럼 처음 지시문에 지시가 들어간 실행: 되돌림이 안 와도(ACK_LOSS) 답을 냈으면 받은 것
+  {
+    const f = fixture(), job = seeded(f); job.instructionRevision = 1; job.intercepts = [instruction(1)];
+    const h = worker(f, 'claude', 'ACK_LOSS 판정해 주세요', { ackTimeoutMs: 300 });
+    try {
+      const res = await f.manager.trackWorker(job, h, 'goal-check');
+      assert.equal(res.ok, true, res.error);
+      const d = job.intercepts[0].deliveries.find((x) => x.key === 'phase:goal-check');
+      assert.equal(d.status, 'delivered', JSON.stringify(d)); assert.equal(d.confirmedBy, 'result');
+      assert.deepEqual(job.notes || [], []);
+    } finally { h.cancel(); clearTimeout(f.manager._saveTimer); }
+  }
+  // ② 도중에 보낸 지시를 끝내 확인하지 못함: 결과는 그대로(실패로 바꾸지 않음), 알림만
+  {
+    const f = fixture(), job = seeded(f); job.notes = [];
+    const h = worker(f, 'claude', 'SLOW NEVER_ECHO 보고', { ackTimeoutMs: 300, echoGraceMs: 400 });
+    try {
+      const run = f.manager.trackWorker(job, h, 'report');
+      await until(() => h.getState().ready);
+      f.manager.acceptIntercept(job.id, request(job, '방향을 바꿔'));
+      const res = await run;
+      assert.equal(res.ok, true, res.error);
+      assert.equal(job.intercepts[0].deliveries.find((x) => x.key === 'phase:report').status, 'uncertain');
+      assert.match(job.notes.join('\n'), /수정 지시 #1를 보고 단계가 받았는지 확인하지 못했어요/);
+    } finally { h.cancel(); clearTimeout(f.manager._saveTimer); }
+  }
+  // ③ 늦게 온 확인(LATE_ECHO)은 작업 기록을 거쳐 전달됨으로 바뀐다
+  {
+    const f = fixture(), job = seeded(f); job.notes = [];
+    const h = worker(f, 'claude', 'SLOW LATE_ECHO 보고', { ackTimeoutMs: 300, onEvent: (ev) => f.manager.log(job, null, { ...ev, phase: 'report' }) });
+    try {
+      const run = f.manager.trackWorker(job, h, 'report');
+      await until(() => h.getState().ready);
+      f.manager.acceptIntercept(job.id, request(job, 'LATE_MARKER'));
+      const res = await run;
+      assert.equal(res.ok, true, res.error); assert.match(res.text, /LATE_MARKER/);
+      const d = job.intercepts[0].deliveries.find((x) => x.key === 'phase:report');
+      assert.equal(d.status, 'delivered', JSON.stringify(d)); assert.equal(d.confirmedBy, 'late');
+      assert.deepEqual(job.notes, []);
+    } finally { h.cancel(); clearTimeout(f.manager._saveTimer); }
+  }
+});
 test('임시 exec: 소유한 PID close 후 원문·수정 지시·cwd·모델·강도 유지', async () => {
   const f = fixture(), h = worker(f, 'codex', 'SLOW ORIGINAL', { toolCfg: { ...f.config.tools.codex, transport: 'legacy' } });
   try { await until(() => h.getState().sessionId); const sid = h.getState().sessionId;
