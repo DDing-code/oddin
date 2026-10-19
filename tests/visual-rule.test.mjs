@@ -142,7 +142,7 @@ test('눈으로 확인 모델: Astra(한도 80%여도), 사용자가 고른 모�
   const run = (settings, u = usage()) => { const t = { id: 't1v', title: '눈으로 확인: 썸네일', prompt: '확인', assignee: 'codex', visualCheck: true }; const job = { mode: 'auto', settings, tasks: [t], input: '' }; m.applyChoice(job, t, { reason: '눈으로 확인' }, u); return t; };
   const a = run(AUTO());
   assert.deepEqual([a.settings.model, a.settings.effort], ['gpt-6-astra', 'high'], '확인 작업의 자동 강도는 high 까지(2026-10-12 토큰 아끼기)');
-  assert.match(a.reason, /눈으로 확인 규칙: gpt-6-astra/); assert.match(a.reason, /눈으로 확인은 high까지/);
+  assert.match(a.reason, /눈으로 확인 규칙: gpt-6-astra/);
   assert.equal(run(AUTO(), usage(80)).settings.model, 'gpt-6-astra');
   assert.equal(run({ claude: { model: 'auto', effort: 'auto' }, codex: { model: 'gpt-6.1-sol', effort: 'high' } }).settings.model, 'gpt-6.1-sol');
   const text = catalogText(SPLIT_CHECK, {});
@@ -185,5 +185,6 @@ test('디자인 진행 방식 모델·강도: 담당 모델은 유지하고 품�
   const pick = (task, u = fable(40)) => { const job = { mode: 'auto', settings: { ...AUTO(), pace: 'quality' }, tasks: [task], input: '' }; m.applyChoice(job, task, { model: task.assignee === 'codex' ? 'gpt-6.1-sol' : 'opus', effort: 'high' }, u); return task.settings; };
   assert.equal(pick({ id: 't1', title: '시안', prompt: '시안', assignee: 'claude', designMake: true, designTarget: { tool: 'claude', model: 'fable', switched: false } }).model, 'fable');
   assert.equal(pick({ id: 't1', title: '시안', prompt: '시안', assignee: 'codex', designMake: true, designTarget: { tool: 'codex', model: 'gpt-6-astra', switched: true } }, fable(84)).model, 'gpt-6-astra');
-  assert.equal(pick({ id: 't2', title: '설정 화면 UI 구현', prompt: '구현', assignee: 'codex', designImpl: true }).effort, 'xhigh');
+  assert.equal(pick({ id: 't2', title: '설정 화면 UI 구현', prompt: '구현', assignee: 'codex', designImpl: true }).effort, 'high', '명세를 받아 구현하는 쪽은 high(2026-10-19 속도 — 평소 작업은 계획이 고른 강도)');
+  assert.equal(pick({ id: 't1', title: '시안', prompt: '시안', assignee: 'codex', designMake: true, designTarget: { tool: 'codex', model: 'gpt-6-astra', switched: true } }, fable(84)).effort, 'xhigh', '시안 만들기는 평소 단독 강도까지');
 });

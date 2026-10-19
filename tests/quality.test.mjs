@@ -37,18 +37,24 @@ test('평소 강도: Codex 는 config.toml 의 xhigh 까지 올림, 한도 90%�
   assert.deepEqual(raiseToStandalone({}, 'claude', 'opus', 'high', usage()), { effort: 'high' });
 });
 
-test('작업 방식: 품질 우선(기본)은 평소 강도로 올리고, 속도 우선은 근거 없는 xhigh 를 high 로 낮춤', () => {
+// 2026-10-19 사용자 "작업 속도가 너무 느린데": 작은 화면 수정 4~11분 중 90% 이상이 Codex 가 xhigh 로 생각하는 시간이었다(계획은 high면 충분하다고 함).
+// 다른 오픈소스(ralphex·codex-claude-loop 등)도 기본은 high 이하 → 평소 작업은 계획이 고른 강도, 어려운 일만 평소 단독 강도까지
+test('작업 방식: 품질 우선은 어려운 작업만 평소 강도로 올리고(평소 작업은 계획이 고른 high 그대로), 속도 우선은 근거 없는 xhigh 를 high 로 낮춤', () => {
   const m = Object.assign(Object.create(JobManager.prototype), { config: { tools: {}, defaults: {} }, _cat: { agents: [] } });
-  const run = (pace, effort) => {
-    const job = { settings: { claude: { model: 'auto', effort: 'auto' }, codex: { model: 'auto', effort: 'auto' }, pace }, tasks: [], input: '버튼 색 바꾸기' };
-    const task = { id: 't1', title: '버튼 색 바꾸기', prompt: '버튼 색 바꾸기', assignee: 'codex' };
+  const run = (pace, effort, text = '버튼 색 바꾸기', cfg = {}) => {
+    m.config = { tools: {}, defaults: {}, ...cfg };
+    const job = { settings: { claude: { model: 'auto', effort: 'auto' }, codex: { model: 'auto', effort: 'auto' }, pace }, tasks: [], input: text };
+    const task = { id: 't1', title: text, prompt: text, assignee: 'codex' };
     job.tasks.push(task);
     m.applyChoice(job, task, { model: 'gpt-6.1-sol', effort, reason: '' }, usage());
     return task;
   };
   const q = run('quality', 'high');
-  assert.equal(q.settings.effort, 'xhigh'); assert.match(q.reason, /품질 우선/);
-  assert.equal(run(undefined, 'high').settings.effort, 'xhigh');
+  assert.equal(q.settings.effort, 'high', '평소 작업은 계획이 고른 강도 그대로'); assert.doesNotMatch(q.reason || '', /품질 우선/);
+  const hard = run('quality', 'high', '간헐적으로 크래시 나는 원인 찾아 고치기');
+  assert.equal(hard.settings.effort, 'xhigh'); assert.match(hard.reason, /품질 우선\(어려운 작업\)/);
+  assert.equal(run(undefined, 'high', '전체 구조 개편').settings.effort, 'xhigh');
+  assert.equal(run('quality', 'high', '버튼 색 바꾸기', { quality: { raise: 'always' } }).settings.effort, 'xhigh', '예전처럼 늘 올리기(quality.raise:"always")');
   const s = run('speed', 'xhigh');
   assert.equal(s.settings.effort, 'high'); assert.match(s.reason, /속도 우선/);
 });
