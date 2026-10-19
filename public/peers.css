@@ -54,3 +54,14 @@
 .consult-row.running .ico{animation:consult-pulse 1.4s ease-in-out infinite}
 @keyframes consult-pulse{50%{opacity:.35}}
 .consult-answer{margin-top:6px;padding:10px 12px;border:1px solid var(--line2);border-left:2px solid var(--run);border-radius:10px;font-size:13px;max-height:420px;overflow:auto}
+/* ODDIN 검사(checks-ui.js): 허브가 직접 돌린 확인 명령 — 통과는 초록, 실패는 빨강, 검사 중은 깜빡임 */
+.check-row .st{flex:none;font-size:12px;color:var(--fg2)}
+.check-row.pass .ico,.check-row.pass .st{color:var(--ok)}
+.check-row.fail .ico,.check-row.fail .st{color:var(--err)}
+.check-row.running .ico{animation:consult-pulse 1.4s ease-in-out infinite}
+.check-out{margin-top:6px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;font-size:12px;color:var(--fg2)}
+.check-cmd{margin-top:4px}
+.check-cmd b{color:var(--fg);font-family:var(--mono)}
+.check-cmd.fail span{color:var(--err)}
+.check-cmd.pass span{color:var(--ok)}
+.check-out pre{margin:4px 0 8px;max-height:220px;overflow:auto;padding:6px 8px;border-radius:6px;background:var(--panel2);color:var(--fg2);font:11px/1.45 var(--mono);white-space:pre-wrap;word-break:break-all}

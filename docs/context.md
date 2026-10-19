@@ -42,10 +42,12 @@
    - 메모리 한도(글자): 플래너 1만·본문 5개, 배정 5천, 작업자 8천·4개, 보고 5천(`MEMORY_LIMITS`, `config.context.memory.<단계>`).
    - 세션 맥락: 결정 노트(잘리지 않음) + 최근 명령. 플래너 1만 2천 자·최근 4건, 작업자 8천 자·최근 2건, 건당 3천 자(`planHistory`·`workerHistory`).
    - 실측: 작업자 지시문 4만 5천 자 → 8,882자, 계획 지시문 → 1만 1,925자.
+   - **2026-10-19 이전 대화는 파일로**: 작업자 세션 맥락이 2500자를 넘으면 결정 노트 + 직전 요청 요약 + 파일 위치만 넣고, 최근 명령과 결과 원문은 `runs/<요청>/context/THREAD.md`(`jobs.compactHistory`, `docs/checks.md` 2절).
 3. **추론 강도**
    - 작업마다 `settings.pace`: `quality`(기본) / `speed`. 화면은 입력창 아래 분배 방식 메뉴의 "작업 방식".
    - 품질 우선이면 자동 강도를 평소 단독 설정까지 올린다(`router.raiseToStandalone` — Codex `config.toml`의 `model_reasoning_effort`, 모델이 지원하지 않으면 지원하는 최고값). 한도 90% 이상인 쪽은 올리지 않는다. Claude는 평소 강도 설정이 따로 없어 그대로.
    - **2026-10-19 바뀜 — 어려운 작업만 올린다.** 사용자 "작업 속도가 너무 느린데" → 최근 작업 30개 측정: ODDIN 이 붙이는 단계(계획·보고·판정·줄 서기·CLI 시작)는 전체의 약 3%, 작은 화면 수정(4~11분)은 90% 이상이 Codex 가 xhigh 로 생각하는 시간이었다(계획은 "high면 충분"이라 했는데 이 규칙이 올림). 다른 Claude·Codex 오픈소스도 기본은 high 이하(ralphex 검토 기본 high, codex-claude-loop 일반 medium·중요할 때 high)다. 그래서 평소 작업은 계획이 고른 강도(하한 high) 그대로 두고, 원인 불명 버그·큰 설계·마이그레이션 같은 어려운 일(`router.deepEffortJustified`)과 디자인 기획·시안·눈으로 보는 결과물 만들기만 평소 단독 강도까지 올린다(`jobs.applyChoice`). 예전처럼 늘 올리려면 `config.quality.raise: "always"`.
+   - **2026-10-19 강도 범위 high ~ xhigh.** 사용자 "강도는 high~xhigh 유동적으로" → 플래너가 작업마다 high·xhigh 중에서 고르고(보통 high, 원인 불명 버그·큰 설계·이전 시도 실패·까다로운 알고리즘은 xhigh), 자동 강도는 하한 ~ `quality.maxEffort`(기본 xhigh) 안으로 자른다(`docs/checks.md` 4절).
    - 속도 우선이면 예전처럼 근거 없는 xhigh 를 high 로 낮춘다.
    - 계획·배정·보고·기억 정리 같은 내부 단계는 그대로 high.
 4. **대화 이어 쓰기**

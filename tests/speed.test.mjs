@@ -81,6 +81,17 @@ test('단순 질문·작은 수정은 하한 강도, 나머지 품질 우선과 
   assert.equal(t.settings.effort, 'max');
 });
 
+test('강도 범위(2026-10-19 "high~xhigh 유동적으로"): 계획이 high·xhigh 중 고르고, 자동 강도는 xhigh 를 넘지 않음, 직접 고른 강도는 그대로', () => {
+  const m = manager();
+  const run = (effort, settings = { ...AUTO(), pace: 'quality' }) => { const t = { id: 't1', title: '로그 파서 수정', prompt: '파서', assignee: 'codex' }; m.applyChoice({ mode: 'auto', settings, tasks: [t], input: '' }, t, { model: 'gpt-6.1-sol', effort, reason: '' }, usage()); return t; };
+  assert.equal(run('medium').settings.effort, 'high', '하한 high');
+  assert.equal(run('high').settings.effort, 'high');
+  assert.equal(run('xhigh').settings.effort, 'xhigh', '계획이 xhigh 를 고르면 그대로');
+  const t = run('max');
+  assert.equal(t.settings.effort, 'xhigh'); assert.match(t.reason, /자동 강도는 xhigh까지/);
+  assert.equal(run('max', { ...AUTO(), codex: { model: 'gpt-6.1-sol', effort: 'max' } }).settings.effort, 'max', '사용자가 직접 고른 강도는 그대로');
+});
+
 test('기억 정리 대기: 기본 20초, 설정으로 바꿈', async () => {
   const m = manager({ memory: { waitSeconds: 0.05 } });
   m._curations = new Map([['s1', new Promise(() => {})]]);

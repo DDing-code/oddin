@@ -33,7 +33,10 @@ test('현황 답변·서버 진단의 과거 영상 언급으로 화면 확인 �
   assert.deepEqual(m.enforceDesignRule(make(), ['claude', 'codex'], name, usage()), [], '예전 계획도 재작성 과제의 단어만으로 붙이지 않음');
   assert.deepEqual(m.enforceDesignRule(make({ title: '영상 엔진 적용 현황 답변', visualOutput: false }), ['claude', 'codex'], name, usage()), [], '결과물이 없는 명시적 판정');
   const visual = make({ title: '일곱 번째 편 완성', visualOutput: true });
-  assert.equal(m.enforceDesignRule(visual, ['claude', 'codex'], name, usage())[0].visualCheck, true, '제목이 모호해도 실제 시각 결과물 판정은 유지');
+  assert.deepEqual(m.enforceDesignRule(visual, ['claude', 'codex'], name, usage()), [], '2026-10-19: 디자인 구현·첫 시안·사용자 요청이 아니면 확인 작업을 따로 붙이지 않음');
+  assert.equal(visual.tasks[0].selfChecked, true, '제목이 모호해도 실제 시각 결과물 판정은 유지 — 만든 작업자가 스스로 확인');
+  const asked = { ...make({ title: '일곱 번째 편 완성', visualOutput: true }), goal: '일곱 번째 편 완성하고 눈으로 확인해줘' };
+  assert.equal(m.enforceDesignRule(asked, ['claude', 'codex'], name, usage())[0].visualCheck, true, '사용자가 눈으로 확인을 요청하면 따로 확인');
 });
 
 test('판정: 디자인뿐 아니라 이미지·영상·3D·화면·색·버튼도 눈으로 보는 결과물, 검색·색인·버그·설계는 아님', () => {
@@ -107,7 +110,7 @@ test('예전 방식(mode 없음)은 그대로 기획·구현 분리', () => {
 // 사용자 규칙 2026-10-04 "디자인은 페이블 / 눈으로 확인은 아스트라" → split + check (지금 설정)
 const SPLIT_CHECK = { designRule: { enabled: true, mode: 'split', tool: 'claude', model: 'fable', check: { tool: 'codex', model: 'gpt-6-astra' } } };
 
-test('눈으로 확인 단계: 디자인은 기획(Fable)→구현(Sol)→확인(Astra), 영상 같은 시각 작업은 구현→확인, 일반·기획만 작업엔 없음, 뒤 작업은 확인 뒤로', () => {
+test('눈으로 확인 단계: 디자인은 기획(Fable)→구현(Sol)→확인(Astra), 영상 같은 시각 작업은 만든 작업자가 스스로(요청하면 확인), 일반·기획만 작업엔 없음, 뒤 작업은 확인 뒤로', () => {
   const m = manager(SPLIT_CHECK);
   const job = { mode: 'auto', notes: [], tasks: [
     { id: 't1', title: '대시보드 디자인 CSS 구현', prompt: '버튼 색 바꾸고 CSS 구현', assignee: 'claude', dependsOn: [] },
@@ -117,15 +120,22 @@ test('눈으로 확인 단계: 디자인은 기획(Fable)→구현(Sol)→확인
   ] };
   const added = m.enforceDesignRule(job, ['claude', 'codex'], name, usage());
   const by = Object.fromEntries(job.tasks.map((t) => [t.id, t]));
-  assert.deepEqual(added.map((t) => t.id).sort(), ['t1d', 't1v', 't2v']);
+  assert.deepEqual(added.map((t) => t.id).sort(), ['t1d', 't1v']);
   assert.equal(by.t1d.assignee, 'claude'); assert.equal(by.t1d.designPlan, true);
   assert.equal(by.t1.assignee, 'codex'); assert.equal(by.t1.designImpl, true);
   assert.deepEqual([by.t1v.assignee, by.t1v.visualCheck, by.t1v.dependsOn], ['codex', true, ['t1', 't1d']]);
   assert.match(by.t1v.prompt, /\[눈으로 확인 단계\].*「대시보드 디자인 CSS 구현」/s); assert.match(by.t1v.prompt, /디자인 기획" 작업의 명세/);
-  assert.deepEqual(by.t2v.dependsOn, ['t2']); assert.doesNotMatch(by.t2v.prompt, /디자인 기획" 작업의 명세/);
+  assert.equal(by.t2v, undefined); assert.equal(by.t2.selfChecked, true); assert.match(by.t2.prompt, /\[눈으로 확인\] 확인 작업을 따로 붙이지 않았습니다/);
   assert.deepEqual(by.t3.dependsOn, ['t1', 't1v'], '뒤 작업은 확인 뒤로');
   assert.equal(by.t4.designPlan, true); assert.equal(by.t4v, undefined, '기획만 하는 작업엔 확인 없음');
-  assert.match(job.notes.join('\n'), /눈으로 확인 규칙: 눈으로 보는 결과물 2개는 구현 뒤 Codex·gpt-6-astra가/);
+  assert.match(job.notes.join('\n'), /눈으로 확인 규칙: 눈으로 보는 결과물 1개는 구현 뒤 Codex·gpt-6-astra가/);
+  assert.match(job.notes.join('\n'), /눈으로 보는 결과물 1개는 확인 작업을 따로 붙이지 않고 만든 작업자가 스스로/);
+  // 사용자가 눈으로 확인을 요청했거나 예전처럼 늘(when:"always")이면 영상도 따로 확인
+  const video = () => ({ mode: 'auto', notes: [], tasks: [{ id: 't2', title: '먹방 영상 컷 편집', prompt: '영상 편집', assignee: 'codex', dependsOn: [] }] });
+  const ask = { ...video(), input: '먹방 영상 컷 편집하고 스크린샷으로 확인해줘' };
+  assert.deepEqual(m.enforceDesignRule(ask, ['claude', 'codex'], name, usage()).map((t) => t.id), ['t2v']);
+  const always = manager({ designRule: { ...SPLIT_CHECK.designRule, check: { ...SPLIT_CHECK.designRule.check, when: 'always' } } });
+  assert.deepEqual(always.enforceDesignRule(video(), ['claude', 'codex'], name, usage()).map((t) => t.id), ['t2v']);
   // 확인 담당을 못 쓰면 붙이지 않고 이유를 남김
   const j2 = { mode: 'auto', notes: [], tasks: [{ id: 't1', title: '썸네일 이미지 만들기', prompt: '썸네일', assignee: 'claude', dependsOn: [] }] };
   m.enforceDesignRule(j2, ['claude'], name, usage());
@@ -146,7 +156,7 @@ test('눈으로 확인 모델: Astra(한도 80%여도), 사용자가 고른 모�
   assert.equal(run(AUTO(), usage(80)).settings.model, 'gpt-6-astra');
   assert.equal(run({ claude: { model: 'auto', effort: 'auto' }, codex: { model: 'gpt-6.1-sol', effort: 'high' } }).settings.model, 'gpt-6.1-sol');
   const text = catalogText(SPLIT_CHECK, {});
-  assert.match(text, /"눈으로 확인: …" 작업\(codex·gpt-6-astra, 렌더·스크린샷으로 확인하고 어긋난 곳 수정\)을 자동으로 붙입니다\. 확인 작업은 직접 만들지 마세요/);
+  assert.match(text, /사용자가 눈으로 확인을 요청했거나, 코드로 새 화면을 만드는 큰 구현\(design "build"\), 처음 만드는 디자인 시안\(design "draft", check "full"\)일 때만 허브가 "눈으로 확인: …" 작업\(codex·gpt-6-astra, 렌더·스크린샷으로 확인하고 어긋난 곳 수정\)을 뒤에 붙입니다\. 그 밖에는 만든 작업자가 스스로 렌더·스크린샷으로 확인합니다\. 확인 작업은 직접 만들지 마세요/);
   assert.match(text, /\*\*기획만\*\* 담당 claude·모델 fable/);
   assert.equal(designRule({}).check, undefined);
 });

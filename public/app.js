@@ -303,6 +303,7 @@ function logHtml(key, tool) {
     else if (k === 'stderr') { cls += ' warn'; mark = '경고'; }
     else if (k === 'intercept') { cls += ' ic'; mark = '수정 지시'; }
     else if (k === 'consult') { cls += ' ic'; mark = '의견'; }
+    else if (k === 'check') { cls += e.state === 'fail' ? ' err' : ' ic'; mark = '검사'; }
     else if (k === 'init') { mark = '시작'; text = `${e.model || ''}${e.effort ? ' · ' + e.effort : ''}`; }
     text = String(text); if (text.length > 800) text = text.slice(0, 800) + '…';
     return `<div class="${cls}"><span class="k">${esc(mark)}</span><span>${esc(text)}</span></div>`;
