@@ -672,6 +672,7 @@ const server = http.createServer(async (req, res) => {
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/consults\/([\w-]+)\/([\w-]+)$/)) && req.method === 'GET') return json(res, jobs.consults.answer(r[1], r[2], r[3])); // 다른 AI 의견의 답 전체
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/cancel$/)) && req.method === 'POST') return json(res, jobs.cancel(r[1]));
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/send-now$/)) && req.method === 'POST') { await readBody(req); return json(res, jobs.sendReservedNow(r[1])); } // 예약한 요청 지금 보내기
+    if ((r = m(/^\/api\/jobs\/([\w-]+)\/skip-folder-wait$/)) && req.method === 'POST') { await readBody(req); return json(res, jobs.skipFolderWait(r[1])); } // 폴더 차례 기다리지 않고 시작
 
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/tasks\/([\w-]+)\/retry$/)) && req.method === 'POST') return json(res, jobs.retryTask(r[1], r[2]));
     if ((r = m(/^\/api\/jobs\/([\w-]+)\/log\/([\w-]+)$/))) return json(res, jobs.taskLog(r[1], r[2], url.searchParams.has('limit') ? { limit: url.searchParams.get('limit'), before: url.searchParams.get('before') } : null));

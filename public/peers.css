@@ -65,3 +65,6 @@
 .check-cmd.fail span{color:var(--err)}
 .check-cmd.pass span{color:var(--ok)}
 .check-out pre{margin:4px 0 8px;max-height:220px;overflow:auto;padding:6px 8px;border-radius:6px;background:var(--panel2);color:var(--fg2);font:11px/1.45 var(--mono);white-space:pre-wrap;word-break:break-all}
+/* 폴더 차례 기다림(folder-wait-ui.js): 같은 줄 모양, 시계는 기다리는 색 */
+.folder-wait-row .ico{color:var(--warn)}
+.folder-wait-row .st{flex:none;font-size:12px;color:var(--fg2)}
