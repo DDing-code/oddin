@@ -826,6 +826,10 @@ h1 input.rename{font-size:15px;font-weight:600;padding:3px 8px;width:min(420px,5
 /* 초기화권(side.js resetCredits): 사이드바 이름 줄 오른쪽의 작은 표시 · 사용량 탭 카드 안 한 줄 */
 .u-grid .u-name small.u-rc{margin-left:auto;padding:1px 6px;border-radius:999px;letter-spacing:0;color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
 .u-grid .u-name small.u-rc.soon{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+/* 쥐어짜기(리셋 전에 남는 한도를 아끼지 않고 쓰는 중) — side.js squeezeChip */
+.u-grid .u-name small.u-sq{margin-left:auto;padding:1px 6px;border-radius:999px;letter-spacing:0;color:var(--run);background:color-mix(in srgb,var(--run) 14%,transparent)}
+.u-grid .u-name small.u-rc + small.u-sq{margin-left:4px}
+.u-grid .u-name small.u-sq.hi{color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,transparent)}
 .u-credit{display:flex;align-items:center;gap:6px;margin:8px 0 4px;font-size:12.5px;color:var(--muted)}
 .u-credit .ico{width:13px;height:13px;flex:none}
 .u-credit.has{color:var(--ok);font-weight:550}

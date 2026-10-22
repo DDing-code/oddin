@@ -18,7 +18,7 @@
 - `lib/goals.mjs` 목표 모드: 라운드 지시문·달성 판정(진행 상태는 세션 `goal`, 반복은 `jobs.afterGoalRound`). 빈 계획이면 멈춤(`EMPTY_PLAN`), 일시정지·정지·이어서. 시험 `tests/goal-empty-plan.test.mjs`·`goal-pause.test.mjs`. 자세한 것 `docs/structure.md`
 - `lib/memory-blocks.mjs` 기억 블록(전역 MEMORY.md 의 `## 제목`·프로젝트 폴더), 공유/이 PC만(`memory-local`), 세션별 연결·저장 위치. 화면 `public/memory-blocks.js`, 규약 `docs/memory.md`. 자세한 것 `docs/structure.md`
 - `lib/memory-curate.mjs` 기억 정리: 요청이 끝나면 결정 노트 스냅샷(`job.sessionNotes`)을 남기고 장기 기억을 공유 메모리에 적용(되돌리기 기록 있음). 작업자는 공유 메모리를 직접 쓰지 않고 `runs/<작업>/notes/<작업ID>.md`에 남긴다. 화면 `public/memory-ui.js`, 규약 `docs/memory.md`, 끄기 `config.memory.curate:false`. 자세한 것 `docs/structure.md`
-- `lib/usage.mjs`의 `balanceShare`·`headroom`·`usageWarnings` = 한도 기반 분배 비율·경고. 재배정은 `jobs.mjs`의 `rebalance`
+- `lib/usage.mjs`의 `balanceShare`·`headroom`·`usageWarnings` = 한도 기반 분배 비율·경고. 재배정은 `jobs.mjs`의 `rebalance`. **쥐어짜기**(2026-10-22 "리셋 시간 대비 한도가 많이 남았으면 좀 쥐어짜서 쓰게"): `usage.spare`(여유 = 남은 % − 남은 시간 비율×100)가 `squeeze.at` 이상이면 75%·Fable 75%·90%·디자인 기획 넘기기·재배정 같은 아끼는 장치를 풀고 최상위 모델 허용·강도 상한까지·눈으로 확인 추가, `strong` 이상이면 자동 모델을 최상위로. 분배 비율은 리셋까지 시간당 쓸 수 있는 몫(`spendRate`). 질문·작은 수정·속도 우선·직접 고른 값은 그대로. 아래 규칙의 75%·Fable 75% 기준은 이 예외를 따른다. 규약 `docs/context.md` "쥐어짜기", 시험 `tests/squeeze.test.mjs`
 - `lib/attachments.mjs` 이미지 업로드(서명 검사, 5MB·4장), Claude는 stream-json image 블록, Codex는 `-i`
 - `data/jobs.json`·`data/sessions.json` 작업·세션(폴더별 대화, 같은 세션의 다음 요청은 이전 요청·보고를 맥락으로 받음), `data/uploads/` 첨부 이미지, `runs/<jobId>/` 실행 기록
 - `public/` 데스크탑 앱형 화면. `app.js` = 대화·입력·작업 카드, `side.js` = 왼쪽 사이드바(고정·폴더별/날짜별·⋯/우클릭 메뉴·바로 이름 바꾸기·안 읽음 표시·계정/설정), 오른쪽 패널(작업·파일·사용량·정보 탭), Ctrl+K 검색, 양쪽 너비 조절. `side.js`는 `app.js` 다음에 읽히고 시작은 DOMContentLoaded.
