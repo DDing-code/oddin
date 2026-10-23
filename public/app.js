@@ -167,6 +167,43 @@ $('#folderChip').addEventListener('click', (e) => { if (window.hubFolderChip) re
 $('#folderChip').addEventListener('contextmenu', (e) => { e.preventDefault(); navigator.clipboard?.writeText(currentCwd()); toast('폴더 경로를 복사했어요'); });
 
 /* ================= 대화 영역 ================= */
+/* 스크롤 자리 지키기(2026-10-23 사용자 "오딘 작업중 스크롤이 자꾸 중간으로 올라가는데"):
+   작업 카드는 화면 밖이면 높이를 어림값으로 둔다(.turn content-visibility:auto, 420px). 대화 전체를 다시 그리면(결과 그림이 새로 생김·다시 연결 등)
+   카드가 새로 만들어져 모두 어림값으로 돌아가는데, 예전에는 그 직후 "맨 아래"로 내렸다 — 어림 높이 기준의 바닥이라 실제 높이가 채워지면
+   보던 카드도 바닥도 아닌 중간(실측 바닥에서 7천 픽셀 위)에 멈췄다.
+   - 바닥 따라가기(VIEW.follow): 바닥 근처면 켜지고, 사용자가 직접 위로 올리면 꺼진다. 켜져 있으면 내용 높이가 바뀔 때마다 바닥으로(ResizeObserver).
+   - 꺼져 있으면 다시 그려도 보던 카드를 같은 자리에 둔다(keepView·viewAnchor).
+   - 전체 다시 그리기를 줄인다: 결과 그림이 바뀌면 그 카드만, 새 작업은 끝에 붙이기만(appendTurn). */
+const VIEW = { follow: true, userAt: 0, progAt: 0, sid: undefined, lastTop: 0, lastH: 0 };
+const nearBottom = (sc = $('#scroll')) => sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
+function toBottom() { const sc = $('#scroll'); VIEW.progAt = performance.now(); sc.scrollTop = sc.scrollHeight; }
+/** 지금도 따라가는 중인가 — 방금 사용자가 직접 올려 바닥에서 멀어졌으면(스크롤 소식이 아직 안 왔어도) 멈춘다. 안 그러면 휠로 올리는 순간 끌려 내려갔다 */
+function following() {
+  if (nearBottom()) VIEW.follow = true; // 바닥 근처면 언제나 따라간다(스크롤 소식 없이 바닥에 와 있을 수도 있다)
+  else if (VIEW.follow && performance.now() - VIEW.userAt < 1500) VIEW.follow = false;
+  return VIEW.follow;
+}
+/** 지금 보이는 맨 위 카드와 화면 위 끝에서의 거리 */
+function viewAnchor() {
+  const top = $('#scroll').getBoundingClientRect().top;
+  for (const t of $('#thread').children) { if (!t.classList.contains('turn')) continue; const r = t.getBoundingClientRect(); if (r.bottom > top + 1) return { id: t.id, off: r.top - top }; }
+  return null;
+}
+function restoreAnchor(a, done = false) {
+  const el = a && document.getElementById(a.id); if (!el) return;
+  // 기준 카드는 어림값이 아니라 실제 높이로 잰다(새로 만든 카드는 다음 그리기 전까지 어림값이라 기준이 틀어졌다)
+  el.style.contentVisibility = 'visible';
+  const sc = $('#scroll'), d = el.getBoundingClientRect().top - sc.getBoundingClientRect().top - a.off;
+  if (Math.abs(d) > 1) { VIEW.progAt = performance.now(); sc.scrollTop += d; }
+  if (done) el.style.contentVisibility = '';
+}
+/** 다시 그리기(fn) 동안 보던 자리를 지킨다: 따라가는 중이면 바닥, 아니면 보던 카드를 같은 자리에 */
+function keepView(fn) {
+  if (following()) { fn(); toBottom(); return; }
+  const a = viewAnchor(); fn(); restoreAnchor(a);
+  // 화면 근처 카드가 실제 높이로 채워지고 나서 한 번 더(그사이 사용자가 움직였으면 두지 않는다)
+  const at = performance.now(); requestAnimationFrame(() => { if (!VIEW.follow && VIEW.userAt < at) restoreAnchor(a, true); else { const el = a && document.getElementById(a.id); if (el) el.style.contentVisibility = ''; } });
+}
 function renderThread() {
   renderTop();
   const sid = S.current; const box = $('#thread');
@@ -176,11 +213,39 @@ function renderThread() {
   if (!jobs.length) h += heroHtml();
   for (const j of jobs) h += `<div class="turn" id="job-${j.id}">${jobHtml(j)}</div>`;
   h += `<div id="notes">${(S.notes.get(sid || 'draft') || []).join('')}</div>`;
-  box.innerHTML = h;
-  mountPreviews(box); fillDur(box);
-  const sc = $('#scroll'); sc.scrollTop = sc.scrollHeight;
+  // 다른 세션을 열면 맨 아래부터, 같은 세션을 다시 그리면 보던 자리 그대로.
+  // 같은 세션이면 카드 요소를 새로 만들지 않고 안만 바꾼다 — 새로 만들면 브라우저가 기억하던 카드 높이가 사라져 화면 밖 카드가 모두 어림값(420px)으로 돌아갔다
+  const same = VIEW.sid === sid; VIEW.sid = sid;
+  if (!same) VIEW.follow = true;
+  const notesHtml = (S.notes.get(sid || 'draft') || []).join('');
+  keepView(() => { if (!(same && jobs.length && patchThread(box, jobs, notesHtml))) box.innerHTML = h; mountPreviews(box); fillDur(box); });
   watchTurns(box, jobs);
   scheduleInspector();
+}
+/** 제자리 고치기: 남은 카드 순서가 작업 순서와 같으면 있던 요소에 안만 다시 쓰고, 지워진 것은 빼고, 새 것은 끝에 붙인다. 못 하면 false */
+function patchThread(box, jobs, notesHtml) {
+  const els = [...box.querySelectorAll(':scope > .turn')], notes = box.querySelector(':scope > #notes');
+  if (!notes || box.children.length !== els.length + 1) return false; // 처음 안내 화면 등
+  const want = new Set(jobs.map((j) => `job-${j.id}`)), left = els.filter((el) => want.has(el.id));
+  for (let i = 0; i < left.length; i++) if (left[i].id !== `job-${jobs[i].id}`) return false; // 순서가 바뀌었으면 전체
+  for (const el of els) if (!want.has(el.id)) el.remove();
+  jobs.forEach((j, i) => {
+    let el = left[i];
+    if (!el) { el = document.createElement('div'); el.className = 'turn'; el.id = `job-${j.id}`; box.insertBefore(el, notes); }
+    el.innerHTML = jobHtml(j);
+  });
+  notes.innerHTML = notesHtml;
+  return true;
+}
+/** 새 작업 카드는 끝에 붙이기만 한다(전체를 다시 그리면 모든 카드 높이가 어림값으로 돌아간다). 끝이 아니거나 빈 화면이면 전체 */
+function appendTurn(j) {
+  const box = $('#thread'), notes = $('#notes');
+  if (VIEW.sid !== S.current || !notes || !box.querySelector(':scope > .turn') || sessionJobs(S.current).at(-1)?.id !== j.id) return renderThread();
+  keepView(() => {
+    const el = document.createElement('div'); el.className = 'turn'; el.id = `job-${j.id}`; el.innerHTML = jobHtml(j);
+    box.insertBefore(el, notes); mountPreviews(el); fillDur(el);
+    LZ.io?.observe(el);
+  });
 }
 function heroHtml() {
   const t = S.tools;
@@ -230,8 +295,8 @@ function jobHtml(j) {
   if (j.tasks.length) {
     h += `<div class="tasks">${j.tasks.map((t) => taskHtml(j, t)).join('')}</div>`;
   }
-  h += window.hubJobProcess?.(j) || '';
-  h += icHtml(j);
+  // 생각 과정과 수정 지시는 대화 순서로 섞는다(process.js hubJobFlow) — 수정 지시 뒤의 생각은 그 지시 밑에
+  h += window.hubJobFlow ? window.hubJobFlow(j) : (window.hubJobProcess?.(j) || '') + icHtml(j);
 
   if (j.status === 'reporting') h += `<div class="working"><span class="spinner"></span><span>결과를 모아 보고서를 쓰는 중</span></div>`;
   const showReport = j.mode === 'auto' || j.tasks.length === 1;
@@ -373,12 +438,12 @@ async function ensureLogs(j, { quiet = false } = {}) {
 }
 function rerenderJob(id) {
   const j = S.jobs.get(id); const el = document.getElementById(`job-${id}`); if (!j || !el) return;
-  const sc = $('#scroll'); const stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
   const logScroll = {}; el.querySelectorAll('.log, .proc-body').forEach((l) => (logScroll[l.id] = l.scrollHeight - l.scrollTop - l.clientHeight < 30 ? -1 : l.scrollTop));
-  el.innerHTML = jobHtml(j);
-  mountPreviews(el); fillDur(el);
-  el.querySelectorAll('.log, .proc-body').forEach((l) => { const v = logScroll[l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; });
-  if (stick) sc.scrollTop = sc.scrollHeight;
+  keepView(() => {
+    el.innerHTML = jobHtml(j);
+    mountPreviews(el); fillDur(el);
+    el.querySelectorAll('.log, .proc-body').forEach((l) => { const v = logScroll[l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; });
+  });
 }
 /** 경과 시간 칸은 그릴 때 바로 채운다 — 비워 두면 다시 그릴 때마다(진행 중 카드는 0.15초마다) 비었다가 1초 타이머가 채워 깜빡였다. 생각 과정(.proc)의 것은 process.js 가 자기 모양으로 채운다 */
 function fillDur(root) { root.querySelectorAll('.live-dur').forEach((el) => { if (!el.closest('.proc')) el.textContent = dur(el.dataset.from, null); }); }
@@ -394,7 +459,6 @@ function queueRerender(id) { rq.add(id); if (!rt) rt = setTimeout(() => { rt = n
    이제 화면 근처 카드만 그리고(읽기 한 번 → 모두 쓰기 → 스크롤 되돌리기 한 번), 화면 밖 카드는 표시만 해 두었다가 화면에 들어올 때 그린다. */
 function flushRerender() {
   const ids = [...rq]; rq.clear();
-  const sc = $('#scroll'); const stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
   const targets = [];
   const sel = document.getSelection?.(), selNode = sel && !sel.isCollapsed ? sel.anchorNode : null, now = Date.now();
   let held = false;
@@ -412,9 +476,10 @@ function flushRerender() {
   if (held && !rt) rt = setTimeout(() => { rt = null; flushRerender(); }, 400);
   if (!targets.length) return;
   const keep = targets.map(({ el }) => { const m = {}; el.querySelectorAll('.log, .proc-body').forEach((l) => (m[l.id] = l.scrollHeight - l.scrollTop - l.clientHeight < 30 ? -1 : l.scrollTop)); return m; });
-  for (const { j, el } of targets) { el.innerHTML = jobHtml(j); mountPreviews(el); fillDur(el); }
-  targets.forEach(({ el }, i) => el.querySelectorAll('.log, .proc-body').forEach((l) => { const v = keep[i][l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; }));
-  if (stick) sc.scrollTop = sc.scrollHeight;
+  keepView(() => {
+    for (const { j, el } of targets) { el.innerHTML = jobHtml(j); mountPreviews(el); fillDur(el); }
+    targets.forEach(({ el }, i) => el.querySelectorAll('.log, .proc-body').forEach((l) => { const v = keep[i][l.id]; l.scrollTop = v === undefined || v === -1 ? l.scrollHeight : v; }));
+  });
 }
 
 $('#thread').addEventListener('click', async (e) => {
@@ -439,12 +504,32 @@ $('#thread').addEventListener('click', async (e) => {
   const r = e.target.closest('[data-retry]'); if (r) { const [jid, tid] = r.dataset.retry.split('/'); return api(`/api/jobs/${jid}/tasks/${tid}/retry`, { method: 'POST' }).catch((x) => toast(x.message, true)); }
   const u = e.target.closest('[data-reuse]'); if (u) { const j = S.jobs.get(u.dataset.reuse); if (j) setInput(j.goal); }
 });
-$('#scroll').addEventListener('scroll', () => $('#main').classList.toggle('scrolled', $('#scroll').scrollTop > 4));
+$('#scroll').addEventListener('scroll', () => {
+  const sc = $('#scroll'), st = sc.scrollTop, h = sc.scrollHeight, now = performance.now();
+  $('#main').classList.toggle('scrolled', st > 4);
+  // 바닥 근처면 따라가기. 사용자가 직접(휠·터치·스크롤바·키) 올렸거나, 내용이 줄지 않았는데 위로 움직였으면(허브가 옮긴 직후 제외) 멈춘다
+  if (nearBottom(sc)) VIEW.follow = true;
+  else if (now - VIEW.userAt < 1500 || (st < VIEW.lastTop - 2 && h >= VIEW.lastH && now - VIEW.progAt > 150)) VIEW.follow = false;
+  VIEW.lastTop = st; VIEW.lastH = h;
+}, { passive: true });
+// 사용자가 직접 움직임: 휠·터치·스크롤바 끌기(스크롤 칸 자체를 누름 — 카드 안 버튼 누르기는 아님)·키
+for (const type of ['wheel', 'touchmove']) $('#scroll').addEventListener(type, () => { VIEW.userAt = performance.now(); }, { passive: true });
+$('#scroll').addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) VIEW.userAt = performance.now(); }, { passive: true });
+document.addEventListener('keydown', (e) => { if (['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' '].includes(e.key) && !e.target.closest?.('input, textarea, select, [contenteditable="true"]')) VIEW.userAt = performance.now(); }, true);
+// 따라가는 중에는 내용 높이가 바뀔 때마다(그림이 늦게 뜸·화면 밖 카드가 실제 높이로 채워짐) 바닥으로
+let threadH = 0;
+if (typeof ResizeObserver === 'function') new ResizeObserver((entries) => {
+  const h = entries[0]?.contentRect.height || 0, grew = h - threadH; threadH = h;
+  // 바닥에 있었는데 아래로 자랐으면(자라기 전 기준 바닥 근처) 따라가기를 켠다
+  const sc = $('#scroll');
+  if (!VIEW.follow && grew > 0 && sc.scrollHeight - grew - sc.scrollTop - sc.clientHeight < 120 && performance.now() - VIEW.userAt > 1500) VIEW.follow = true;
+  if (following()) toBottom();
+}).observe($('#thread'));
 
 function note(html, cls = '') {
   const k = S.current || 'draft'; const list = S.notes.get(k) || []; const item = `<div class="note ${cls}">${html}</div>`;
   list.push(item); S.notes.set(k, list.slice(-6));
-  const box = $('#notes'); if (box) { box.insertAdjacentHTML('beforeend', item); $('#scroll').scrollTop = $('#scroll').scrollHeight; }
+  const box = $('#notes'); if (box) { box.insertAdjacentHTML('beforeend', item); VIEW.follow = true; toBottom(); }
 }
 
 /* ================= 입력창 하단 버튼 ================= */
@@ -799,7 +884,11 @@ async function loadPreviews(fromTimer = false) {
     const list = pvNormalize(await r.json());
     PV.loaded = true; PV.wait = 10_000;
     const sig = JSON.stringify(list);
-    if (sig !== PV.sig) { PV.sig = sig; PV.list = list; PV.nodes.clear(); if (S.current) renderThread(); }
+    if (sig !== PV.sig) {
+      const old = PV.list; PV.sig = sig; PV.list = list; PV.nodes.clear();
+      // 바뀐 결과 그림이 걸린 카드만 다시 그린다(전체를 다시 그리면 모든 카드 높이가 어림값으로 돌아가 보던 자리가 흔들렸다)
+      if (S.current) { const ids = new Set(); for (const p of [...(old || []), ...list]) for (const id of [p.sourceJobId, ...(p.displayJobIds || [])]) if (id) ids.add(id); for (const id of ids) if (document.getElementById(`job-${id}`)) queueRerender(id); }
+    }
   } catch {
     // 아직 게시 전(404)이거나 일시 실패: 이미 받은 목록은 유지하고, 처음 받는 중이면 간격을 늘려 다시 시도
     if (!PV.loaded) { if (fromTimer) PV.wait = Math.min(PV.wait * 2, 60_000); PV.timer = setTimeout(() => loadPreviews(true), PV.wait); }
@@ -1094,7 +1183,7 @@ function onHubEvent(ev) {
       }
       icMergeJob(prev, ev.job); S.jobs.set(ev.job.id, ev.job); jobAt.set(ev.job.id, performance.now());
       if (ev.job.sessionId === S.current) {
-        if (!document.getElementById(`job-${ev.job.id}`)) renderThread(); else queueRerender(ev.job.id);
+        if (!document.getElementById(`job-${ev.job.id}`)) appendTurn(ev.job); else queueRerender(ev.job.id);
         renderSend();
         if (ev.job.tasks.length !== (prev?.tasks.length || 0)) ensureLogs(ev.job);
       }
