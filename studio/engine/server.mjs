@@ -247,6 +247,9 @@ async function route(req, res, url) {
   if (p === '/api/add' && M === 'POST') { const b = await readBody(req); const files = [].concat(b.files || []).map((f) => allowed(f)); return json(res, await editor.add(allowed(b.path), files, { at: b.at ?? null, trackId: b.track || null, length: b.length ?? null })); }
   if (p === '/api/import-srt' && M === 'POST') { const b = await readBody(req); const text = b.text != null ? String(b.text) : fs.readFileSync(allowed(b.srt), 'utf8'); return json(res, editor.importSrt(allowed(b.path), text, b.name || null)); }
   if (p === '/api/check') return json(res, editor.check(allowed(q('path'))));
+  // 편집기 중심 제작(2026-10-24): AI 가 글자·값·스타일·마커를 고치는 창구, 영상이 이 편집 파일의 최신 렌더인지 보기
+  if (p === '/api/patch' && M === 'POST') { const b = await readBody(req); return json(res, editor.patch(allowed(b.path), b.ops || [])); }
+  if (p === '/api/verify') return json(res, editor.verify(allowed(q('path')), { edit: q('edit') ? allowed(q('edit')) : null }));
   if (p === '/api/srt') { const f = allowed(q('path')); const text = editor.srt(f, q('track') || null); res.writeHead(200, { 'Content-Type': 'application/x-subrip; charset=utf-8', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(f).replace(EDIT_EXT, '') + '.srt')}` }); return res.end(text); }
   // 원본
   if (p === '/api/probe') return json(res, await probe(allowed(q('path')), config));

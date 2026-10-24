@@ -1,0 +1,23 @@
+{
+  "id": "compose",
+  "order": 0,
+  "name": "자료로 영상 만들기",
+  "description": "대본·자료·데이터로 공략·가이드·설명 영상을 처음부터 만들어요. 그림은 장면별 재료로, 글자·자막·효과음·음악·움직임은 편집 파일 안에 따로 두고 스튜디오로 뽑아요 — 나중에 스튜디오에서 바로 고칠 수 있어요",
+  "cwdFrom": "folder",
+  "inputs": [
+    {
+      "key": "request",
+      "label": "만들 영상",
+      "type": "textarea",
+      "placeholder": "예: 키식스 신화 공략 4분, 가로 1920x1080, 페이즈별 산개·쐐기 위치를 도트 아레나로, 해설 자막과 상황별 음악"
+    },
+    {
+      "key": "folder",
+      "label": "결과를 둘 폴더",
+      "type": "dir",
+      "optional": true
+    }
+  ],
+  "gates": "편집 파일(스튜디오에서 열림)과 그 편집 파일에서 뽑은 MP4 를 함께 받아요. 글자·효과음·음악·움직임은 스튜디오에서 바로 고칠 수 있어요.",
+  "prompt": "자료로 영상을 만들어 주세요: {request}\n결과 폴더: {folder}\noddin-studio 스킬의 compose 파이프라인을 따라 주세요 — 그림은 장면별 재료 영상만 만들고, 글자·자막·효과음·음악·확대/이동·전환은 편집 파일 안에 따로 두고, cli.mjs check --strict → render --wait → verify --strict 까지 한 뒤 cli.mjs open 으로 띄워 주세요."
+}

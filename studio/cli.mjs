@@ -5,12 +5,17 @@
 //   node studio/cli.mjs new <영상> [--out <이름>.oddin-edit.json]  영상으로 새 편집(같은 이름 .srt → 자막 트랙)
 //   node studio/cli.mjs blank <폴더> [--title 이름] [--size 1080x1920] [--fps 30]  빈 편집
 //   node studio/cli.mjs add <편집파일> <원본…> [--at 초] [--track id] [--len 초]  영상·소리·그림·HTML 장면을 트랙에 넣기
-//   node studio/cli.mjs check <편집파일>                          형식 정리·자막 빈칸/겹침/두 줄·없는 글꼴·없는 원본 점검
+//   node studio/cli.mjs check <편집파일> [--strict]               형식 정리·자막 빈칸/겹침/두 줄·없는 글꼴·없는 원본 점검 + 고칠 수 있는 편집인가(--strict: 통째로 구운 편집이면 실패)
+//   node studio/cli.mjs text <편집파일> --text 글 --at 초 [--dur 초|--end 초] [--track 이름|id] [--style 이름] [--x n] [--y n] [--in pop] [--out fade]  글자·자막 넣기
+//   node studio/cli.mjs set <편집파일> <id> 키=값 …                클립·글자·트랙·원본 값 바꾸기(점 표기·JSON 값: anim.in=pop  keys.scale=[{"t":0,"v":1}]  vfadeIn=0.3)
+//   node studio/cli.mjs style <편집파일> <이름> 키=값 …             글자 스타일 만들기·고치기(font= size= color= stroke={"color":"#000","width":6} bg={…})
+//   node studio/cli.mjs marker <편집파일> <초> [이름]               마커
+//   node studio/cli.mjs verify <영상> [--edit 편집파일] [--strict]   이 영상이 편집 파일의 최신 스튜디오 렌더인가(--strict: 아니거나 통째로 구운 편집이면 실패)
 //   node studio/cli.mjs import-srt <편집파일> <SRT> [트랙이름]
 //   node studio/cli.mjs srt <편집파일> [트랙id]                    자막 SRT 출력
 //   node studio/cli.mjs from-premiere [--seq 이름|id] [--out 폴더]  열린 프리미어 시퀀스 → 편집 파일(ODDIN 어도비 플러그인 경유)
 //   node studio/cli.mjs scene <장면.html> [--dur 초] [--size 1080x1920] [--fps 30] [--out x.mp4|x.mov]  HTML 장면 → 영상(.mov 는 투명)
-//   node studio/cli.mjs render <편집파일> [--wait]                MP4 렌더(편집 파일 옆)
+//   node studio/cli.mjs render <편집파일> [--wait] [--out 이름.mp4]  MP4 렌더(편집 파일 옆) — 영상 결과물은 이것으로 뽑는다
 //   node studio/cli.mjs fonts [--missing] | fonts install <글꼴파일…|--all>
 //   node studio/cli.mjs speakers <촬영본> [--words 전사.json] [--keep 구간.json|편집파일] [--out 결과.json] [--all] [--no-video] [--on a|b]  누가 말했나: 화면 속 출연자 / 화면 밖(PD) 목소리 가르기, 남긴 구간에 화면 밖 목소리가 들어갔는지 점검
 //   node studio/cli.mjs paper <촬영본> --script 대본.txt --words 전사.json [--on a|b] [--out 표.md]  종이 편집표: 대본 줄마다 출연자 테이크·PD 목소리(선창/지시/내용) 맞추기
@@ -37,7 +42,10 @@ async function call(p, opt = {}) {
 const post = (p, body) => call(p, { method: 'POST', body: JSON.stringify(body) });
 const fmt = (t) => { const s = Math.max(0, Number(t) || 0); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${(s % 60).toFixed(2).padStart(5, '0')}`; };
 const size = (v) => { const m = String(v || '').match(/^(\d+)\s*[x×*]\s*(\d+)$/i); return m ? [Number(m[1]), Number(m[2])] : [0, 0]; };
-const help = () => { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 18).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); };
+const help = () => { const ls = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1); console.log(ls.slice(0, ls.findIndex((l) => !l.startsWith('//'))).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); };
+// 키=값 → { 키: 값 } (값이 JSON 이면 JSON 으로: 숫자·true·[…]·{…})
+const kv = (list) => Object.fromEntries(list.map((a) => { const i = a.indexOf('='); if (i < 1) throw new Error(`"키=값" 꼴이어야 해요: ${a}`); const k = a.slice(0, i), v = a.slice(i + 1); let val = v; try { val = JSON.parse(v); } catch {} return [k, val]; }));
+const patch = (file, ops) => post('/api/patch', { path: abs(file), ops });
 
 try {
   if (!cmd || cmd === 'help') { help(); process.exit(0); }
@@ -85,7 +93,26 @@ try {
     for (const g of r.twoLines) console.log(`두 줄 @${fmt(g.at)} [${g.track}] "${g.text.replace(/\n/g, ' / ').slice(0, 30)}"`);
     for (const f of r.missingFonts) console.log(`없는 글꼴: ${f} (fonts --missing 로 설치할 수 있는지 보기)`);
     for (const m of r.missingMedia) console.log(`없는 원본: ${m.id} ${m.path}`);
-    if (!r.gaps.length && !r.overlaps.length && !r.twoLines.length && !r.missingFonts.length && !r.missingMedia.length) console.log('문제 없음');
+    for (const n of r.editability?.notes || []) console.log(`고치기 어려움: ${n}`);
+    if (!r.gaps.length && !r.overlaps.length && !r.twoLines.length && !r.missingFonts.length && !r.missingMedia.length && !r.editability?.notes?.length) console.log('문제 없음');
+    if (flags.strict && r.editability?.flattened) { console.error('실패: 통째로 구운 편집이에요 — 그림은 장면별 재료로, 글자·자막·효과음은 편집 파일 안에 따로 두세요'); process.exit(2); }
+  } else if (cmd === 'text' && rest[0]) {
+    if (flags.text == null || flags.at == null) throw new Error('--text 글 과 --at 초 가 필요해요');
+    const r = await patch(rest[0], [{ op: 'text', text: String(flags.text).replace(/\\n/g, '\n'), start: Number(flags.at), ...(flags.end != null ? { end: Number(flags.end) } : { dur: Number(flags.dur) || 2 }), track: flags.track || null, style: flags.style || null, ...(flags.x != null ? { x: Number(flags.x) } : {}), ...(flags.y != null ? { y: Number(flags.y) } : {}), in: flags.in || 'none', out: flags.out || 'none' }]);
+    console.log(`글자 넣음: ${r.results[0].id} (트랙 ${r.results[0].track})`);
+  } else if (cmd === 'set' && rest[0] && rest[1] && rest[2]) {
+    const r = await patch(rest[0], [{ op: 'set', id: rest[1], props: kv(rest.slice(2)) }]); console.log(`바꿈: ${rest[1]} (${r.results[0].kind})`); for (const p of r.problems || []) console.log(`고침: ${p}`);
+  } else if (cmd === 'style' && rest[0] && rest[1]) {
+    await patch(rest[0], [{ op: 'style', name: rest[1], props: kv(rest.slice(2)) }]); console.log(`스타일 "${rest[1]}" 저장`);
+  } else if (cmd === 'marker' && rest[0] && rest[1] != null) {
+    const r = await patch(rest[0], [{ op: 'marker', t: Number(rest[1]), label: rest.slice(2).join(' ') }]); console.log(`마커 ${r.results[0].id} @${fmt(rest[1])}`);
+  } else if (cmd === 'verify' && rest[0]) {
+    const r = await call(`/api/verify?path=${encodeURIComponent(abs(rest[0]))}${flags.edit ? `&edit=${encodeURIComponent(abs(flags.edit))}` : ''}`);
+    if (!r.studio) console.log('스튜디오에서 뽑은 영상이 아니에요(편집 파일에서 render 로 뽑으세요)');
+    else if (!r.sameEdit) console.log(`다른 편집 파일에서 뽑은 영상이에요: ${r.edit}`);
+    else console.log(r.current ? `편집 파일의 최신 렌더예요: ${r.edit} (${r.renderedAt}, ${r.encoder || ''})` : `편집 파일이 렌더 뒤에 바뀌었어요 — 다시 render 하세요: ${r.edit}`);
+    for (const n of r.editability?.notes || []) console.log(`고치기 어려움: ${n}`);
+    if (flags.strict && (!r.current || r.editability?.flattened)) process.exit(2);
   } else if (cmd === 'import-srt' && rest[0] && rest[1]) { const r = await post('/api/import-srt', { path: abs(rest[0]), srt: abs(rest[1]), name: rest[2] || null }); console.log(`자막 ${r.count}개를 트랙 ${r.track}에 넣었어요 (${r.path})`); }
   else if (cmd === 'srt' && rest[0]) { const r = await fetch(`${BASE}/api/srt?path=${encodeURIComponent(abs(rest[0]))}${rest[1] ? `&track=${encodeURIComponent(rest[1])}` : ''}`); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status); process.stdout.write(await r.text()); }
   else if (cmd === 'from-premiere') {
@@ -98,7 +125,7 @@ try {
     if (r.status !== 'done') throw new Error(r.error || '장면을 만들지 못했어요');
     console.log(`장면 영상: ${r.out} (${r.result.width}x${r.result.height} ${r.result.fps}fps ${r.result.duration}초${r.result.alpha ? ', 투명 배경' : ''})`);
   } else if (cmd === 'render' && rest[0]) {
-    const r = await post('/api/render', { path: abs(rest[0]) });
+    const r = await post('/api/render', { path: abs(rest[0]), out: flags.out || null });
     console.log(`렌더 시작: ${r.out}`);
     if (flags.wait) {
       let last = '';

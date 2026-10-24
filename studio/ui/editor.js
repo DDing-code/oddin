@@ -354,7 +354,7 @@
       el._clip = c.id; el._pre = false;
       const exp = c.in + (t - c.start), m = E.doc.media[c.media] || {};
       if (isAV(el)) {
-        el.muted = !!tr.muted || m.audio === false || tr.kind === 'video' && tr.muted; el.volume = V.clamp(dbGain(c.volume), 0, 1);
+        el.muted = !!tr.muted || m.audio === false || tr.kind === 'video' && tr.muted; el.volume = V.clamp(dbGain(V.clipGain(c, t)), 0, 1);
         if (tr.kind === 'audio' && el.tagName === 'VIDEO') el.muted = !!tr.muted; // 소리 트랙에 놓은 영상: 소리만
         if (E.playing) {
           if (el.paused) { el.currentTime = exp; el.play().catch(() => {}); }
@@ -521,7 +521,7 @@
   }
   function barHtml(tr, x) {
     const s = x.start, e = endOf(tr, x), left = s * E.zoom, w = Math.max(2, (e - s) * E.zoom);
-    const label = tr.kind === 'text' ? x.text : (E.doc.media[x.media]?.name || E.doc.media[x.media]?.path?.split(/[\\/]/).pop() || x.media);
+    const label = tr.kind === 'text' ? x.text : (x.label || E.doc.media[x.media]?.name || E.doc.media[x.media]?.path?.split(/[\\/]/).pop() || x.media);
     const keys = E.sel.has(x.id) ? Object.entries(x.keys || {}).flatMap(([p, ks]) => ks.map((k) => `<i class="ve-kf" style="left:${k.t * E.zoom}px" title="${p} ${k.v} · ${V.EASE_KO[k.ease] || k.ease}"></i>`)).join('') : '';
     const anim = tr.kind === 'text' && x.anim ? `${x.anim.in !== 'none' ? `<i class="ve-an in" style="width:${Math.min(x.anim.inDur, (e - s) / 2) * E.zoom}px"></i>` : ''}${x.anim.out !== 'none' ? `<i class="ve-an out" style="width:${Math.min(x.anim.outDur, (e - s) / 2) * E.zoom}px"></i>` : ''}` : '';
     return `<div class="ve-bar k-${tr.kind}${E.sel.has(x.id) ? ' sel' : ''}${tr.locked ? ' locked' : ''}" data-id="${esc(x.id)}" style="left:${left}px;width:${w}px" title="${esc(label)} · ${tc(s)}~${tc(e)} (${Math.round((e - s) * E.doc.fps)}f)">${anim}<span class="ve-bl">${esc(label)}</span>${keys}<i class="ve-eg l"></i><i class="ve-eg r"></i></div>`;
@@ -771,7 +771,7 @@
   /* ---------- 속성 패널 ---------- */
   const FONTS = [{ family: 'Noto Sans KR' }, { family: 'Malgun Gothic', ko: '맑은 고딕' }]; // 엔진이 이 PC 글꼴 목록을 주면 바꾼다(api/fonts)
   const num = (k, v, { step = 1, unit = '', key = false, x = null, min = null, max = null } = {}) => `<label class="ve-f"><span class="ve-fl" data-scrub="${k}" data-step="${step}" title="좌우로 끌어 바꾸기">${esc(LABEL[k] || k)}${unit ? ` <small>${unit}</small>` : ''}</span><input type="number" data-f="${k}" value="${Math.round(v * 1000) / 1000}" step="${step}"${min != null ? ` min="${min}"` : ''}${max != null ? ` max="${max}"` : ''}>${key ? `<button type="button" class="ve-kb${x && keyAt(x, k) ? ' on' : ''}${x?.keys?.[k]?.length ? ' has' : ''}" data-key="${k}" title="키프레임 넣기/빼기 (재생 헤드)">${icon('diamond')}</button><button type="button" class="ve-kn" data-kn="${k}:-1" title="이전 키">‹</button><button type="button" class="ve-kn" data-kn="${k}:1" title="다음 키">›</button>` : ''}</label>`;
-  const LABEL = { x: '가로 위치', y: '세로 위치', scale: '크기', rotation: '회전', opacity: '불투명도', size: '글자 크기', weight: '두께', letterSpacing: '자간', lineHeight: '행간', maxWidth: '최대 너비', strokeWidth: '테두리 두께', shX: '그림자 X', shY: '그림자 Y', shBlur: '그림자 흐림', padX: '배경 가로 여백', padY: '배경 세로 여백', radius: '배경 둥글기', volume: '음량', fadeIn: '소리 들어오기', fadeOut: '소리 나가기', inDur: '등장 길이', outDur: '퇴장 길이', gAngle: '그라디언트 각도' };
+  const LABEL = { x: '가로 위치', y: '세로 위치', scale: '크기', rotation: '회전', opacity: '불투명도', size: '글자 크기', weight: '두께', letterSpacing: '자간', lineHeight: '행간', maxWidth: '최대 너비', strokeWidth: '테두리 두께', shX: '그림자 X', shY: '그림자 Y', shBlur: '그림자 흐림', padX: '배경 가로 여백', padY: '배경 세로 여백', radius: '배경 둥글기', volume: '음량', fadeIn: '소리 들어오기', fadeOut: '소리 나가기', vfadeIn: '화면 들어오기', vfadeOut: '화면 나가기', inDur: '등장 길이', outDur: '퇴장 길이', gAngle: '그라디언트 각도' };
   function renderInsp() {
     const el = $v('.ve-insp'); if (!el) return;
     const s = selected();
@@ -785,7 +785,7 @@
   function renderInspLive() {
     const s = selected(); if (s.length !== 1) return;
     const { x } = s[0], lt = E.t - x.start;
-    for (const p of V.PROPS) {
+    for (const p of V.CLIP_PROPS) {
       const inp = $v(`.ve-insp input[data-f="${p}"]`); if (!inp || document.activeElement === inp) continue;
       const v = V.valueAt(x[p], x.keys?.[p], lt); inp.value = Math.round(v * 1000) / 1000;
       const kb = $v(`.ve-insp [data-key="${p}"]`); if (kb) kb.classList.toggle('on', !!keyAt(x, p));
@@ -800,12 +800,12 @@
       <small class="c-muted">길이 ${Math.round((e - x.start) * E.doc.fps)}프레임 (${(e - x.start).toFixed(2)}초)</small></div>`;
   }
   function transformBlock(x, video = false) {
-    return `<div class="ve-sec"><h5>위치·크기·움직임 <small class="c-muted">◆ = 재생 헤드에 키프레임</small></h5>${V.PROPS.filter((p) => !(video && p === 'opacity')).map((p) => num(p, V.valueAt(x[p], x.keys?.[p], E.t - x.start), { step: p === 'scale' ? 0.01 : p === 'opacity' ? 0.05 : 1, unit: p === 'rotation' ? '°' : p === 'scale' ? '배' : p === 'opacity' ? '' : 'px', key: true, x })).join('')}
-      ${video ? num('opacity', x.opacity, { step: 0.05 }) : ''}${easeBlock(x)}
+    return `<div class="ve-sec"><h5>위치·크기·움직임 <small class="c-muted">◆ = 재생 헤드에 키프레임</small></h5>${V.PROPS.map((p) => num(p, V.valueAt(x[p], x.keys?.[p], E.t - x.start), { step: p === 'scale' ? 0.01 : p === 'opacity' ? 0.05 : 1, unit: p === 'rotation' ? '°' : p === 'scale' ? '배' : p === 'opacity' ? '' : 'px', key: true, x })).join('')}
+      ${easeBlock(x)}
       <div class="ve-acts">${video ? '<button type="button" class="btn sm" data-act="punch" title="재생 헤드에서 6프레임 동안 1.15배로 쫀득하게 확대">펀치 인</button><button type="button" class="btn sm" data-act="punchout" title="재생 헤드에서 원래 크기로">펀치 아웃</button>' : ''}<button type="button" class="btn sm" data-act="center" title="가운데로">가운데</button><button type="button" class="btn sm" data-act="clearkeys" title="이 레이어의 키프레임 모두 지우기">키 모두 지우기</button></div></div>`;
   }
   function easeBlock(x) {
-    const ks = V.PROPS.map((p) => keyAt(x, p)).filter(Boolean);
+    const ks = V.CLIP_PROPS.map((p) => keyAt(x, p)).filter(Boolean);
     if (!ks.length) return '<div class="ve-ease"></div>';
     const cur = ks[0].ease;
     return `<div class="ve-ease"><span class="ve-fl">이 키 다음 움직임</span><div class="ve-chips">${Object.entries(V.EASE_KO).map(([k, l]) => `<button type="button" class="ve-chip${cur === k ? ' on' : ''}" data-ease="${k}">${l}</button>`).join('')}</div></div>`;
@@ -851,8 +851,11 @@
     return `<h4>${icon(m.kind === 'image' ? 'image' : m.kind === 'html' ? 'code' : tr.kind === 'video' ? 'film' : 'sound')}${esc(m.name || m.path || x.media)}</h4>
       <p class="c-muted ve-src" title="${esc(m.path || '')}">${kindKo}${m.kind === 'image' ? ` · ${m.width}×${m.height}` : ` · 원본 ${tc(x.in)} ~ ${tc(x.out)} · 원본 길이 ${tc(m.duration || 0)}`}${tr.kind === 'audio' && m.width > 0 ? ' · 소리 트랙이라 소리만 써요' : ''}</p>
       ${m.kind === 'html' ? `<div class="ve-acts"><button type="button" class="btn sm" data-act="scenereload" title="장면 파일을 고쳤으면 다시 읽기">장면 다시 읽기</button>${STUDIO.desktop?.openPath && !STUDIO.remote ? '<button type="button" class="btn sm" data-act="sceneopen" title="장면 HTML 을 기본 프로그램으로 열기">장면 파일 열기</button>' : ''}</div>` : ''}
+      ${m.source ? `<p class="c-muted ve-src" title="${esc(m.source)}">만든 방법: ${esc(m.source.slice(0, 120))}</p>` : ''}
+      <div class="ve-sec"><label class="ve-f"><span class="ve-fl">이름표</span><input data-f="label" value="${esc(x.label || '')}" placeholder="${esc(m.name || '')}" spellcheck="false"></label></div>
       ${timeBlock(tr, x)}
-      ${sound ? `<div class="ve-sec"><h5>소리</h5><div class="ve-row2">${num('volume', x.volume, { step: 0.5, unit: 'dB', min: -60, max: 24 })}</div><div class="ve-row2">${num('fadeIn', Math.round(x.fadeIn * E.doc.fps), { unit: 'f', min: 0 })}${num('fadeOut', Math.round(x.fadeOut * E.doc.fps), { unit: 'f', min: 0 })}</div><small class="c-muted">${tr.kind === 'video' && tr.muted ? '이 영상 트랙은 소리를 꺼 뒀어요(트랙 M) · ' : ''}말끝이 뚝 끊기면 나가기 2~3프레임</small></div>` : ''}
+      ${tr.kind === 'video' ? `<div class="ve-sec"><h5>화면 전환</h5><div class="ve-row2">${num('vfadeIn', Math.round((x.vfadeIn || 0) * E.doc.fps), { unit: 'f', min: 0 })}${num('vfadeOut', Math.round((x.vfadeOut || 0) * E.doc.fps), { unit: 'f', min: 0 })}</div><small class="c-muted">앞뒤 클립과 겹쳐 두면 서로 녹아드는 전환(디졸브)이 돼요</small></div>` : ''}
+      ${sound ? `<div class="ve-sec"><h5>소리</h5><div class="ve-row2">${num('volume', V.clipGain(x, E.t), { step: 0.5, unit: 'dB', min: -60, max: 24, key: true, x })}</div><div class="ve-row2">${num('fadeIn', Math.round(x.fadeIn * E.doc.fps), { unit: 'f', min: 0 })}${num('fadeOut', Math.round(x.fadeOut * E.doc.fps), { unit: 'f', min: 0 })}</div><small class="c-muted">${tr.kind === 'video' && tr.muted ? '이 영상 트랙은 소리를 꺼 뒀어요(트랙 M) · ' : ''}말끝이 뚝 끊기면 나가기 2~3프레임</small></div>` : ''}
       ${tr.kind === 'video' ? `<div class="ve-sec"><h5>화면 맞춤</h5><div class="ve-seg"><button type="button" class="${x.fit === 'cover' ? 'on' : ''}" data-fit="cover">꽉 채우기</button><button type="button" class="${x.fit === 'contain' ? 'on' : ''}" data-fit="contain">다 보이게</button><button type="button" class="${x.fit === 'none' ? 'on' : ''}" data-fit="none" title="원본 픽셀 크기 그대로(로고·스티커)">원래 크기</button></div></div>${transformBlock(x, true)}` : ''}`;
   }
   function docPanel() {
@@ -883,8 +886,9 @@
         for (const { tr, x } of s) {
           if (k === 'text') { x.text = raw; continue; }
           if (V.PROPS.includes(k)) { if (Number.isFinite(v)) setProp(x, k, k === 'opacity' ? V.clamp(v, 0, 1) : v); continue; }
-          if (k === 'volume') { x.volume = V.clamp(v, -60, 24); continue; }
-          if (k === 'fadeIn' || k === 'fadeOut') { x[k] = Math.max(0, v) / E.doc.fps; continue; }
+          if (k === 'volume') { setProp(x, 'volume', V.clamp(v, -60, 24)); continue; }
+          if (k === 'fadeIn' || k === 'fadeOut' || k === 'vfadeIn' || k === 'vfadeOut') { x[k] = Math.max(0, v) / E.doc.fps; continue; }
+          if (k === 'label') { if (raw.trim()) x.label = raw.trim().slice(0, 80); else delete x.label; continue; }
           if (k === 'anim.in' || k === 'anim.out') { x.anim[k.slice(5)] = raw; continue; }
           if (k === 'inDur' || k === 'outDur') { x.anim[k] = Math.max(0, v) / E.doc.fps; continue; }
           if (k === 'style') { if (raw === '__new') { const n = prompt('새 스타일 이름(역할: 해설·발화·강조 등)'); if (!n) return; E.doc.styles[n] = JSON.parse(JSON.stringify(V.styleOf(E.doc, tr, x))); x.style = n; x.override = {}; } else x.style = raw || null; continue; }
@@ -898,11 +902,11 @@
           else if (k === 'bgOn') st.bg = checked ? { color: '#000000b3', padX: 18, padY: 8, radius: 10 } : null;
           else if (['bgColor', 'padX', 'padY', 'radius'].includes(k)) st.bg = { ...(cur.bg || { color: '#000000b3', padX: 18, padY: 8, radius: 10 }), [{ bgColor: 'color', padX: 'padX', padY: 'padY', radius: 'radius' }[k]]: k === 'bgColor' ? raw : v };
         }
-      }, { keepInsp: ['text', 'size', 'letterSpacing', 'lineHeight', 'maxWidth', 'strokeWidth', 'shBlur', 'shX', 'shY', 'padX', 'padY', 'radius', 'gAngle', 'font', ...V.PROPS, 'volume', 'fadeIn', 'fadeOut', 'inDur', 'outDur'].includes(k) || /Color$|^color$|^g(From|To)$/.test(k) });
+      }, { keepInsp: ['text', 'size', 'letterSpacing', 'lineHeight', 'maxWidth', 'strokeWidth', 'shBlur', 'shX', 'shY', 'padX', 'padY', 'radius', 'gAngle', 'font', 'label', ...V.PROPS, 'volume', 'fadeIn', 'fadeOut', 'vfadeIn', 'vfadeOut', 'inDur', 'outDur'].includes(k) || /Color$|^color$|^g(From|To)$/.test(k) });
     }
     el.addEventListener('input', (e) => {
       const f = e.target.dataset.f; if (!f) return;
-      if (V.PROPS.includes(f)) setTimeout(renderInspLive, 0);
+      if (V.CLIP_PROPS.includes(f)) setTimeout(renderInspLive, 0);
       if (e.target.type === 'number' && e.target.value === '') return;
       if (e.target.classList.contains('ve-hex')) { if (!/^#([0-9a-f]{3,8})$/i.test(e.target.value)) return; }
       if (e.target.type === 'checkbox' || e.target.tagName === 'SELECT') return; // change 에서
@@ -924,7 +928,7 @@
       const s = selected(), one = s.length === 1 ? s[0] : null;
       if (b.dataset.key && one) return edit(() => toggleKey(one.x, b.dataset.key));
       if (b.dataset.kn && one) { const [p, dir] = b.dataset.kn.split(':'); const ks = one.x.keys?.[p] || []; const lt = E.t - one.x.start; const k = Number(dir) > 0 ? ks.find((q) => q.t > lt + 1e-4) : [...ks].reverse().find((q) => q.t < lt - 1e-4); if (k) seek(one.x.start + k.t); return; }
-      if (b.dataset.ease && one) return edit(() => { for (const p of V.PROPS) { const k = keyAt(one.x, p); if (k) k.ease = b.dataset.ease; } });
+      if (b.dataset.ease && one) return edit(() => { for (const p of V.CLIP_PROPS) { const k = keyAt(one.x, p); if (k) k.ease = b.dataset.ease; } });
       if (b.dataset.scope) { E.styleScope = b.dataset.scope; return renderInsp(); }
       if (b.dataset.fit && one) return edit(() => { one.x.fit = b.dataset.fit; });
       if (b.dataset.goto) { const f = find(b.dataset.goto); if (f) { E.sel = new Set([f.x.id]); seek(f.x.start); refresh(); scrollTo(f.x.start); } return; }
@@ -962,7 +966,7 @@
       l.addEventListener('pointermove', move); l.addEventListener('pointerup', up);
     });
     function applyLive(k, v) { // 끄는 동안: 되돌리기 기록 없이 바로 보이게
-      const s = selected(); for (const { x } of s) { if (V.PROPS.includes(k)) setProp(x, k, v); else if (k === 'volume') x.volume = v; }
+      const s = selected(); for (const { x } of s) { if (V.CLIP_PROPS.includes(k)) setProp(x, k, v); }
       if (!V.PROPS.includes(k) && k !== 'volume') { const inp = el.querySelector(`input[data-f="${k}"]`); if (inp) applyField(k, String(v)); return; }
       frame(); drawLanes();
     }

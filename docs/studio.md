@@ -29,6 +29,23 @@ AI 쪽 사용법(합친 공유 스킬): `~/.ai-shared/skills/oddin-studio/` — 
 
 엔진은 따로 도는 프로세스라 창을 닫아도 남는다(AI 가 계속 쓸 수 있게). 끄기: `node studio/cli.mjs quit` 또는 ODDIN PC 탭 "ODDIN 스튜디오 › 끄기". 렌더 중이면 거절한다.
 
+## 편집기 중심 제작 (2026-10-24)
+
+사용자 "오딘 편집기 실제로 활용하고 있어?" → 조사: 집 PC 작업 391개 중 편집기 명령을 돌린 작업은 10개(점검·열기뿐, 렌더 0번), ffmpeg 를 직접 돌린 작업 102개. 최근 영상 편집 파일은 다 만든 영상을 감싸기만 했다(키식스 = 그림 영상 1개 + 섞은 음악 + 섞은 효과음, 영웅 레이드 14분 = 같은 영상 83조각, 글자 칸 0개). 빌드 스크립트가 글자·화살표·페이드까지 프레임에 그렸고, 스킬도 "렌더는 부탁받았을 때만"이었다. → "그게 이상적인 방향 아닐까? 없는 기능은 더 추가해줘".
+
+- **원칙**(공유 스킬 `oddin-studio` SKILL.md "편집기 중심 제작", 처음부터 만드는 영상은 `pipelines/compose`): 납품 영상은 편집 파일에서 `cli.mjs render`로 뽑는다. 스크립트·Remotion·HTML 은 글자 없는 그림 장면(재료)만, 글자·자막·효과음·음악·확대/이동·전환은 편집 파일 안에 따로. 허브도 영상 작업의 작업자 지시문에 같은 규칙을 붙인다(`planner.studioRule`·`jobs.studioFor`, 끄기 `config.studio.rule:false`).
+- **더한 기능**
+  - 영상 클립 불투명도 키프레임 렌더 + 화면 들어오기/나가기 `vfadeIn`/`vfadeOut`(겹치면 디졸브). 공용 정의 `video-core.js clipOpacity` = 렌더 식 `edit.mjs opacityExpr`(geq 의 `T`). 바뀌는 구간(`opacitySpans`)에서 조각을 나눠 그 조각만 프레임마다 계산하고 나머지는 고정값(빠름).
+  - 소리 크기 키프레임 `keys.volume`(dB) — 미리보기 `clipGain`, 렌더 `volume=…:eval=frame`.
+  - 클립 이름표 `label`(타임라인 막대 이름), 원본 `source`(만든 방법 — 편집기 속성 창에 보임).
+  - 통째로 구운 편집 찾기 `video-core.js editability` → `/api/check`의 `editability`, `cli.mjs check --strict`(그림이 영상 하나뿐 + 글자 칸 없음이면 종료 코드 2).
+  - 고치기 창구 `POST /api/patch {path, ops}` — `text`·`set`(점 표기·JSON 값)·`style`·`marker`·`track`·`remove`, 한 번 읽고 한 번 저장(409). 명령줄 `text`·`set`·`style`·`marker`.
+  - 렌더 표시: 최종 MP4 의 `comment` 태그에 `oddin-studio {edit, hash, at, encoder}`(`editHash` = 정리한 편집 문서의 sha256). `GET /api/verify?path=<영상>[&edit=]` · `cli.mjs verify <영상> --strict`(최신 렌더가 아니거나 통째로 구운 편집이면 종료 코드 2).
+  - 인코더: `config.studio.video.encoder` = `auto`(기본 — NVIDIA 그래픽카드면 `h264_nvenc`, 처음 한 번 짧게 시험) | `libx264` | `h264_nvenc`, `STUDIO_ENCODER`로 덮어씀(시험은 libx264).
+  - 파이썬 도우미 `studio/sdk/oddin_edit.py`(의존성 없음, ffprobe 만): `Edit`·`media(source=)`·`track`·`clip(label, vfade_in…)`·`text`·`key`·`punch`·`style`·`marker`·`save`(편집 폴더 안 원본은 상대 경로)·`cli()`.
+  - 시작 화면 "AI 제작 흐름" 카드 **자료로 영상 만들기**(`pipelines/compose.json`).
+- 시험 `tests/studio-compose.test.mjs`(식 대조·정리·찾기·엔진에서 실제 렌더 픽셀·음량·확인·명령줄·파이썬 도우미).
+
 ## 여는 곳
 
 - 프로그램: 시작 메뉴·바탕화면 "ODDIN 스튜디오"(ODDIN PC 탭 "프로그램 설치"가 `studio/app`에 Electron 을 받고 바로가기를 만든다). 설치 전에는 Edge 앱 창으로 열린다.
@@ -109,7 +126,8 @@ AI 쪽 사용법(합친 공유 스킬): `~/.ai-shared/skills/oddin-studio/` — 
 
 ```
 node studio/cli.mjs status | open <편집|영상> | new <영상> | blank <폴더> | add <편집> <원본…> [--at 초] [--track id] [--len 초]
-node studio/cli.mjs check <편집> | import-srt <편집> <SRT> [이름] | srt <편집> | from-premiere [--seq 이름] [--out 폴더]
+node studio/cli.mjs check <편집> [--strict] | text <편집> --text 글 --at 초 … | set <편집> <id> 키=값 … | style <편집> <이름> 키=값 … | marker <편집> <초> [이름]
+node studio/cli.mjs verify <영상> [--edit 편집] [--strict] | import-srt <편집> <SRT> [이름] | srt <편집> | from-premiere [--seq 이름] [--out 폴더]
 node studio/cli.mjs scene <장면.html> [--dur 초] [--size 1080x1920] [--fps 30] [--out x.mov|x.mp4] | render <편집> [--wait]
 node studio/cli.mjs fonts [--missing] | fonts install <파일…|--all> | pipelines | quit
 node studio/cli.mjs speakers <촬영본> [--words 전사.json] [--keep 구간.json|편집파일] [--out 결과.json] [--all] [--no-video]
@@ -142,7 +160,7 @@ node studio/cli.mjs speakers <촬영본> [--words 전사.json] [--keep 구간.js
 
 - 키프레임 마름모 끌기·크기 손잡이·값 그래프는 아직 없다(숫자·AI 로).
 - 프리미어 XML 내보내기(스튜디오 → 프리미어)는 아직 — 지금은 SRT 와 렌더 결과로.
-- 영상 클립 불투명도 키프레임은 렌더하지 않는다(고정값만).
+- 전환은 화면 들어오기/나가기(일정하게)와 불투명도 키프레임뿐이다(밀기·지우기 같은 전환 효과는 없음).
 - 브라우저가 못 여는 코덱(일부 HEVC·ProRes)은 미리보기가 안 될 수 있다(렌더는 ffmpeg 라 됨).
 - 다른 PC 의 스튜디오는 그 PC 의 ODDIN `/studio/` 로 연다(허브끼리 넘기지 않음).
 - 원격(`/studio/`)의 HTML 장면 미리보기는 멈춘 화면이다 — 움직이게 하려면 허브가 장면 출처도 다른 출처로 비춰 줘야 한다.

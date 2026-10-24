@@ -4,11 +4,16 @@
    - 편집 파일 형식 정리(normalize) · 길이 · 스타일 합치기
    - 키프레임 값(valueAt) · 이징(EASE — 서버의 ffmpeg 식 EASE_EXPR 과 같은 공식) · 등장/퇴장 효과
    - 글자·자막 레이어 그리기(renderOverlay) · SRT 읽기/쓰기 · 시간 표기
-   - 원본 넣기(placeMedia — 화면 끌어 넣기·CLI add 공통) · SRT 를 자막 트랙으로(srtTrack) */
+   - 원본 넣기(placeMedia — 화면 끌어 넣기·CLI add 공통) · SRT 를 자막 트랙으로(srtTrack)
+   - 편집기 중심 제작(2026-10-24 사용자 "AI가 편집기로 조립하는 게 이상적 — 없는 기능은 더 추가해줘"):
+     영상 클립 불투명도 키프레임·화면 들어오기/나가기(clipOpacity), 소리 크기 키프레임(clipGain), 클립 이름표(label)·원본 만든 방법(source),
+     "통째로 구운 편집" 찾기(editability) */
 (function (root) {
   'use strict';
   const PROPS = ['x', 'y', 'scale', 'rotation', 'opacity'];
   const BASE = { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 };
+  // 클립(영상·소리)은 소리 크기(dB)도 키프레임으로 움직인다 — 음악 줄였다 키우기
+  const CLIP_PROPS = [...PROPS, 'volume'], CLIP_BASE = { ...BASE, volume: 0 };
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const r4 = (v) => Math.round(v * 10000) / 10000;
@@ -64,12 +69,12 @@
   /* ---------- 정리: 빠진 값 채우기·잘못된 값 고치기 ---------- */
   let seq = 0;
   const uid = (p) => `${p}${Date.now().toString(36).slice(-4)}${(++seq).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
-  function cleanKeys(keys) {
+  function cleanKeys(keys, props = PROPS) {
     const out = {};
     if (!keys || typeof keys !== 'object') return out;
-    for (const p of PROPS) {
+    for (const p of props) {
       const list = Array.isArray(keys[p]) ? keys[p] : [];
-      const ks = list.map((k) => ({ t: r4(Math.max(0, num(k && k.t, 0))), v: num(k && k.v, BASE[p]), ease: EASE[k && k.ease] ? k.ease : 'ease' })).sort((a, b) => a.t - b.t);
+      const ks = list.map((k) => ({ t: r4(Math.max(0, num(k && k.t, 0))), v: p === 'volume' ? clamp(num(k && k.v, 0), -60, 24) : num(k && k.v, CLIP_BASE[p]), ease: EASE[k && k.ease] ? k.ease : 'ease' })).sort((a, b) => a.t - b.t);
       const uniq = []; for (const k of ks) { if (uniq.length && Math.abs(uniq[uniq.length - 1].t - k.t) < 1e-4) uniq[uniq.length - 1] = k; else uniq.push(k); }
       if (uniq.length) out[p] = uniq;
     }
@@ -89,7 +94,8 @@
     for (const [id, m] of Object.entries(d.media && typeof d.media === 'object' ? d.media : {})) {
       if (!m || typeof m.path !== 'string' || !m.path) { problems.push(`원본 ${id}: 경로가 없어 뺐어요`); continue; }
       const kind = KINDS.includes(m.kind) ? m.kind : kindOf(m.path);
-      doc.media[id] = { path: m.path, kind, duration: kind === 'image' ? 0 : num(m.duration, 0), width: num(m.width, 0), height: num(m.height, 0), fps: num(m.fps, 0), audio: kind === 'video' && m.audio !== false, ...(m.name ? { name: String(m.name) } : {}) };
+      // source = 이 재료를 어떻게 만들었는지(AI 가 스크립트로 그린 그림·음악 등 — 다시 만들 때 쓰는 명령·설명). 편집기는 보여 주기만 한다
+      doc.media[id] = { path: m.path, kind, duration: kind === 'image' ? 0 : num(m.duration, 0), width: num(m.width, 0), height: num(m.height, 0), fps: num(m.fps, 0), audio: kind === 'video' && m.audio !== false, ...(m.name ? { name: String(m.name) } : {}), ...(m.source ? { source: String(m.source).slice(0, 400) } : {}) };
     }
     for (const [name, s] of Object.entries(d.styles && typeof d.styles === 'object' ? d.styles : {})) if (s && typeof s === 'object') doc.styles[String(name)] = s;
     const ids = new Set();
@@ -117,7 +123,8 @@
           let inn = Math.max(0, num(c.in, 0)), out = Math.max(inn + 1 / doc.fps, num(c.out, m.duration || inn + 1));
           if (m.duration && out > m.duration + 0.001) { out = m.duration; if (inn >= out) inn = Math.max(0, out - 1 / doc.fps); problems.push(`클립 ${c.id || ''}: 원본 길이를 넘어 끝을 줄였어요`); }
           return { id: fresh(c.id, 'c'), media: c.media, start: r4(Math.max(0, num(c.start, 0))), in: r4(inn), out: r4(out), volume: clamp(num(c.volume, 0), -60, 24),
-            fadeIn: clamp(num(c.fadeIn, 0), 0, 10), fadeOut: clamp(num(c.fadeOut, 0), 0, 10), fit: FITS.includes(c.fit) ? c.fit : 'cover', ...transformOf(c), keys: cleanKeys(c.keys) };
+            fadeIn: clamp(num(c.fadeIn, 0), 0, 10), fadeOut: clamp(num(c.fadeOut, 0), 0, 10), vfadeIn: clamp(num(c.vfadeIn, 0), 0, 10), vfadeOut: clamp(num(c.vfadeOut, 0), 0, 10),
+            fit: FITS.includes(c.fit) ? c.fit : 'cover', ...transformOf(c), keys: cleanKeys(c.keys, CLIP_PROPS), ...(c.label ? { label: String(c.label).slice(0, 80) } : {}) };
         }).sort((a, b) => a.start - b.start);
       }
       doc.tracks.push(t);
@@ -172,7 +179,44 @@
   function clipBox(doc, clip, t) {
     const lt = t - clip.start, k = clip.keys || {};
     const f = fitSize(doc, doc.media[clip.media], clip.fit), s = valueAt(clip.scale, k.scale, lt);
-    return { cx: doc.width / 2 + valueAt(clip.x, k.x, lt), cy: doc.height / 2 + valueAt(clip.y, k.y, lt), w: f.w * s, h: f.h * s, rotation: valueAt(clip.rotation, k.rotation, lt), opacity: clip.opacity };
+    return { cx: doc.width / 2 + valueAt(clip.x, k.x, lt), cy: doc.height / 2 + valueAt(clip.y, k.y, lt), w: f.w * s, h: f.h * s, rotation: valueAt(clip.rotation, k.rotation, lt), opacity: clipOpacity(clip, t) };
+  }
+  /** 영상 클립의 그 시각 불투명도 = 기본값·키프레임 × 화면 들어오기(vfadeIn)·나가기(vfadeOut, 일정하게). 렌더의 ffmpeg 식(edit.mjs opacityExpr)과 같은 정의 */
+  function clipOpacity(clip, t) {
+    const lt = t - clip.start, len = clip.out - clip.in;
+    let o = valueAt(num(clip.opacity, 1), clip.keys && clip.keys.opacity, lt);
+    if (clip.vfadeIn > 0) o *= clamp(lt / clip.vfadeIn, 0, 1);
+    if (clip.vfadeOut > 0) o *= clamp((len - lt) / clip.vfadeOut, 0, 1);
+    return clamp(o, 0, 1);
+  }
+  /** 클립의 그 시각 소리 크기(dB) = 기본값·키프레임(소리 페이드 fadeIn/fadeOut 는 따로 곱한다) */
+  function clipGain(clip, t) { return valueAt(num(clip.volume, 0), clip.keys && clip.keys.volume, t - clip.start); }
+
+  /** "통째로 구운 편집" 찾기: 그림이 영상 한 개뿐이고 글자 칸도 없으면 편집기에서 고칠 게 없다(2026-10-24 — AI 가 밖에서 다 만든 영상을 감싸기만 했다).
+   *  flattened = 고칠 수 없는 감싸기, notes = 고치면 좋은 점(사람 말) */
+  function editability(doc) {
+    const D = duration(doc), notes = [];
+    if (D < 5) return { flattened: false, notes };
+    const vis = [], texts = [], audio = [];
+    for (const tr of doc.tracks) {
+      if (tr.kind === 'text') { if (!tr.hidden) texts.push(...tr.items); continue; }
+      for (const c of tr.clips) {
+        const m = doc.media[c.media] || {};
+        if (tr.kind === 'video' && !tr.hidden && m.width > 0) vis.push(c);
+        if (!tr.muted && (tr.kind === 'audio' || m.audio !== false)) audio.push({ tr, c });
+      }
+    }
+    const cover = (list) => list.reduce((a, c) => a + (c.out - c.in), 0) / D;
+    const pics = new Set(vis.map((c) => c.media));
+    const onePicture = pics.size === 1 && cover(vis) >= 0.9;
+    if (onePicture) notes.push('그림이 영상 한 개뿐이에요 — 장면마다 재료 영상으로 나누고, 확대·이동·전환은 편집 파일의 키프레임으로 두세요');
+    if (!texts.length) notes.push('글자·자막 칸이 하나도 없어요 — 글자를 그림에 구워 넣었으면 글자 칸으로 빼세요');
+    const byTrack = new Map(); for (const a of audio) { if (!byTrack.has(a.tr)) byTrack.set(a.tr, []); byTrack.get(a.tr).push(a.c); }
+    for (const [tr, list] of byTrack) {
+      if (list.length === 1 && (list[0].out - list[0].in) >= 0.9 * D && /효과음|sfx|fx/i.test(`${tr.name} ${doc.media[list[0].media]?.path || ''}`)) notes.push(`효과음 트랙 "${tr.name}"이 한 덩어리예요 — 효과음은 소리마다 그 시각에 따로 넣으세요`);
+    }
+    if (D > 60 && audio.length && audio.length <= 2 && audio.every((a) => (a.c.out - a.c.in) >= 0.9 * D)) notes.push('소리가 미리 섞은 한두 덩어리예요 — 음악·효과음·말소리를 나눠 넣어야 크기·시점을 고칠 수 있어요');
+    return { flattened: onePicture && !texts.length, notes };
   }
   /** 그 시각에 보이는 영상 클립(아래 트랙부터) */
   function activeClips(doc, t) {
@@ -316,5 +360,5 @@
     return out;
   }
 
-  root.OddinVideo = { KINDS, FITS, kindOf, placeMedia, srtTrack, textChecks, PROPS, BASE, EASE, EASE_KO, ANIM, ANIM_KO, STYLE_DEFAULT, valueAt, styleOf, normalize, duration, clipEnd, animMods, itemState, fitSize, clipBox, activeClips, renderOverlay, fontsOf, fontAvailable, parseSrt, toSrt, snap, fmtTime, uid, clamp };
+  root.OddinVideo = { KINDS, FITS, kindOf, placeMedia, srtTrack, textChecks, PROPS, BASE, CLIP_PROPS, CLIP_BASE, clipOpacity, clipGain, editability, EASE, EASE_KO, ANIM, ANIM_KO, STYLE_DEFAULT, valueAt, styleOf, normalize, duration, clipEnd, animMods, itemState, fitSize, clipBox, activeClips, renderOverlay, fontsOf, fontAvailable, parseSrt, toSrt, snap, fmtTime, uid, clamp };
 })(typeof window !== 'undefined' ? window : globalThis);
