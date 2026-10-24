@@ -189,6 +189,7 @@
 /* 그림·HTML 장면 미리보기 */
 .ve-v.k-image,.ve-v.k-html{transform-origin:50% 50%}
 .ve-v.k-html{border:0;background:transparent}
+.ve-insp textarea.ve-json{font:12px/1.45 var(--mono,monospace);min-height:96px;white-space:pre}
 .ve-v.sel{outline:2px solid var(--accent);outline-offset:-1px}
 /* 렌더 결과 */
 .ve-result{display:block;width:100%;max-height:62vh;background:#000}

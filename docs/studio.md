@@ -46,6 +46,31 @@ AI 쪽 사용법(합친 공유 스킬): `~/.ai-shared/skills/oddin-studio/` — 
   - 시작 화면 "AI 제작 흐름" 카드 **자료로 영상 만들기**(`pipelines/compose.json`).
 - 시험 `tests/studio-compose.test.mjs`(식 대조·정리·찾기·엔진에서 실제 렌더 픽셀·음량·확인·명령줄·파이썬 도우미).
 
+## 프로 기능 (2026-10-24)
+
+사용자 "프리미어나 애프터이펙트 퀄리티의 영상도 돼?" → 아직 안 됨(빠진 기능 목록) → "전부 다 넣어주고, 오딘 친화적으로만 해주면 돼 내가 쓸일은 거의 없어". **AI 가 편집 파일 값으로 쓰는 기능**이고, 사람 편집기는 미리보기(CSS 로 비슷하게)와 "고급(JSON)" 칸만 더했다. 형식은 공유 스킬 `oddin-studio/references/pro.md`.
+
+- **정의 한 곳**: 값의 뜻은 `studio/ui/video-core.js`(정리·계산 — 미리보기·렌더 페이지·엔진이 같은 코드). 렌더는 `studio/engine/fx.mjs`(ffmpeg 식·필터)·`audio-mix.mjs`(소리)·`track.mjs`(따라가기). 엔진은 공용 코어를 `core.mjs`로 읽는다.
+- **렌더 방식**
+  - 움직임(위치·크기·회전·전환 밀기/확대/회전/뒤집기·흔들기·카메라)은 overlay·scale·rotate 의 프레임 식, 3D 기울이기는 2배로 넓힌 투명 판에 `perspective`(eval=frame) — 모서리는 CSS `perspective rotateX rotateY` 를 실제 보이는 크기에서 계산한 것과 같게(원근 거리 P·pre/s).
+  - 프레임마다 바뀌는 효과 값·불투명도·전환 흐림은 **JS(공용 코어)로 프레임마다 계산해 sendcmd** 로 보낸다(같은 사슬 앞쪽이라 프레임이 정확, 식을 두 번 쓰지 않음). 불투명도도 이제 geq 대신 `colorchannelmixer@…o aa`.
+  - 마스크·지우기·원형 전환은 회색 매트를 레이어 알파에 곱한다(`alphaextract`→`blend multiply`→`alphamerge`). 정해진 마스크는 geq 로 한 번 계산해 되풀이, 움직이는 마스크·전환은 흰 상자·원을 overlay·scale 프레임 식으로 옮긴다(**drawbox 는 프레임마다 식을 다시 계산하지 않아 못 씀** — 시험).
+  - 섞기(blend): 화면 크기 투명 판에 놓고 `gbrp` 로 바탕과 blend → 레이어 알파로 덮기. 포토샵 정의에 맞춰 위·아래 순서를 모드마다 정함(`fx.mjs BLEND_FF`).
+  - 속도: 일정하면 `setpts=(PTS-STARTPTS)/배속`, 램프는 ∫속도 표의 역함수를 꺾은선 식으로(2초마다 조각을 나눔), 되감기는 `reverse`(4초마다 조각), 멈춤은 그 프레임을 그림으로. 조각은 클립 경계·전환 구간에서도 나눈다.
+  - 모션 블러: 켠 클립이 움직이는 조각만 N배(기본 8) 빠르게 그려 `tmix`(셔터 몫)·`select`(가운데 맞춤).
+  - 조정 레이어(원본 kind `adjust`): 그 위치까지 쌓인 그림을 갈라 효과·매트·불투명도를 건 뒤 덮는다. 편집 안 편집(kind `edit`): 먼저 무손실 중간 파일(ffv1·pcm, 배경 투명이면 알파)로 렌더해 영상처럼(4단계, 자기 포함 금지).
+  - **소리는 조각마다가 아니라 타임라인 전체를 한 번에 섞는다**(`audio-mix.mjs`): 클립(속도 atempo·되감기·크기 키·페이드·자리) → 트랙(EQ·게이트·잡음·치찰음·압축·크기·좌우·자동 줄이기: 구간 봉투 또는 sidechain) → 전체(음량 맞추기 loudnorm 두 번·리미터). 클립이 많으면 트랙을 32개씩 미리 섞음. 조각 영상은 그림만.
+    - **ffmpeg 8.0.1: atempo 를 거친 소리는 adelay 가 넣는 앞 무음에 시각이 없어 뒤 atrim 이 무음을 버리고 소리를 0초로 당겼다** → adelay 뒤 `asetpts=N/SR/TB`.
+  - 출력(`doc.output` 또는 `render --codec …`): h264·h265(10비트)·ProRes 422 HQ·ProRes 4444(투명)·VP9(투명)·GIF. master·10비트·투명이면 중간 조각도 ffv1 무손실, 합성도 yuv444(p10). webm 의 렌더 표시는 `COMMENT`(대문자) — `readRenderMark` 가 대소문자를 가리지 않고 읽음.
+  - 글자 레이어(브라우저): 글자·낱말·줄 단위 등장(stagger·order), 계속 움직임(loop), 도형 SVG·선 그리기(pathLength 1 + dasharray), 3D·카메라(CSS), 효과(CSS filter), 마스크(clip-path), 섞기(다른 글자·도형과만).
+- **id 없는 칸**: 정리할 때 정해진 id(파일에 적힌 id 와 안 겹치게 `p1, p2…`) — 예전엔 읽을 때마다 무작위라 렌더 지문(`verify`)이 늘 "바뀜"이었다.
+- **따라가기**: `track.mjs` — 줄인 회색 프레임에서 정규화 상관(NCC), 이전 위치+속도 둘레만, 소수점은 포물선, 잘 맞으면 본보기를 조금씩 새로 고침, 사각형 둘레를 25% 넓혀 가장자리까지 봄(속이 한 색인 물체도). `/api/follow`·`cli follow --apply mask|stabilize|item:<id>|clip:<id>`, 키는 RDP 로 줄임.
+- **고치기 창구** 더함: `fx`·`shape`·`adjust`(`/api/patch`), 명령줄 `fx`·`trans`·`shape`·`adjust`·`follow`, `render --codec --quality --bit-depth --alpha --gif-fps`. 파이썬 도우미 `trans`·`fx`·`fx_key`·`mask`·`shape`·`adjust`·`camera`·`camera_key`·`motion_blur`·`track_audio`·`loudness`·`output`, `clip(speed=…, reverse=…, freeze=…, blend=…, z=…)`.
+- 편집기(사람): 속도·되감기·멈춤 미리보기와 자르기(원본 길이 = ∫속도), 효과·섞기·마스크·3D 는 CSS(filter·mix-blend-mode·clip-path·perspective), 조정 레이어는 backdrop-filter, 편집 안 편집은 자리 표시, 자동 줄이기 소리 크기. 속성 창 "고급(JSON)" 칸(클립·글자·편집 전체).
+- 고장 찾기: `STUDIO_KEEP_TMP=1` 이면 렌더 임시 폴더(조각·필터 그래프 `g*.txt`·sendcmd `cmd_*.txt`·`audio.txt`)를 남긴다.
+- 시험 `tests/studio-pro.test.mjs`: 식 대조(이징·속도·전환·흔들기·카메라·3D 모서리·마스크·자동 줄이기) + 엔진 렌더 픽셀·소리(속도·효과·섞기·마스크·전환·조정·3D·카메라 시차·모션 블러·편집 안 편집·자동 줄이기·좌우·배속 소리·음량·ProRes 4444/VP9 투명·H.265 10비트·GIF·따라가기·명령줄·도형·파이썬 도우미).
+- 한계: 미리보기는 비슷하게만, 글자·도형 blend 는 영상과 안 섞임·모션 블러 없음, 카메라 회전 없음, 되감기+램프 안 됨, 램프 구간 소리 빠짐.
+
 ## 여는 곳
 
 - 프로그램: 시작 메뉴·바탕화면 "ODDIN 스튜디오"(ODDIN PC 탭 "프로그램 설치"가 `studio/app`에 Electron 을 받고 바로가기를 만든다). 설치 전에는 Edge 앱 창으로 열린다.

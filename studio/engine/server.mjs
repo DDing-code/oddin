@@ -266,7 +266,8 @@ async function route(req, res, url) {
   if (p === '/api/fonts/install' && M === 'POST') { const b = await readBody(req); const files = b.all ? installableFonts().map((x) => x.file) : [].concat(b.files || []).map((f) => allowed(f)); const r = installFonts(files); broadcast({ type: 'fonts' }); return json(res, r); }
   // 렌더·장면
   if (p === '/api/renders') return json(res, editor.list());
-  if (p === '/api/render' && M === 'POST') { const b = await readBody(req); return json(res, await editor.render(allowed(b.path), { out: b.out || null, allowed }), 202); }
+  if (p === '/api/render' && M === 'POST') { const b = await readBody(req); return json(res, await editor.render(allowed(b.path), { out: b.out || null, allowed, output: b.output && typeof b.output === 'object' ? b.output : null }), 202); }
+  if (p === '/api/follow' && M === 'POST') { const b = await readBody(req); return json(res, await editor.follow(allowed(b.path), { clip: b.clip, rect: b.rect, from: b.from ?? null, to: b.to ?? null, apply: b.apply || null, every: Number(b.every) || 2, allowed })); }
   const rc = p.match(/^\/api\/render\/([0-9a-f]{12})\/cancel$/); if (rc && M === 'POST') return json(res, editor.cancel(rc[1]));
   if (p === '/api/scene' && M === 'POST') {
     const b = await readBody(req); const file = allowed(b.path); if (mediaKind(file) !== 'html') throw error(400, 'HTML 장면 파일(.html)을 골라 주세요');

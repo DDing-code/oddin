@@ -15,7 +15,15 @@
 //   node studio/cli.mjs srt <편집파일> [트랙id]                    자막 SRT 출력
 //   node studio/cli.mjs from-premiere [--seq 이름|id] [--out 폴더]  열린 프리미어 시퀀스 → 편집 파일(ODDIN 어도비 플러그인 경유)
 //   node studio/cli.mjs scene <장면.html> [--dur 초] [--size 1080x1920] [--fps 30] [--out x.mp4|x.mov]  HTML 장면 → 영상(.mov 는 투명)
-//   node studio/cli.mjs render <편집파일> [--wait] [--out 이름.mp4]  MP4 렌더(편집 파일 옆) — 영상 결과물은 이것으로 뽑는다
+//   node studio/cli.mjs render <편집파일> [--wait] [--out 이름.mp4] [--codec h264|h265|prores|prores4444|vp9|gif] [--quality draft|normal|high|master] [--bit-depth 10] [--alpha] [--gif-fps 15]
+//                                                                 렌더(편집 파일 옆) — 영상 결과물은 이것으로 뽑는다. 출력 형식은 편집 파일 output 이 기본
+//   node studio/cli.mjs fx <편집파일> <id> <효과> [키=값 …] [--index n] | fx <편집파일> <id> --remove n
+//                                                                 효과: color lut curves blur glow shadow sharpen grain vignette pixelate chroma invert mirror tint rgbsplit lens wave wiggle (keys={"radius":[…]})
+//   node studio/cli.mjs trans <편집파일> <id> in|out <전환> [--dur 0.5] [--dir left|right|up|down] [--ease ease]  전환: fade slide wipe iris zoom blur whip spin flip (none = 빼기)
+//   node studio/cli.mjs shape <편집파일> <도형> --at 초 [--dur 초|--end 초] [--track 이름] [--x n] [--y n] [키=값 …]  도형: rect ellipse line arrow polygon star path (w= h= fill= stroke={…} radius= points=[[x,y]…] d="M…")
+//   node studio/cli.mjs adjust <편집파일> --at 초 [--dur 초|--end 초] <효과 JSON 배열 | 효과이름…>   조정 레이어(아래 그림 전체에 효과)
+//   node studio/cli.mjs follow <편집파일> --clip id --rect x,y,w,h [--from 초] [--to 초] [--apply mask|stabilize|item:<id>|clip:<id>] [--out 점.json]
+//                                                                 따라가기(모션 트래킹): 원본 픽셀 사각형을 프레임마다 찾아 키로
 //   node studio/cli.mjs fonts [--missing] | fonts install <글꼴파일…|--all>
 //   node studio/cli.mjs speakers <촬영본> [--words 전사.json] [--keep 구간.json|편집파일] [--out 결과.json] [--all] [--no-video] [--on a|b]  누가 말했나: 화면 속 출연자 / 화면 밖(PD) 목소리 가르기, 남긴 구간에 화면 밖 목소리가 들어갔는지 점검
 //   node studio/cli.mjs paper <촬영본> --script 대본.txt --words 전사.json [--on a|b] [--out 표.md]  종이 편집표: 대본 줄마다 출연자 테이크·PD 목소리(선창/지시/내용) 맞추기
@@ -124,9 +132,32 @@ try {
     const r = await post('/api/scene', { path: abs(rest[0]), out: flags.out ? abs(flags.out) : null, width: w, height: h, fps: Number(flags.fps) || 30, duration: Number(flags.dur) || 0, wait: true });
     if (r.status !== 'done') throw new Error(r.error || '장면을 만들지 못했어요');
     console.log(`장면 영상: ${r.out} (${r.result.width}x${r.result.height} ${r.result.fps}fps ${r.result.duration}초${r.result.alpha ? ', 투명 배경' : ''})`);
+  } else if (cmd === 'fx' && rest[0] && rest[1] && (rest[2] || flags.remove != null)) {
+    const r = await patch(rest[0], [flags.remove != null ? { op: 'fx', id: rest[1], remove: Number(flags.remove) } : { op: 'fx', id: rest[1], type: rest[2], props: kv(rest.slice(3)), ...(flags.index != null ? { index: Number(flags.index) } : {}) }]);
+    console.log(`효과 ${flags.remove != null ? '뺌' : rest[2]}: ${rest[1]} (효과 ${r.results[0].count}개)`); for (const p of r.problems || []) console.log(`고침: ${p}`);
+  } else if (cmd === 'trans' && rest[0] && rest[1] && /^(in|out)$/.test(rest[2] || '') && rest[3]) {
+    const key = rest[2] === 'in' ? 'transIn' : 'transOut';
+    await patch(rest[0], [{ op: 'set', id: rest[1], props: { [key]: rest[3] === 'none' ? null : { type: rest[3], ...(flags.dur != null ? { dur: Number(flags.dur) } : {}), ...(flags.dir ? { dir: flags.dir } : {}), ...(flags.ease ? { ease: flags.ease } : {}), ...(flags.amount != null ? { amount: Number(flags.amount) } : {}) } } }]);
+    console.log(`전환 ${rest[2] === 'in' ? '들어오기' : '나가기'}: ${rest[3]} (${rest[1]})`);
+  } else if (cmd === 'shape' && rest[0] && rest[1]) {
+    if (flags.at == null) throw new Error('--at 초 가 필요해요');
+    const r = await patch(rest[0], [{ op: 'shape', type: rest[1], start: Number(flags.at), ...(flags.end != null ? { end: Number(flags.end) } : { dur: Number(flags.dur) || 2 }), track: flags.track || null, x: Number(flags.x) || 0, y: Number(flags.y) || 0, props: kv(rest.slice(2)) }]);
+    console.log(`도형 넣음: ${r.results[0].id} (트랙 ${r.results[0].track})`);
+  } else if (cmd === 'adjust' && rest[0]) {
+    if (flags.at == null) throw new Error('--at 초 가 필요해요');
+    let effects = [];
+    if (rest[1] && rest[1].trim().startsWith('[')) effects = JSON.parse(rest[1]); else effects = rest.slice(1).map((t) => ({ type: t }));
+    const r = await patch(rest[0], [{ op: 'adjust', start: Number(flags.at), ...(flags.end != null ? { end: Number(flags.end) } : { dur: Number(flags.dur) || 2 }), effects, track: flags.track || null }]);
+    console.log(`조정 레이어: ${r.results[0].id} (트랙 ${r.results[0].track})`);
+  } else if (cmd === 'follow' && rest[0]) {
+    if (!flags.clip || !flags.rect) throw new Error('--clip id 와 --rect x,y,w,h(원본 픽셀) 가 필요해요');
+    const r = await post('/api/follow', { path: abs(rest[0]), clip: flags.clip, rect: String(flags.rect).split(',').map(Number), from: flags.from != null ? Number(flags.from) : null, to: flags.to != null ? Number(flags.to) : null, apply: flags.apply || null, every: Number(flags.every) || 2 });
+    if (flags.out) { fs.writeFileSync(abs(flags.out), JSON.stringify(r, null, 1)); console.log(`점: ${abs(flags.out)}`); }
+    console.log(`따라감: ${r.frames}프레임 ${fmt(r.from)}~${fmt(r.to)}${r.lost ? ` · 놓친 프레임 ${r.lost}개(가려졌거나 모양이 바뀜 — 구간을 나눠 다시)` : ''}${r.applied ? ` · ${r.applied} 에 키로 넣음` : ' · 점만(--apply 로 넣기)'}`);
   } else if (cmd === 'render' && rest[0]) {
-    const r = await post('/api/render', { path: abs(rest[0]), out: flags.out || null });
-    console.log(`렌더 시작: ${r.out}`);
+    const output = {}; if (flags.codec) output.codec = flags.codec; if (flags.quality) output.quality = flags.quality; if (flags['bit-depth']) output.bitDepth = Number(flags['bit-depth']); if (flags.alpha) output.alpha = true; if (flags['gif-fps']) output.fps = Number(flags['gif-fps']);
+    const r = await post('/api/render', { path: abs(rest[0]), out: flags.out || null, ...(Object.keys(output).length ? { output } : {}) });
+    console.log(`렌더 시작: ${r.out}${r.output ? ` (${r.output.codec}${r.output.bitDepth === 10 ? ' 10비트' : ''}${r.output.alpha ? ' 투명' : ''} · ${r.output.quality})` : ''}`);
     if (flags.wait) {
       let last = '';
       for (;;) { await new Promise((x) => setTimeout(x, 1000)); const s = (await call('/api/renders')).find((x) => x.id === r.id); const line = `${s.status} ${Math.round(s.progress * 100)}% ${s.stage || ''}`; if (line !== last) { console.log(line); last = line; } if (s.status !== 'running') { if (s.warnings?.length) console.log(`주의: ${s.warnings.join(' / ')}`); if (s.status !== 'done') { console.error(s.error || '실패'); process.exit(1); } break; } }

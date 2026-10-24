@@ -26,10 +26,10 @@ const rawReq = (port, p, { method = 'GET', headers = {} } = {}) => new Promise((
   q.on('error', reject); q.end();
 });
 const encPath = (p) => String(p).replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
-// ffmpeg 식을 JS 로 풀어 계산(if·lt·gte·pow)
+// ffmpeg 식을 JS 로 풀어 계산(if·lt·lte·gte·pow·sin·cos·sqrt·max·min·clip — 2026-10-24 새 이징까지)
 function evalExpr(expr, t) {
-  const js = expr.replace(/\bif\(/g, 'IF(').replace(/\blt\(/g, 'LT(').replace(/\bgte\(/g, 'GTE(').replace(/\bpow\(/g, 'Math.pow(');
-  return new Function('t', 'IF', 'LT', 'GTE', `return ${js};`)(t, (c, a, b) => (c ? a : b), (a, b) => (a < b ? 1 : 0), (a, b) => (a >= b ? 1 : 0));
+  const js = expr.replace(/\bif\(/g, 'IF(').replace(/\blte\(/g, 'LTE(').replace(/\blt\(/g, 'LT(').replace(/\bgte\(/g, 'GTE(').replace(/\bclip\(/g, 'CLIP(').replace(/\b(pow|sin|cos|sqrt|max|min|abs)\(/g, 'Math.$1(');
+  return new Function('t', 'IF', 'LT', 'LTE', 'GTE', 'CLIP', `return ${js};`)(t, (c, a, b) => (c ? a : b), (a, b) => (a < b ? 1 : 0), (a, b) => (a <= b ? 1 : 0), (a, b) => (a >= b ? 1 : 0), (x, a, b) => Math.min(b, Math.max(a, x)));
 }
 
 test('이징: 화면(JS)과 렌더(ffmpeg 식)가 같은 값', () => {
